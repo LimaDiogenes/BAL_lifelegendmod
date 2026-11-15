@@ -25,6 +25,7 @@ let emailsReply = [];
 let dmReply = { messages: ['Salut !', 'Bien joué.'], final: false };
 let huddleEdition = [];
 let huddleReply = { messages: [] };
+let interviewOut = {};
 // Un test peut regarder chaque requête avant sa réponse (requêtes simultanées, modèle léger) : world.js garde la
 // première IA simulée installée, ce crochet passe par elle.
 let aiHook = null;
@@ -38,6 +39,7 @@ function mockAi() {
     if (/^You answer emails on "Mails"/.test(system)) return JSON.stringify({ body: 'Réponse d’essai.', final: false });
     if (/^You answer private messages on "Kop"/.test(system)) return JSON.stringify(dmReply);
     if (/^You write the group chat of his team on "Vestiaire"/.test(system)) return JSON.stringify(huddleReply);
+    if (/^You write up an exclusive interview/.test(system)) return JSON.stringify(interviewOut);
     const articles = /^PLAN: (\[.*\])$/m.exec(user);
     if (articles) return JSON.stringify({ national: JSON.parse(articles[1]).map((a, i) => ({ headline: `Titre d’essai ${i + 1}`, dek: 'Chapeau d’essai.', body: words(a.size === 'long' ? 900 : a.size === 'medium' ? 500 : 250) })) });
     const m = /KOP_PLAN[^\n]*\n(\[.*\])\n/.exec(user);
@@ -468,4 +470,62 @@ test('langue : une réponse revenue en français est redemandée une fois, avec 
   asked.length = 0;
   await world.sendHuddle({ store: s.store, settings: settings(), text: 'On s’entraîne à quelle heure ?', progress: () => {} });
   assert.strictEqual(asked.filter(isHuddle).length, 1);
+});
+
+test('interview : sa réponse au journaliste devient « L’entretien », ses mots tels quels, une seule requête (1.1.0)', { skip }, async (t) => {
+  mockAi();
+  const world = require(path.join(ROOT, 'src/world/world.js'));
+  t.after(() => { interviewOut = {}; });
+  const QS = ['Votre saison ?', 'Votre place dans l’équipe ?', 'Le derby ?', 'Vos ambitions ?'];
+  const s = freshStore((st) => {
+    st.mail.push({ id: 'iv1', from: 'Marc Lhermitte', role: 'journalist', subject: 'Un entretien ?', unread: true, closed: false, interview: { status: 'open', questions: QS, asked: st.snapshot.gameDate }, messages: [{ who: 'them', body: 'Quatre questions.', gameDate: st.snapshot.gameDate }] });
+  });
+  const said = 'Je veux tout gagner avec Nancy. Le derby, on le prépare depuis l’été.';
+  interviewOut = {
+    article: { headline: '« Je veux tout gagner avec Nancy »', dek: 'L’attaquant se livre.', body: 'Il a reçu La Transversale.\n\n— Vos ambitions ?\n\n« Je veux tout gagner avec Nancy. »\n\n— Le derby ?\n\n« Le derby, on le prépare depuis le printemps. »' },
+    thanks: 'Merci pour tes réponses. Marc',
+    posts: [{ handle: 'FanANL', name: 'Fan', type: 'fan', text: 'Quel entretien !' }],
+  };
+  asked.length = 0;
+  const state = await world.replyMail({ store: s.store, settings: settings(), threadId: 'iv1', text: said, progress: () => {} });
+  assert.deepStrictEqual(asked.map((a) => a.system.split('\n')[0].slice(0, 40)), ['You write up an exclusive interview for '], 'la seule requête : celle de la réponse au mail');
+  const art = state.editions.at(-1).national[0];
+  assert.deepStrictEqual([art.kind, art.author, art.headline], ['entretien', 'Marc Lhermitte', '« Je veux tout gagner avec Nancy »']);
+  assert.match(art.body, /« Je veux tout gagner avec Nancy\. »/);
+  assert.doesNotMatch(art.body, /printemps/, 'une citation retouchée est retirée');
+  const th = state.mail.find((m) => m.id === 'iv1');
+  assert.deepStrictEqual([th.interview.status, th.messages.at(-1).body], ['done', 'Merci pour tes réponses. Marc']);
+  assert.ok(state.feed.some((p) => p.text === 'Quel entretien !'));
+  // Un autre mail du journaliste : une réponse ordinaire.
+  asked.length = 0;
+  await world.replyMail({ store: s.store, settings: settings(), threadId: 'iv1', text: 'Avec plaisir.', progress: () => {} });
+  assert.match(asked[0].system, /^You answer emails on "Mails"/);
+});
+
+test('synchro de secours : quota du jour épuisé, ce que fait le code est gardé, l’édition suivante rattrape (1.1.0)', { skip }, async (t) => {
+  mockAi();
+  const world = require(path.join(ROOT, 'src/world/world.js'));
+  const { AIError } = require(path.join(ROOT, 'src/ai/providers.js'));
+  t.after(() => { aiHook = null; });
+  emailsReply = [];
+  const s = freshStore();
+  // L'IA refuse tout : quota du jour épuisé.
+  aiHook = async () => { throw new AIError('Quota du jour épuisé chez Google : 3 modèles essayés.', { retryable: true, limit: true }); };
+  const logs = [];
+  const out = await world.sync({ store: s.store, settings: settings(), log: (m) => logs.push(m), progress: () => {} });
+  assert.deepStrictEqual([out.lastSync.backup, out.lastSync.published], [true, false]);
+  assert.strictEqual(out.editions.length, s.before.editions.length, 'pas d’édition');
+  assert.ok(out.missedResults?.length >= 1 && /AS Nancy Lorraine/.test(out.missedResults[0].match), JSON.stringify(out.missedResults));
+  assert.ok(out.feed.length > s.before.feed.length, 'les posts officiels du club sont publiés');
+  assert.ok(logs.some((l) => /synchro de secours/.test(l)));
+  const saved = s.store.activeCareer();
+  assert.strictEqual(saved.snapshot.gameDate, out.snapshot.gameDate, 'la sauvegarde lue est gardée');
+  // L'IA revient : même sans nouveau match, l'édition sort et rattrape les matchs.
+  aiHook = null;
+  asked.length = 0;
+  const next = await world.sync({ store: s.store, settings: settings(), log: () => {}, progress: () => {} });
+  const ed = asked.find((a) => /KOP_PLAN/.test(a.user));
+  assert.ok(ed && /"missed_results":\[\{/.test(ed.user), 'les matchs manqués partent dans l’édition');
+  assert.strictEqual(next.lastSync.published, true);
+  assert.strictEqual(next.missedResults, undefined, 'rattrapés');
 });

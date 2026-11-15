@@ -1,4 +1,4 @@
-LifeLegend 1.0.1 — how to use
+LifeLegend 1.1.0 — how to use
 ====================================
 
 LifeLegend reads your SP Football Life 2027 Become a Legend save and builds a world that reacts to every match: a national
@@ -36,7 +36,7 @@ WHAT YOU NEED
 
 INSTALL
 -------
-1. Unzip the LifeLegend-1.0.1-win-x64 folder anywhere (Documents, Desktop, a USB stick…), but not in "Program Files".
+1. Unzip the LifeLegend-1.1.0-win-x64 folder anywhere (Documents, Desktop, a USB stick…), but not in "Program Files".
    Nothing is installed in Windows.
 2. Run LifeLegend.exe.
 3. Windows may show "Windows protected your PC": LifeLegend is not digitally signed. Click "More info", then
@@ -72,6 +72,8 @@ YOUR SAVE AND YOUR DATA
   (experimental) and "Influence: real effects in the game" (formation verified in Football Life 2027, transfer
   experimental) in Settings › Your save. If you turn them on, LifeLegend may
   write to your save (only with the game closed) and keeps a copy. Leave them off if you don't want to take any risk.
+- A save enlarged by game mods (FL Mod Studio, GigaPack…) is read normally, but LifeLegend never writes to it, even
+  with these options on.
 - Your settings and careers are in %APPDATA%\LiveTweet\data (paste this path into File Explorer).
 - Your AI key is encrypted with your Windows account and only sent to the chosen provider. Your save key stays on this
   PC and is never sent anywhere.
@@ -91,7 +93,7 @@ LifeLegend folder.
 
 UNINSTALL
 ---------
-Delete the LifeLegend-1.0.1-win-x64 folder and, to erase your careers, the %APPDATA%\LiveTweet folder.
+Delete the LifeLegend-1.1.0-win-x64 folder and, to erase your careers, the %APPDATA%\LiveTweet folder.
 
 
 IF SOMETHING GOES WRONG

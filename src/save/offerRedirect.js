@@ -12,6 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { splitSave, joinSave, decryptSave } = require('./pesCrypt');
+const { assertStandard } = require('./layout');
 const { readCareer } = require('./blReader');
 
 const OFFER_MARKER = Buffer.concat([Buffer.from('74450700', 'hex'), Buffer.alloc(12)]);
@@ -123,6 +124,7 @@ function redirectOfferInSave({ savePath, backupDir, playerId, offerId, toRef }) 
   const team = career.teams.get(toRef);
   if (!team) throw new Error('Club introuvable dans ta sauvegarde.');
   const parts = splitSave(original);
+  assertStandard(parts.data); // pas d'écriture dans une sauvegarde agrandie par des modules
   const { data, fromRef, changes } = redirectInData(parts.data, { playerId, clubRef: career.club.ref, offerId, toRef });
   parts.data = data;
   const out = joinSave(parts);

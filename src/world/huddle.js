@@ -221,7 +221,7 @@ function addGroupMessages(group, list, gameDate, max = EDITION_MESSAGES) {
 // en jeu, puis ceux qui n'ont rien dit depuis longtemps), chacun dans son style ; un sujet de vie de vestiaire qui
 // tourne ; le coach seulement après une défaite ou s'il n'a pas écrit la fois d'avant.
 // last : le dernier match s'il vient d'être joué ; elsewhere : le football mondial est dans les faits de l'édition.
-function huddleToday(group, { last = null, elsewhere = false, edition = 0, date = '' } = {}) {
+function huddleToday(group, { last = null, elsewhere = false, edition = 0, date = '', rival = null, derby = null, reunion = null } = {}) {
   const rand = seeded(`${group.clubRef}|${date}|${edition}`);
   const said = new Map();
   group.messages.forEach((m, i) => { if (m.who === 'them' && m.from) said.set(m.from, i); });
@@ -254,7 +254,11 @@ function huddleToday(group, { last = null, elsewhere = false, edition = 0, date 
   const topics = elsewhere ? [...SIDE_TOPICS, ELSEWHERE_TOPIC] : SIDE_TOPICS;
   return {
     voices_today: voices,
-    side_topic: topics[(hash(date) + edition) % topics.length],
+    // Le rival vient de jouer contre eux ou de briller : le vestiaire en parle (src/world/rival.js).
+    side_topic: derby?.status === 'upcoming' && derby.in_days <= 3 ? `the derby against ${derby.opponent} (${derby.name}, FACTS.derby): the pride, the city, what the fans expect; no score prediction`
+      : derby?.status === 'just_played' ? `the derby just played (${derby.name}, ${derby.result}, FACTS.derby): bragging rights or the pain`
+      : reunion ? `his ${reunion.status === 'upcoming' ? 'coming return' : 'return'} against his former club ${reunion.club} (FACTS.reunion): teammates tease him about it or ask what it feels like`
+      : rival && ['against_us', 'big_game'].includes(rival.moment) ? `his rival ${rival.name} (${rival.team}, FACTS.rival), who ${rival.moment === 'against_us' ? 'just played against them' : 'just had a big match'}: teammates tease him about it or back him; numbers only from FACTS.rival` : topics[(hash(date) + edition) % topics.length],
     coach_speaks: Boolean(group.coach) && (lost || !coachSpoke),
   };
 }

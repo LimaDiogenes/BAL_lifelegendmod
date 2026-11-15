@@ -66,4 +66,4 @@ function clubPosts({ snapshot: s, changes, transfers = [], handle, max = 6, lang
   return posts.sort((x, y) => y.importance - x.importance).slice(0, max);
 }
 
-module.exports = { clubPosts };
+module.exports = { clubPosts, clubAuthor };

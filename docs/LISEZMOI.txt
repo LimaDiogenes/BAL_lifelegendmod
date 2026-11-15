@@ -1,4 +1,4 @@
-LifeLegend 1.0.1 — mode d'emploi
+LifeLegend 1.1.0 — mode d'emploi
 =======================================
 
 LifeLegend lit ta sauvegarde Become a Legend de SP Football Life 2027 et en tire un monde qui réagit à chaque match :
@@ -37,7 +37,7 @@ CE QU'IL TE FAUT
 
 INSTALLER
 ---------
-1. Décompresse le dossier LifeLegend-1.0.1-win-x64 où tu veux (Documents, Bureau, une clé USB…), mais pas dans
+1. Décompresse le dossier LifeLegend-1.1.0-win-x64 où tu veux (Documents, Bureau, une clé USB…), mais pas dans
    « Program Files ». Rien n'est installé dans Windows.
 2. Lance LifeLegend.exe.
 3. Windows peut afficher « Windows a protégé votre ordinateur » : LifeLegend n'est pas signé numériquement.
@@ -74,6 +74,8 @@ TA SAUVEGARDE ET TES DONNÉES
   d'offres » (expérimentale) et « Influence : effets réels dans le jeu » (formation vérifiée dans Football Life 2027,
   transfert expérimental), dans Réglages › Ta sauvegarde. Si tu les actives, LifeLegend peut écrire dans ta sauvegarde (jeu fermé uniquement) et en garde une copie. Laisse-les décochées
   si tu ne veux prendre aucun risque.
+- Une sauvegarde agrandie par des modules du jeu (FL Mod Studio, GigaPack…) est lue normalement, mais LifeLegend n'y
+  écrit jamais, même avec ces options cochées.
 - Tes réglages et tes carrières sont dans %APPDATA%\LiveTweet\data (colle ce chemin dans l'Explorateur).
 - Ta clé d'IA est chiffrée avec ton compte Windows et n'est envoyée qu'au fournisseur choisi. Ta clé de sauvegarde reste
   sur ce PC et n'est envoyée nulle part.
@@ -93,7 +95,7 @@ le nouveau dossier, décompresse-le, puis supprime l'ancien. Tes carrières et t
 
 DÉSINSTALLER
 ------------
-Supprime le dossier LifeLegend-1.0.1-win-x64, et si tu veux effacer tes carrières, le dossier %APPDATA%\LiveTweet.
+Supprime le dossier LifeLegend-1.1.0-win-x64, et si tu veux effacer tes carrières, le dossier %APPDATA%\LiveTweet.
 
 
 SI QUELQUE CHOSE NE VA PAS

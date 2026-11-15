@@ -62,6 +62,26 @@ function applyCorrections(out, corrections) {
   return applied;
 }
 
+// Une réponse illisible, souvent coupée net : les corrections arrivées complètes dans « corrections » sont gardées (chaque
+// objet relu à part), les autres perdues. null si la réponse n'a même pas de liste de corrections.
+function salvageCorrections(text) {
+  const t = String(text || '');
+  const key = t.indexOf('"corrections"');
+  const open = key >= 0 ? t.indexOf('[', key) : -1;
+  if (open < 0) return null;
+  const out = [];
+  let depth = 0, inStr = false, esc = false, start = -1;
+  for (let i = open + 1; i < t.length; i++) {
+    const c = t[i];
+    if (inStr) { if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue; }
+    if (c === '"') inStr = true;
+    else if (c === '{') { if (depth === 0) start = i; depth++; }
+    else if (c === '}') { depth--; if (depth === 0 && start >= 0) { try { out.push(JSON.parse(t.slice(start, i + 1))); } catch { /* objet abîmé */ } start = -1; } }
+    else if (c === ']' && depth === 0) break;
+  }
+  return out;
+}
+
 // flags : les phrases que le code a prises en faute (src/world/paperRules.js), corrigées dans la même requête.
 async function factCheck(out, { settings, apiKey, facts, changes, flags = [], log, onProgress }) {
   const draft = draftItems(out);
@@ -69,12 +89,18 @@ async function factCheck(out, { settings, apiKey, facts, changes, flags = [], lo
   const text = await providers.complete(settings, apiKey, prompts.withLanguage(settings, {
     system: prompts.factcheckSystem(settings),
     user: prompts.factcheckUser({ facts, changes, draft, flags }),
-    maxTokens: 6000,
+    maxTokens: 9000,
     log,
     onProgress,
   }));
-  const result = providers.parseJson(text);
+  let result;
+  try { result = providers.parseJson(text); } catch (err) {
+    const saved = salvageCorrections(text);
+    if (!saved) throw err;
+    result = { corrections: saved };
+    log?.(`Vérification des faits : réponse coupée, ${saved.length} correction(s) gardée(s).`);
+  }
   return { checked: true, corrections: applyCorrections(out, result.corrections) };
 }
 
-module.exports = { factCheck, applyCorrections, draftItems };
+module.exports = { factCheck, applyCorrections, draftItems, salvageCorrections };

@@ -242,7 +242,7 @@ const dayPart = (h) => (!Number.isInteger(h) ? '' : h < 12 ? `${h}h, « ce matin
 
 // Rend [{ handle, name, type, new?, style, angle, tag?, supports? }] : une douzaine de posts.
 // world : le football mondial depuis la dernière édition ({ stories: [{ competition, teams, story }], take }), ou null.
-function tribunePlan({ state, snapshot: s, changes, handle: me, world = null, clubLeague = null }) {
+function tribunePlan({ state, snapshot: s, changes, handle: me, world = null, clubLeague = null, rival = null, derby = null, reunion = null }) {
   const rand = rng(`${state.careerId}|${s.gameDate}|${state.editions?.length || 0}`);
   const lang = langOf(s.league?.name);
   const langFor = (club) => (club && clubLeague?.get(club) ? langOf(clubLeague.get(club)) : lang);
@@ -345,6 +345,28 @@ function tribunePlan({ state, snapshot: s, changes, handle: me, world = null, cl
   // 10. Un consultant ou journaliste sur le coach.
   const coach = s.club.coach || 'the coach';
   add(pro('pundit'), res ? `${coach}'s choices in ${result}` : next ? `what ${coach} must do in ${matchLabel(next)}` : `${coach}'s situation`);
+  // 10 quater. Les retrouvailles (src/world/reunion.js) : un ancien coéquipier encore là-bas (un vrai joueur, règle 29), ou un
+  // supporter de l'ancien club ; avant le match, l'accueil qu'on lui prépare ; après, ce qu'on en a pensé.
+  if (reunion) {
+    const mate = reunion.former_teammates_still_there?.[0];
+    const when = reunion.status === 'upcoming' ? `before facing his former club ${reunion.club} on ${reunion.date}` : `after ${reunion.result}, his return against ${reunion.club}`;
+    if (mate) add({ handle: mate.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]/g, ''), name: mate, type: 'player', new: !taken.has(mate.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]/g, '').toLowerCase()) }, `${mate}, his former teammate at ${reunion.club}, ${when} (FACTS.reunion): a friendly word, a bit of teasing, short; football only (rule 29). Tag him (@${me}).`, { tag: me });
+    add(fresh('rival', reunion.club) || regular('rival'), `a fan of ${reunion.club} ${when} (FACTS.reunion): how the stadium ${reunion.status === 'upcoming' ? 'will welcome' : 'welcomed'} their former player (his time there in FACTS.reunion.his_time_there); applause or a few whistles, never insults`);
+  }
+  // 10 ter. Le derby (src/world/derby.js) : la semaine du derby (banderoles, chants, la fierté de la ville, un supporter
+  // adverse), ou le lendemain (la fierté ou la douleur).
+  if (derby?.status === 'upcoming') {
+    add(fresh('fan', club), `derby week, ${derby.name} against ${derby.opponent} on ${derby.date} (FACTS.derby): the banner and the chants the ultras prepare, the pride of the city; no prediction of the score, no violence`);
+    add(fresh('rival', derby.opponent) || regular('rival'), `a fan of ${derby.opponent} before ${derby.name} (FACTS.derby): local pride and banter, no violence, no insult about the city`);
+  } else if (derby?.status === 'just_played') {
+    add(fresh('fan', club), `the day after ${derby.name} (${derby.result}, FACTS.derby): the pride or the pain of the city, bragging rights; only facts from FACTS`);
+  }
+  // 10 bis. Le rival (src/world/rival.js) : un consultant compare ; quand le rival vient de jouer contre son club, de
+  // briller ou de le dépasser, un supporter du club du rival en rajoute.
+  if (rival) {
+    add(pro('pundit'), `the duel between him (@${me}) and his rival ${rival.name} (${rival.team}) this season, only from FACTS.rival: who is better right now? Take a side with their numbers. Tag him (@${me}) in the text.`, { tag: me });
+    if (['against_us', 'big_game', 'overtaken'].includes(rival.moment)) add(fresh('rival', rival.team) || regular('rival'), `a fan of ${rival.team} says ${rival.name} is better than him (@${me}): banter with the numbers of FACTS.rival only. Tag him (@${me}) in the text.`, { tag: me });
+  }
   // 11. Les cotes avant son match (une seule fois, chiffres de FACTS).
   if (next && !res && s.next?.odds) add(brand('betting'), `the odds of ${matchLabel(next)} from FACTS.next_match.odds only; play responsibly`);
   // 12. Libre : le mercato pendant le mercato, sinon au choix (un vrai joueur ou coach peut parler, règle 29).

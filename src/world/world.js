@@ -7,7 +7,14 @@ const path = require('path');
 const { readCareer, competitionMatches } = require('../save/blReader');
 const { detectGameFolders, loadGameDb, matchRate } = require('../save/gameDb');
 const { buildSnapshot, diffSnapshots, hasNews, sameMatch } = require('./snapshot');
-const { complete: completeRaw, transcribe, parseJson } = require('../ai/providers');
+const { complete: completeRaw, transcribe, parseJson, isDailyQuota } = require('../ai/providers');
+const { updateRival, rivalFacts, rivalInNews } = require('./rival');
+const { derbyFacts } = require('./derby');
+const { reunionFacts, formerClubs } = require('./reunion');
+const { fanVote } = require('./fanVote');
+const { chantDue, keepChant } = require('./chant');
+const { interviewDue, markInterview } = require('./interview');
+const { clubAuthor: clubAuthorOf } = require('./clubPosts');
 // Chaque requête porte la consigne de langue quand la langue n'est pas le français (prompts.withLanguage). Une réponse
 // revenue en français quand même (le modèle léger qui suit un historique en français) est redemandée une fois, avec le
 // modèle choisi et la consigne en tête : une requête de plus, seulement dans ce cas.
@@ -192,11 +199,17 @@ function chatFacts(state) {
 // Heure du coup d'envoi en clair (« aujourd'hui à 14h (l'après-midi) ») : l'IA écrivait « ce soir » pour un match à 14h.
 const kickoffLabel = (m, today) => (Number.isInteger(m.hour) && m.hour >= 0 && m.hour <= 23 ? `${m.date === today ? 'aujourd’hui' : m.date} à ${m.hour}h (${m.hour < 12 ? 'le matin' : m.hour < 18 ? 'l’après-midi' : 'le soir'})` : undefined);
 function factsFor(s, profile = {}, state = null) {
+  const derby = derbyFacts(s); // un derby dans les 7 jours, ou tout juste joué (src/world/derby.js)
+  // Un ancien club dans les 7 jours, ou tout juste affronté (src/world/reunion.js) ; ses anciens coéquipiers encore là-bas.
+  const reunion = state ? reunionFacts(state, s, { squadOf: (ref) => state.formerSquads?.[ref] ?? null }) : null;
   return {
     game_date: s.gameDate,
     season: s.season,
     player: { name: s.player.name, ...(state?.playerKind === 'created' ? { created_player: true } : state?.playerKind === 'real' ? { real_player: true } : {}), national_team: s.player.nationality, position: profile.position || null, contract_until: s.player.contractUntil || null, game_profile: profileFacts(s.player.profile, Boolean(state) && sanctionActive(state, s.gameDate)), training: trainingFacts(s.player.training), playing_time: playingTime(s) },
     club: { name: s.club.name, short_name: s.club.short, stadium: s.club.stadium },
+    ...(state?.rival ? { rival: rivalFacts(state.rival) } : {}),
+    ...(derby ? { derby } : {}),
+    ...(reunion ? { reunion } : {}),
     league: s.league.name,
     coaches: s.coaches,
     season_stats: s.stats,
@@ -555,10 +568,13 @@ function memoryFor(state) {
     id: p.id, date: p.gameDate, handle: p.author.handle, name: p.author.name, type: p.author.type, text: String(p.text || '').slice(0, 220),
     quoting: quoting(p), replies: (p.replies || []).length || undefined, last_replies: thread(p),
   }));
+  const chantNow = state.chants?.[state.snapshot?.club?.ref];
   const accounts = Object.entries(state.accounts).slice(-24).map(([handle, a]) => ({ handle, name: a.name, type: a.type, bio: a.bio || undefined, style: styleOf(handle, a.type) }));
   return {
     handle: state.profile.handle,
     followers: state.profile.followers,
+    // Le chant que les supporters de son club ont inventé pour lui : ils peuvent le reprendre (jamais le réécrire).
+    ...(chantNow ? { fan_chant: { title: chantNow.title, lines: chantNow.lines } } : {}),
     // Ce qu'il a écrit lui-même sur sa page Kop (bio, ville) : les comptes peuvent le voir.
     my_profile: { display_name: state.profile.displayName, bio: state.profile.bio || null, location: state.profile.location || null },
     writers: state.writers,
@@ -1002,6 +1018,7 @@ const LEADS = {
   'débat télévisé': ['the host introducing the guest of the day'],
   chronique: ['the fact that best shows the story'],
   'les chiffres': ['the most telling number'],
+  'le duel': ['the number that separates them'],
   portrait: ['a fact of his career from FACTS'],
 };
 const leadOf = (kind, n) => { const list = LEADS[kind] || ['the main fact of the article']; return list[n % list.length]; };
@@ -1013,6 +1030,46 @@ const ROOM_BEFORE = (m) => [`how a dressing room prepares ${m}`, `who must carry
 // la conférence de presse quand l'édition compte), à la une seulement quand il fait l'actualité ; le joueur du mois en
 // début de mois ; un édito ou les chiffres pour finir. Les compétitions qui n'ont pas la place se partagent un dernier
 // article, « le foot ailleurs ».
+// « Le duel » : lui et son rival de la saison (src/world/rival.js), chiffres côte à côte.
+const DUEL_WHY = { new: 'the press names his rival of the season for the first time: who he is and why the two are compared', against_us: 'they just met on the pitch', big_game: 'the rival just had a big match', overtaken: 'one of them just overtook the other in goals' };
+function duelPiece(r, author) {
+  return { extra: 4, author, kind: 'le duel', focus: 'club', competition: r.league, teams: [r.team].filter(Boolean), rival: r.name,
+    subject: `the duel between him and ${r.name} (${r.team}), his rival this season in ${r.league} (FACTS.rival)${r.moment ? `: ${DUEL_WHY[r.moment]}` : ''}; their numbers side by side, their head-to-head, who is ahead right now and what the coming weeks will decide; only FACTS.rival and FACTS.player, never an invented action` };
+}
+// Le derby (src/world/derby.js) : à venir, son avant-match ; tout juste joué, le récit dit ce qu'il signifie.
+function derbyPieces(list, d, author) {
+  if (!d) return;
+  if (d.status === 'upcoming') {
+    list.push({ extra: 1, author, kind: 'avant-match', focus: 'club', competition: d.competition, teams: [d.opponent],
+      subject: `${d.name}: his club against ${d.opponent} on ${d.date} (FACTS.derby): what this derby means for both cities and both sets of fans, the earlier meetings this season only if FACTS.derby gives them, the form of both clubs; no invented history or incident, no score prediction` });
+    return;
+  }
+  const story = list.find((p) => p.kind === 'récit du match');
+  if (story) story.subject += `; it was ${d.name} (FACTS.derby): tell what it means for both cities and both sets of fans`;
+}
+// Les retrouvailles (src/world/reunion.js) : avant le match, « le retour » (son passage là-bas, l'accueil attendu) ; après,
+// le récit raconte l'accueil et ce qu'il a fait contre son ancien club.
+function reunionPieces(list, r, author) {
+  if (!r) return;
+  if (r.status === 'upcoming') {
+    list.push({ extra: 2, author, kind: 'portrait', focus: 'club', competition: r.competition, teams: [r.club],
+      subject: `his return against ${r.club}, his former club, on ${r.date} (FACTS.reunion): his time there from FACTS.reunion.his_time_there, how the fans of ${r.club} may welcome him (a good spell there: mostly applause; a short or poor one: indifference or a few whistles), what he has to prove; only FACTS, no invented anecdote` });
+    return;
+  }
+  const story = list.find((p) => p.kind === 'récit du match');
+  if (story) story.subject += `; he faced his former club ${r.club} (FACTS.reunion): the welcome and what he did against them`;
+}
+// La rumeur reprise par La Transversale (seulement une piste sérieuse ou une vraie offre ; l'invérifiable reste sur Kop).
+function rumourPiece(list, r, author) {
+  if (!r) return;
+  list.push({ extra: 3, author, kind: 'chronique', focus: 'club', size: 'short', subject: `mercato: the rumour posted on Kop by ${r.insider} that ${r.club} ${r.reliability === 'reliable' ? 'has made him an offer' : 'is following him closely'} (FACTS.transfer_rumour): what is known, how reliable that account is, what it would mean for him and his club; a rumour, never a done deal, no fee or figure` });
+}
+// Deux articles spéciaux de son club au plus par édition (1 le derby, 2 les retrouvailles, 3 la rumeur, 4 le duel).
+function capExtras(list, max = 2) {
+  const extras = list.filter((p) => p.extra != null).sort((a, b) => a.extra - b.extra);
+  for (const p of extras.slice(max)) list.splice(list.indexOf(p), 1);
+  for (const p of extras.slice(0, max)) delete p.extra;
+}
 function worldPaperPlan(desk, press, kind, n, angles) {
   const w = (i) => desk[i]?.name || desk[0].name;
   const { after, before } = press;
@@ -1035,6 +1092,11 @@ function worldPaperPlan(desk, press, kind, n, angles) {
     club.push({ author: w(4), kind: 'conférence de presse', focus: 'club', competition: before.competition, subject: `the press conferences before ${before.match} (${before.competition}): what both camps said` });
     club.push({ author: w(3), kind: 'regard de consultant', focus: 'club', competition: before.competition, subject: ROOM_BEFORE(before.match)[n % ROOM_BEFORE(before.match).length] });
   }
+  if (angles.rival) club.push(duelPiece(angles.rival, angles.world?.awards?.player_of_the_month || angles.world?.awards?.player_of_the_year ? w(5) : w(1)));
+  derbyPieces(club, angles.derby, club.some((p) => p.author === w(0)) ? w(5) : w(0));
+  reunionPieces(club, angles.reunion, w(3));
+  rumourPiece(club, angles.rumour, w(5));
+  capExtras(club);
   if (/^FIRST EDITION.*FACTS\.biography/.test(kind)) club.push({ author: w(3), kind: 'portrait', focus: 'club', subject: 'portrait of the player: who he is, from FACTS.biography (where he comes from, his youth, his path to this club), and where he stands now, only from FACTS' });
   const potm = angles.world.awards?.player_of_the_month;
   // Le footballeur de l'année, la récompense du jeu (lue dans la sauvegarde) : l'article des récompenses commence par lui
@@ -1132,6 +1194,10 @@ function transversalePlan(desk, press, kind, editions = 0, angles = {}) {
     plan = [lead, n % 2 ? debate : numbers];
     if (big) plan.push(room(null));
   }
+  if (angles.rival && !/^SEASON REVIEW/.test(kind)) plan.push(duelPiece(angles.rival, w(1)));
+  if (!/^SEASON REVIEW/.test(kind)) derbyPieces(plan, angles.derby, plan.some((p) => p.author === w(0)) ? w(5) : w(0));
+  if (!/^SEASON REVIEW/.test(kind)) { reunionPieces(plan, angles.reunion, w(3)); rumourPiece(plan, angles.rumour, w(5)); }
+  capExtras(plan);
   // Grande nouvelle (transfert, prolongation, bilan de saison…) : le chroniqueur l'ouvre, à la place de son article habituel.
   if (SPECIAL_EDITION.test(kind) && !plan.some((p) => p.author === w(0) && p.kind === 'chronique' && p.focus === 'lead')) {
     plan = [lead, ...plan.filter((p) => p.author !== w(0))].slice(0, 4);
@@ -1228,7 +1294,7 @@ function articleProblems(article, earlier = [], { nextOpponent = null, coverage 
 // et des brèves), chacun dans la voix de sa plume.
 // Les articles de l'édition de La Transversale, décidés par le code avant toute requête (auteur, genre, sujet,
 // format) : l'édition (blog, Kop, mails) les connaît ainsi pendant qu'ils s'écrivent.
-function transversaleOutline({ state, snapshot, rawChanges, kind, world = null }) {
+function transversaleOutline({ state, snapshot, rawChanges, kind, world = null, rumor = null }) {
   const desk = transversaleDesk(state);
   const press = pressMoments(snapshot, rawChanges);
   const stories = competitionStories(snapshot);
@@ -1239,7 +1305,8 @@ function transversaleOutline({ state, snapshot, rawChanges, kind, world = null }
   // Son championnat est aussi candidat aux éditos du journal mondial (sa vie : le titre, les séries, le maintien).
   const own = debate && league ? [{ competition: league, focus: 'competition', topics: [{ subject: debate, teams: [] }] }] : [];
   const names = [...(world?.competitions || []).map((c) => c.competition), league].filter(Boolean);
-  const angles = { tour: tourAngle(snapshot, press, stories), story: longViewAngle(stories, n), debate, big: bigEdition(snapshot, rawChanges, press), world: stories2.length || world?.awards?.player_of_the_year ? { stories: stories2, debates: worldDebates(world, { recent: recentDebates(state, names, league), extra: own }), awards: world.awards || null } : null };
+  const rival = rivalInNews(state.rival, n, 5) ? state.rival : null;
+  const angles = { rival, derby: derbyFacts(snapshot), reunion: reunionFacts(state, snapshot), rumour: rumor && rumor.reliability !== 'unverified' ? rumor : null, tour: tourAngle(snapshot, press, stories), story: longViewAngle(stories, n), debate, big: bigEdition(snapshot, rawChanges, press), world: stories2.length || world?.awards?.player_of_the_year ? { stories: stories2, debates: worldDebates(world, { recent: recentDebates(state, names, league), extra: own }), awards: world.awards || null } : null };
   return { desk, press, plan: transversalePlan(desk, press, kind, n, angles) };
 }
 
@@ -1296,7 +1363,7 @@ async function writeTransversale({ state, settings, apiKey, facts, changes, rawC
   clock?.lap('La Transversale : rédaction');
   // Le plan fait foi pour l'auteur et le genre, dans l'ordre ; un article de trop ou vide est écarté.
   const list = (Array.isArray(out.national) ? out.national : []).filter((a) => a && a.headline && a.body).slice(0, plan.length).map((a, i) => ({
-    headline: String(a.headline), dek: String(a.dek || ''), author: plan[i].author, kind: plan[i].kind, size: plan[i].size, focus: plan[i].focus, ...(plan[i].competition ? { competition: plan[i].competition } : {}), ...(plan[i].teams ? { teams: plan[i].teams } : {}), body: String(a.body),
+    headline: String(a.headline), dek: String(a.dek || ''), author: plan[i].author, kind: plan[i].kind, size: plan[i].size, focus: plan[i].focus, ...(plan[i].competition ? { competition: plan[i].competition } : {}), ...(plan[i].teams ? { teams: plan[i].teams } : {}), ...(plan[i].rival ? { rival: plan[i].rival } : {}), body: String(a.body),
   }));
   if (!list.length) throw new Error('aucun article');
   list.forEach(tidyArticle);
@@ -1420,6 +1487,18 @@ function readSave(savePath) {
   }
 }
 
+// Sauvegarde agrandie par des modules du jeu (FL Mod Studio, GigaPack…) : on dit où les tables ont été retrouvées (le
+// rapport de problème reprend ce journal) et ce qui manque.
+function logSaveLayout(layout, log) {
+  if (!layout || layout.standard) return;
+  // readCareer rend déjà les grandes places en texte (« 0x3073a34 ») ; les petites (taille d'un jour) en nombre.
+  const hex = (n) => (n == null ? 'introuvable' : typeof n === 'number' ? `0x${n.toString(16).toUpperCase()}` : String(n).toUpperCase().replace(/^0X/, '0x'));
+  log(`Sauvegarde agrandie par des modules (FL Mod Studio ou un autre pack) : tables retrouvées par leur forme · joueur ${hex(layout.player)} · matchs ${hex(layout.match)} × ${layout.matchCount} · compétitions ${hex(layout.comp)} · entraîneurs ${hex(layout.coach)} · calendrier ${hex(layout.calendar)} (jour ${hex(layout.calendarDay)}) · début de carrière ${hex(layout.careerStart)}.`);
+  log('Lecture seule : LifeLegend n’écrit pas dans une sauvegarde agrandie (Influence, offres redirigées, mise à l’écart).');
+  const missing = [layout.match == null && 'matchs', layout.calendar == null && 'mercato', layout.coach == null && 'entraîneurs', layout.comp == null && 'compétitions'].filter(Boolean);
+  if (missing.length) log(`Introuvable dans cette sauvegarde : ${missing.join(', ')}. Envoie un rapport (Réglages › À propos) : on regardera.`);
+}
+
 // La sauvegarde choisie est-elle une carrière encore jamais synchronisée ? Rend qui elle est, sinon null (sauvegarde
 // illisible : la synchro le dira avec son message).
 function newCareerInfo({ store, settings }) {
@@ -1438,6 +1517,7 @@ async function syncInner({ store, settings, log, t }) {
   if (!settings.savePath) throw new Error('Choisis ta sauvegarde BL00000000 dans les réglages.');
   log('Lecture et déchiffrement de la sauvegarde…');
   const career = readSave(settings.savePath);
+  logSaveLayout(career.layout, log);
   const names = playerNames(career, settings, log);
   const snapshot = buildSnapshot(career, names);
   const nameOf = (id) => (id === career.player.id ? career.player.name : (names?.has(id) ? prettyName(names.get(id)) : null));
@@ -1596,6 +1676,18 @@ async function syncInner({ store, settings, log, t }) {
     officialNow.push({ item, importance: p.importance });
   });
   if (fromClubs.length) log(`Kop : ${fromClubs.length} post(s) des comptes officiels des clubs.`);
+  // Le joueur du mois de son club, élu par les supporters (src/world/fanVote.js) : le sondage du compte du club, déjà
+  // dépouillé ; s'il gagne, un chapitre du Panthéon.
+  const vote = fanVote(state, snapshot, { language: settings.language, handle: state.profile.handle });
+  if (vote) {
+    const author = clubAuthorOf(snapshot.club);
+    const likes = postLikes(author, state, 2);
+    const item = { id: newId(), author, text: vote.post.text, poll: vote.post.poll, gameDate: snapshot.gameDate, createdAt: Date.now(), replies: [], likes, reposts: repostsFor(likes), official: true };
+    state.feed.push(item);
+    officialNow.push({ item, importance: 96 });
+    if (vote.won) chapterEvents.push({ kind: 'trophy', competition: `the fans' player of the month of ${snapshot.club.name} (${vote.monthLabel})` });
+    log(`Joueur du mois des supporters : ${vote.winner} (${vote.percent} %).`);
+  }
   const compFrom = state.compPostsUpTo || daysBefore(snapshot.gameDate, 7);
   if (snapshot.gameDate > compFrom) {
     // Publiés du moins important au plus important : le plus important finit en haut du fil.
@@ -1675,7 +1767,8 @@ async function syncInner({ store, settings, log, t }) {
       log(`Mails : ${sponsor.offer.brand} te propose un contrat d’équipementier.`);
     }
   } catch (err) { log(`Équipementier : ${err.message}`); }
-  if (!hasNews(changes) && !mercatoNews) {
+  // Des matchs restés sans article après une synchro de secours comptent comme une nouvelle : l'édition les rattrape.
+  if (!hasNews(changes) && !mercatoNews && !state.missedResults?.length) {
     state.lastSync = { published: false, gameDate: snapshot.gameDate };
     if (agentDue && (changes.newOffers.length || windowMoment)) {
       clock.lap('lecture de la sauvegarde');
@@ -1706,18 +1799,31 @@ async function syncInner({ store, settings, log, t }) {
   clock.lap('lecture de la sauvegarde');
 
   const apiKey = store.getKey(settings.provider);
+  // Le rival (src/world/rival.js) : choisi ou retrouvé dans les scores du jeu, avant que les rédacteurs s'y mettent.
+  try { const r = updateRival(state, scoresNow(), snapshot, { since: state.editions.at(-1)?.gameDate || null }); if (r?.moment === 'new') log(`Rival de la saison : ${r.name} (${r.team}).`); } catch (err) { log(`Rival : ${err.message}`); }
+  // L'effectif actuel de ses anciens clubs (scores du jeu) : ses anciens coéquipiers encore là-bas (src/world/reunion.js).
+  try { const sc = scoresNow(); state.formerSquads = Object.fromEntries(formerClubs(state, snapshot).filter((c) => c.ref && sc?.teams?.[c.ref]).map((c) => [c.ref, sc.teams[c.ref][4] || []])); } catch { /* sans scores : pas d'anciens coéquipiers */ }
   const facts = factsFor(snapshot, state.profile, state);
+  if (vote) facts.fan_vote = { month: vote.month, winner: vote.winner, percent: vote.percent, options: vote.post.poll.options, won_by_him: vote.won };
   // Les offres reçues restent privées : seul l'agent les connaît (FACTS.agent.offers_received).
   // La prolongation est publique (annonce du club), son salaire ne l'est pas.
   const signed = changes.contractSigned && { club: changes.contractSigned.club, until: changes.contractSigned.until, previous_until: changes.contractSigned.previousUntil };
   // Rumeurs mercato tranchées par cette synchro (il a signé dans le club, ou le mercato a fermé sans ce transfert).
   const rumorOutcomes = settleRumors(state, { changes, gameDate: snapshot.gameDate });
+  // La rumeur de cette édition (src/world/rumors.js) : l'insider la poste sur Kop, la presse la reprend, son agent en parle.
+  const rumor = pickRumor({ state, snapshot });
+  const rumorFacts = rumor ? { club: rumor.club, reliability: rumor.tier, insider: `@${INSIDERS[rumor.tier].handle}` } : null;
   // Rumeur de sélection : racontée une seule fois par match de sa sélection (les synchros suivantes ne la redisent pas).
   let ntRumor = null;
   if (changes.ntRumor && !(state.ntRumors || []).includes(changes.ntRumor.fixture)) {
     ntRumor = changes.ntRumor;
     state.ntRumors = [...(state.ntRumors || []), ntRumor.fixture].slice(-40);
   }
+  // Son chant de supporters (src/world/chant.js) : dû à cette synchro ? L'édition l'écrit, dans la même requête.
+  const chant = chantDue(state, snapshot, changes, { won_vote: Boolean(vote?.won), derby: facts.derby || null });
+  // L'interview exclusive (src/world/interview.js) : la demande et ses quatre questions, écrites par l'édition.
+  const interview = changes.firstSync ? null : interviewDue(state, snapshot);
+  if (chant) chapterEvents.push({ kind: 'fan_chant', why: chant.why });
   const aiChanges = { ...changes, newOffers: undefined, contractSigned: undefined, contract_signed: signed || undefined,
     season_review: seasonReview || undefined,
     skillLearned: changes.skillLearned ? { skill: skillForAi(changes.skillLearned.code) || UNKNOWN_SKILL } : undefined,
@@ -1727,6 +1833,10 @@ async function syncInner({ store, settings, log, t }) {
       : undefined,
     agent_report_due: agentDue,
     conduct: conductNews.change || undefined,
+    fan_chant_due: chant || undefined, // son chant de supporters (src/world/chant.js)
+    interview_request: interview || undefined, // la demande d'entretien (src/world/interview.js)
+    missed_results: state.missedResults?.length ? state.missedResults : undefined, // joués pendant une synchro de secours (règle 41)
+    transfer_rumour: rumorFacts || undefined, // reprise par la presse, commentée par son agent (règle 40)
     objectives: goals.news ? { ...goals.news, note: 'private between the player and his coach' } : undefined,
     rumor_outcomes: rumorOutcomes.length ? rumorOutcomes : undefined,
     sponsor_news: state.sponsor?.news ? { ...state.sponsor.news, note: 'an equipment (boots) deal of the player: mention it only if it fits, without inventing figures' } : undefined,
@@ -1752,8 +1862,8 @@ async function syncInner({ store, settings, log, t }) {
   try { world = worldFootball(scoresNow(), { since: state.editions.at(-1)?.gameDate || null, today: snapshot.gameDate, seen: state.paperAwards || {}, league: snapshot.league?.name || null }); } catch (err) { log(`Le football mondial : scores illisibles (${err.message}).`); }
   const worldMarks = world?.marks;
   if (world) delete world.marks;
-  const nationalFacts = { ...transversaleFacts(facts, snapshot), ...(world ? { world_football: world } : {}) };
-  const outline = transversaleOutline({ state, snapshot, rawChanges: changes, kind, world });
+  const nationalFacts = { ...transversaleFacts(facts, snapshot), ...(world ? { world_football: world } : {}), ...(rumorFacts ? { transfer_rumour: rumorFacts } : {}) };
+  const outline = transversaleOutline({ state, snapshot, rawChanges: changes, kind, world, rumor: rumorFacts });
   // Kop parle aussi du football mondial (demande d'un testeur) : un résumé court, dans la requête de l'édition, et trois
   // places dans le plan des posts. Gardé jusqu'à la synchro suivante pour les réponses à ses posts.
   const elsewhere = worldBrief(world);
@@ -1765,7 +1875,7 @@ async function syncInner({ store, settings, log, t }) {
   memory.transversale_today = outline.plan.map(({ author, kind: genre, subject }) => ({ author, kind: genre, subject }));
   if (chapterEvents.length) memory.pantheon = chapterTitles(state);
   // Le groupe du jour (qui parle, le sujet de vestiaire, le coach) : décidé par le code, dans la même requête.
-  if (huddle) memory.huddle = { ...huddleContext(huddle), ...huddleToday(huddle, { last: changes.newResults.at(-1) || null, elsewhere: Boolean(facts.football_elsewhere), edition: state.editions.length, date: snapshot.gameDate }) };
+  if (huddle) memory.huddle = { ...huddleContext(huddle), ...huddleToday(huddle, { last: changes.newResults.at(-1) || null, elsewhere: Boolean(facts.football_elsewhere), edition: state.editions.length, date: snapshot.gameDate, rival: state.rival, derby: facts.derby || null, reunion: facts.reunion || null }) };
   // Le groupe de la sélection ne parle que quand sa sélection fait l'actualité.
   const ntHuddle = changes.callUp || changes.ntResults.length || changes.ntMatchday ? nationalHuddle(state, snapshot) : null;
   if (ntHuddle) memory.huddle_national = huddleContext(ntHuddle);
@@ -1773,9 +1883,8 @@ async function syncInner({ store, settings, log, t }) {
   // Le championnat de chaque club du monde (scores du jeu) : les nouveaux comptes prennent les prénoms de son pays.
   let clubLeague = null;
   try { clubLeague = clubLeagues(scoresNow()); } catch { /* sans scores : les prénoms du championnat du joueur */ }
-  const plan = tribunePlan({ state, snapshot, changes, handle: state.profile.handle, world: kopWorld, clubLeague }).map((p) => ({ ...p, style: styleIn(p.style, settings.language) }));
+  const plan = tribunePlan({ state, snapshot, changes, handle: state.profile.handle, world: kopWorld, clubLeague, rival: rivalInNews(state.rival, state.editions.length, 3) ? state.rival : null, derby: facts.derby || null, reunion: facts.reunion || null }).map((p) => ({ ...p, style: styleIn(p.style, settings.language) }));
   // Rumeur mercato (src/world/rumors.js) : un créneau de plus, tenu par l'insider de son niveau de fiabilité.
-  const rumor = pickRumor({ state, snapshot });
   const rumorHandle = rumor && INSIDERS[rumor.tier].handle.toLowerCase();
   if (rumor) plan.push(rumorSlot(rumor, { known: Object.keys(state.accounts || {}).some((h) => h.toLowerCase() === rumorHandle), language: settings.language }));
   t.step(1);
@@ -1795,7 +1904,7 @@ async function syncInner({ store, settings, log, t }) {
       return writeNational();
     }),
     complete(settings, apiKey, {
-      system: prompts.editionSystem(settings, { transversale: true, pantheon: chapterEvents.length > 0, huddle: Boolean(huddle), huddleNational: Boolean(ntHuddle) }),
+      system: prompts.editionSystem(settings, { transversale: true, pantheon: chapterEvents.length > 0, huddle: Boolean(huddle), huddleNational: Boolean(ntHuddle), chant: Boolean(chant), interview: Boolean(interview) }),
       user: prompts.editionUser({ facts, changes: aiChanges, memory, settings: withTone(settings, state), kind, plan }),
       maxTokens: 16000,
       log,
@@ -1804,7 +1913,22 @@ async function syncInner({ store, settings, log, t }) {
   ]);
   if (nationalDone.status === 'rejected') nationalTrack.lap('La Transversale (échec)');
   clock.together([nationalTrack, editionTrack]);
-  if (editionDone.status === 'rejected') throw editionDone.reason;
+  if (editionDone.status === 'rejected') {
+    // Synchro de secours : l'IA ne répond plus pour aujourd'hui (quota du jour). Ce que le code fait sans elle est gardé
+    // et publié (scores, Scoreline, posts officiels, mails et messages du code, vote, rival…) ; les matchs de son club de
+    // cette synchro attendent la prochaine édition, qui les rattrapera. Une autre erreur arrête la synchro, comme avant.
+    if (!isDailyQuota(editionDone.reason)) throw editionDone.reason;
+    const club = snapshot.club.name;
+    const missed = (changes.newResults || []).filter((r) => r.home === club || r.away === club).map((r) => ({ date: r.date, competition: r.competition, match: `${r.home} ${r.score[0]}-${r.score[1]} ${r.away}`, ...(r.me ? { him: { minutes: r.me.minutes, goals: r.me.goals, assists: r.me.assists, rating: r.me.rating } } : {}) }));
+    state.missedResults = [...(state.missedResults || []), ...missed].slice(-8);
+    state.snapshot = snapshot;
+    state.lastSync = { published: false, backup: true, gameDate: snapshot.gameDate };
+    saveAll();
+    clock.lap('synchro de secours');
+    state.lastSync.durations = clock.summary();
+    log(`Quota de l’IA épuisé pour aujourd’hui : synchro de secours. Scores, Scoreline, posts officiels et mails sont à jour${missed.length ? `, les articles de ${missed.length > 1 ? `ces ${missed.length} matchs` : 'ce match'} sortiront à la prochaine synchro` : ''}.`);
+    return state;
+  }
   const national = nationalDone.status === 'fulfilled' ? nationalDone.value : null;
   if (national) {
     const words = national.reduce((n, a) => n + wordCount(a.body), 0);
@@ -1841,6 +1965,7 @@ async function syncInner({ store, settings, log, t }) {
   for (const a of out.national || []) fixArticle(a, settings.language);
   if (out.writers) state.writers = { ...out.writers, ...(state.writers || {}) }; // les noms déjà connus ne changent pas
   const chapter = out.pantheon && addChapter(state, out.pantheon[0], { gameDate: snapshot.gameDate, events: chapterEvents, id: newId() });
+  if (chant) { const kept = keepChant(state, snapshot, out.fan_chant, { why: chant.why, gameDate: snapshot.gameDate }); log(kept ? `Chant des supporters : « ${kept.title} ».` : 'Chant des supporters : pas écrit cette fois.'); }
   if (chapter) log(`Panthéon : nouveau chapitre « ${chapter.title} ».`);
   if (!state.localPaper && out.local_paper) state.localPaper = { ...out.local_paper, clubRef: snapshot.club.ref };
   const now = Date.now();
@@ -1852,7 +1977,7 @@ async function syncInner({ store, settings, log, t }) {
     gameDate: snapshot.gameDate,
     round: snapshot.last?.round || null,
     // Un article sans texte (l'IA a parfois rendu « body » vide : billets du 03/11 et du 14/01) n'est pas publié.
-    national: (out.national || []).map((a) => ({ ...article(a), ...(a.kind ? { kind: a.kind } : {}), ...(a.focus ? { focus: a.focus } : {}), ...(a.competition ? { competition: a.competition } : {}), ...(Array.isArray(a.teams) ? { teams: a.teams } : {}) })).filter(hasBody),
+    national: (out.national || []).map((a) => ({ ...article(a), ...(a.kind ? { kind: a.kind } : {}), ...(a.focus ? { focus: a.focus } : {}), ...(a.competition ? { competition: a.competition } : {}), ...(Array.isArray(a.teams) ? { teams: a.teams } : {}), ...(a.rival ? { rival: a.rival } : {}) })).filter(hasBody),
     local: (out.local || []).map(article).filter(hasBody),
     paper: state.localPaper ? { name: state.localPaper.name, city: state.localPaper.city } : null, // le journal change avec le club
     factcheck,
@@ -1901,12 +2026,13 @@ async function syncInner({ store, settings, log, t }) {
     let agentWrote = state.mail.some((m) => m.role === 'agent' && m.messages?.[0]?.gameDate === snapshot.gameDate);
     for (const e of out.emails || []) {
       if (e.role === 'agent') {
-        if (!agentDue || agentWrote) continue;
+        if (!(agentDue || rumorFacts) || agentWrote) continue;
         agentWrote = true;
       }
       state.mail.push({ id: newId(), from: e.role === 'agent' ? agent.name : e.from, role: e.role, club: snapshot.club.name, subject: e.subject, unread: true, closed: false, messages: [{ who: 'them', body: e.body, gameDate: snapshot.gameDate }] });
     }
   }
+  if (interview) { const asked = markInterview(state, interview, out.interview_questions, snapshot.gameDate); log(asked ? `Interview : ${interview.journalist} te demande un entretien (Mails).` : 'Interview : pas de demande cette fois.'); }
   // « Le brief du matin » de La Transversale, si le joueur s'y est abonné sur le site du journal (composé sans IA).
   if (settings.transversaleBrief) state.mail.push(transversaleBrief(snapshot, state.editions.at(-1), settings.language));
   if (state.sponsor) state.sponsor.news = null;
@@ -1920,6 +2046,7 @@ async function syncInner({ store, settings, log, t }) {
   if (state.influence) state.influence.news = []; // racontées dans cette édition
   growFollowers(state, changes);
   schedulePress(state, changes);
+  delete state.missedResults; // rattrapés par cette édition
   state.snapshot = snapshot;
   state.lastSync = { published: true, gameDate: snapshot.gameDate };
   // On garde l'historique raisonnable.
@@ -2219,6 +2346,7 @@ async function replyMailInner({ store, settings, threadId, text, t }) {
   store.saveCareer(state);
 
   const apiKey = store.getKey(settings.provider);
+  if (thread.interview?.status === 'open') return interviewReply({ store, settings, state, thread, text, apiKey, t });
   const out = parseJson(await complete(settings, apiKey, {
     system: prompts.mailSystem(settings),
     user: prompts.mailUser({ facts: { ...factsFor(state.snapshot, state.profile, state), influence: ['coach', 'club', 'agent'].includes(thread.role) ? influenceFacts(state) : undefined }, memory: memoryFor(state), thread: { from: thread.from, role: thread.role, subject: thread.subject, messages: thread.messages, former_club: formerClubOf(state, thread), request: thread.request ? { kind: thread.request.kind, about: thread.request.summary, accepted: thread.request.accepted } : undefined }, text }),
@@ -2227,6 +2355,41 @@ async function replyMailInner({ store, settings, threadId, text, t }) {
   }));
   thread.messages.push({ who: 'them', body: out.body || '', gameDate: state.snapshot.gameDate });
   if (out.final && thread.role !== 'family') thread.closed = true;
+  store.saveCareer(state);
+  return state;
+}
+
+// L'entretien exclusif (src/world/interview.js) : sa réponse au mail du journaliste devient un long article de La
+// Transversale, ses mots tels quels (une citation retouchée est retirée, comme en conférence de presse), Kop réagit, le
+// journaliste le remercie. Une seule requête, celle de la réponse au mail.
+async function interviewReply({ store, settings, state, thread, text, apiKey, t }) {
+  const gameDate = state.snapshot.gameDate;
+  const out = parseJson(await complete(settings, apiKey, {
+    system: prompts.interviewSystem(settings),
+    user: prompts.interviewUser({ facts: factsFor(state.snapshot, state.profile, state), memory: memoryFor(state), interview: { journalist: thread.from, questions: thread.interview.questions, answers: text } }),
+    maxTokens: 6000,
+    onProgress: t.ai,
+  }));
+  const article = { headline: out.article?.headline || `${state.snapshot.player.name} : l’entretien`, dek: out.article?.dek || '', author: thread.from, body: out.article?.body || '', kind: 'entretien', focus: 'club', competition: state.snapshot.league?.name };
+  for (const q of alteredQuotes(article.body, [text])) {
+    article.body = article.body.split(/\n{2,}/).map((para) => (para.match(/[^.!?…]+(?:[.!?…]+[»”"]?|$)\s*/g) || [para]).filter((sentence) => !sentence.includes(q)).join('').trim()).filter(Boolean).join('\n\n');
+  }
+  for (const q of alteredQuotes(`${article.headline} ${article.dek}`, [text])) for (const f of ['headline', 'dek']) article[f] = article[f].replace(`« ${q} »`, q).replace(`“${q}”`, q).replace(`"${q}"`, q);
+  const edition = state.editions.at(-1);
+  if (edition && article.body) edition.national.unshift(article);
+  const now = Date.now();
+  const people = mentionDirectory(state);
+  for (const p of (out.posts || []).filter((x) => !isUser(state, toAuthor(x)) && !isCompetitionAuthor(state, toAuthor(x)))) {
+    if (oddScript(p.text)) continue;
+    const author = realPersonAuthor(toAuthor(p), people);
+    rememberAccount(state, author);
+    const likes = postLikes(author, state, 1.4);
+    state.feed.push({ id: newId(), author, text: p.text || '', gameDate, createdAt: now, replies: [], likes, reposts: repostsFor(likes) });
+  }
+  thread.messages.push({ who: 'them', body: out.thanks || '', gameDate });
+  thread.interview.status = 'done';
+  thread.interview.article = article.headline;
+  recordConduct(state, out.conduct, { source: 'press', text, gameDate });
   store.saveCareer(state);
   return state;
 }

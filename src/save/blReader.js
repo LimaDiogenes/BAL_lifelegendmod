@@ -1,12 +1,15 @@
 'use strict';
 // Lecture d'une sauvegarde Become a Legend (BL00000000) de PES 2021 / Football Life.
-// Offsets établis par rétro-ingénierie ; identiques en vanilla et en Football Life 2026.
+// Offsets établis par rétro-ingénierie ; identiques en vanilla et en Football Life 2026/2027. Une sauvegarde agrandie
+// par des modules Lua (FL Mod Studio) a ses tables ailleurs : src/save/layout.js les retrouve, et les lecteurs prennent
+// ses places (L) ; les écarts à la fiche du joueur restent les mêmes.
 
 const fs = require('fs');
 const { decryptSave } = require('./pesCrypt');
 const { readPlayerProfile } = require('./playerProfile');
 const { readPhase } = require('./formations');
 const { readTraining } = require('./training');
+const { saveLayout } = require('./layout');
 
 const TEAM_STRIDE = 0x690;      // bloc équipe : ref u32 à +0x50, nom à +0x54, sigle à +0x9A, stade à +0xA0
 const ROSTER_OFFSET = 0x19C;    // effectif : paires [u32 numéro interne][u32 id joueur], 40 places au plus
@@ -71,7 +74,7 @@ function readDescription(desc) {
   return info;
 }
 
-function readTeams(d) {
+function readTeams(d, L) {
   const teams = new Map();
   for (let k = 0; k < 4096; k++) {
     const o = TEAM_STRIDE * k;
@@ -99,16 +102,16 @@ function readTeams(d) {
     team.index = k;
     // Formation de la tactique A (1re phase), celle du plan de jeu : voir formations.js.
     team.formation = readPhase(d, o + TACTIC_A);
-    const c = COACH_TABLE + COACH_STRIDE * team.slot;
-    if (c + 0x40 < d.length && d.readUInt32LE(c - 8) === team.slot) team.coach = prettyName(cstr(d, c, 0x40)) || null;
+    const c = L.coach == null ? -1 : L.coach + COACH_STRIDE * team.slot;
+    if (c >= 8 && c + 0x40 < d.length && d.readUInt32LE(c - 8) === team.slot) team.coach = prettyName(cstr(d, c, 0x40)) || null;
     teams.set(ref, team);
   }
   return teams;
 }
 
-function readCompetitions(d) {
+function readCompetitions(d, L) {
   const comps = new Map();
-  for (let o = COMP_TABLE; o < d.length && d[o] >= 0x20 && d[o] < 0xF8; o += COMP_STRIDE) {
+  for (let o = L.comp ?? d.length; o < d.length && d[o] >= 0x20 && d[o] < 0xF8; o += COMP_STRIDE) {
     const id = d.readUInt16LE(o - 2);
     if (!comps.has(id)) comps.set(id, cstr(d, o, 0x46));
   }
@@ -116,9 +119,9 @@ function readCompetitions(d) {
 }
 
 // Logo de chaque compétition : numéro du fichier emblemLc du jeu (u16 à nom+0x7E).
-function readCompetitionLogos(d) {
+function readCompetitionLogos(d, L) {
   const logos = new Map();
-  for (let o = COMP_TABLE; o < d.length && d[o] >= 0x20 && d[o] < 0xF8; o += COMP_STRIDE) {
+  for (let o = L.comp ?? d.length; o < d.length && d[o] >= 0x20 && d[o] < 0xF8; o += COMP_STRIDE) {
     const id = d.readUInt16LE(o - 2);
     if (!logos.has(id)) logos.set(id, d.readUInt16LE(o + 0x7E));
   }
@@ -150,10 +153,10 @@ function readLineup(d, o) {
   return out;
 }
 
-function readMatches(d, teams, comps) {
+function readMatches(d, teams, comps, L) {
   const matches = [];
-  for (let i = 0; i < MATCH_COUNT; i++) {
-    const o = MATCH_TABLE + i * MATCH_STRIDE;
+  for (let i = 0; L.match != null && i < L.matchCount; i++) {
+    const o = L.match + i * MATCH_STRIDE;
     if (o + MATCH_STRIDE > d.length) break;
     const year = d.readUInt16LE(o);
     if (year < 2000 || year > 2100) continue;
@@ -244,13 +247,14 @@ function scorers(matches, competitionId) {
 // Journal des buts du dernier match joué (le jeu n'en garde qu'un). Enregistrement de 40 octets :
 // u32 ?, u32 minute, u32 ?, u32 type, u32 slot+u32 id du buteur, u32 slot+u32 id du passeur (0xFFFF/0 si aucun),
 // f32 distance du tir en mètres, u32 drapeaux.
-function readLastMatchEvents(d) {
-  if (LAST_MATCH + LAST_MATCH_SPAN > d.length) return null;
-  const matchKey = d.readUInt32LE(LAST_MATCH);
-  const year = d.readUInt16LE(LAST_MATCH + 4);
-  if (matchKey >= MATCH_COUNT || year < 2000 || year > 2100) return null;
+function readLastMatchEvents(d, L) {
+  const LAST = L.player + (LAST_MATCH - PLAYER_REC);
+  if (LAST + LAST_MATCH_SPAN > d.length) return null;
+  const matchKey = d.readUInt32LE(LAST);
+  const year = d.readUInt16LE(LAST + 4);
+  if (matchKey >= L.matchCount || year < 2000 || year > 2100) return null;
   const goals = [];
-  for (let o = LAST_MATCH + 8; o + 40 <= LAST_MATCH + LAST_MATCH_SPAN; o += 4) {
+  for (let o = LAST + 8; o + 40 <= LAST + LAST_MATCH_SPAN; o += 4) {
     const [first, minute, third, type, sSlot, sId, aSlot, aId] = [0, 4, 8, 12, 16, 20, 24, 28].map((k) => d.readUInt32LE(o + k));
     const distance = d.readFloatLE(o + 32);
     if (first > 1 || minute > 130 || third > 5 || type > 15) continue;
@@ -273,16 +277,16 @@ function readDate(d, o) {
   return y > 2000 && y < 2100 && m >= 1 && m <= 12 && day >= 1 && day <= 31 ? `${y}-${pad(m)}-${pad(day)}` : null;
 }
 
-function readPlayerHistory(d, teams, comps) {
+function readPlayerHistory(d, teams, comps, PC = PLAYER_CLUB) {
   const team = (ref) => (ref === 0xFFFFFFFF ? null : teams.get(ref)?.name || null);
-  const year = d.readUInt16LE(PLAYER_CLUB + 0x3C);
+  const year = d.readUInt16LE(PC + 0x3C);
   const history = {
-    firstClub: team(d.readUInt32LE(PLAYER_CLUB + 0x38)),
-    previousClub: team(d.readUInt32LE(PLAYER_CLUB + 0x34)),
-    joinedClub: year > 2000 && year < 2100 ? `${year}-${pad(d[PLAYER_CLUB + 0x3E])}-${pad(d[PLAYER_CLUB + 0x3F])}` : null,
+    firstClub: team(d.readUInt32LE(PC + 0x38)),
+    previousClub: team(d.readUInt32LE(PC + 0x34)),
+    joinedClub: year > 2000 && year < 2100 ? `${year}-${pad(d[PC + 0x3E])}-${pad(d[PC + 0x3F])}` : null,
     debuts: [],
   };
-  for (let o = PLAYER_CLUB + 0x70; o <= PLAYER_CLUB + 0xA0; o += 0x30) {
+  for (let o = PC + 0x70; o <= PC + 0xA0; o += 0x30) {
     const kind = d.readUInt32LE(o), y = d.readUInt32LE(o + 4), m = d.readUInt32LE(o + 8);
     if ((kind !== 0 && kind !== 2) || y < 2000 || y > 2100 || m < 1 || m > 12) continue;
     history.debuts.push({
@@ -327,8 +331,8 @@ const DEADLINES = 0x57F70;
 const DEADLINE_BLOCK = 100;
 const DEADLINE_BLOCKS = 20;
 
-function readOffers(d, teams, playerId, clubRef) {
-  const m = d.indexOf(OFFER_MARKER, OFFER_SEARCH_FROM);
+function readOffers(d, teams, playerId, clubRef, from = OFFER_SEARCH_FROM) {
+  const m = d.indexOf(OFFER_MARKER, from);
   if (m < 0) return [];
   const negotiating = new Set();
   for (let k = 0; k < NEGO_MAX; k++) {
@@ -375,8 +379,8 @@ function readOffers(d, teams, playerId, clubRef) {
 }
 
 // Salaire du contrat en cours (vérifié : passe de 4 041 500 € à 6 774 900 € quand Depay accepte la prolongation de l'OL).
-function readSalary(d) {
-  const raw = d.readUInt32LE(PLAYER_CLUB + 0x30);
+function readSalary(d, PC = PLAYER_CLUB) {
+  const raw = d.readUInt32LE(PC + 0x30);
   return raw > 0 && raw < 10000000 ? raw * 100 : null;
 }
 
@@ -384,12 +388,13 @@ function readSalary(d) {
 // 6/7/8 = la même chose en hiver. Même place en vanilla et en Football Life.
 const WINDOW_EVENTS = { 3: ['ete', 'open'], 4: ['ete', 'eve'], 5: ['ete', 'close'], 6: ['hiver', 'open'], 7: ['hiver', 'eve'], 8: ['hiver', 'close'] };
 
-function readTransferWindows(d) {
+function readTransferWindows(d, L = { calendar: CALENDAR, calendarDay: CALENDAR_DAY }) {
   const windows = new Map();
+  if (L.calendar == null) return [];
   for (let k = 0; k < 365; k++) {
-    const o = CALENDAR + k * CALENDAR_DAY;
-    if (o + CALENDAR_DAY > d.length || d.readUInt32LE(o) !== 0xFFFFFFFF) return [];
-    for (let e = o + 8; e + 8 <= o + CALENDAR_DAY; e += 8) {
+    const o = L.calendar + k * L.calendarDay;
+    if (o + L.calendarDay > d.length || d.readUInt32LE(o) !== 0xFFFFFFFF) return [];
+    for (let e = o + 8; e + 8 <= o + L.calendarDay; e += 8) {
       const type = d.readUInt16LE(e);
       if (type === 0x3F) break;
       const ev = WINDOW_EVENTS[type];
@@ -411,8 +416,8 @@ function readTransferWindows(d) {
 const INTERESTS_FROM_OFFERS = 0x56294;
 const INTEREST_SIZE = 0x2C;
 
-function readInterests(d, teams, playerId) {
-  const m = d.indexOf(OFFER_MARKER, OFFER_SEARCH_FROM);
+function readInterests(d, teams, playerId, from = OFFER_SEARCH_FROM) {
+  const m = d.indexOf(OFFER_MARKER, from);
   if (m < 0) return [];
   const base = m + 0x14 + INTERESTS_FROM_OFFERS;
   const out = [];
@@ -443,10 +448,11 @@ const POTY_TABLE = 0xBEE290;
 const POTY_STRIDE = 0x17D8;
 const POTY_SLOTS = 6;
 const POTY_PODIUM = 3;
-function readPlayerOfYear(d) {
+function readPlayerOfYear(d, L = null) {
   const out = [];
+  const base = L ? L.player + (POTY_TABLE - PLAYER_REC) : POTY_TABLE;
   for (let k = 0; k < POTY_SLOTS; k++) {
-    const o = POTY_TABLE + k * POTY_STRIDE;
+    const o = base + k * POTY_STRIDE;
     if (o + 8 + POTY_PODIUM * 16 > d.length || d.readUInt32LE(o) !== k) break;
     const year = d.readUInt32LE(o + 4);
     if (year < 1990 || year > 2100) continue;
@@ -466,27 +472,33 @@ function readCareer(savePath) {
   const file = decryptSave(fs.readFileSync(savePath));
   if (file.fileType !== 'BL') throw new Error(`Ce fichier est une sauvegarde « ${file.fileType} », pas Become a Legend (BL00000000).`);
   const d = file.data;
-  const teams = readTeams(d);
-  const competitions = readCompetitions(d);
-  const competitionLogos = readCompetitionLogos(d);
-  const matches = readMatches(d, teams, competitions);
-  const clubRef = d.readUInt32LE(PLAYER_CLUB);
-  const nationalTeam = teams.get(d.readUInt32LE(PLAYER_CLUB + 4));
+  const save = readDescription(file.description);
+  // Les places des tables : celles du jeu, ou retrouvées dans une sauvegarde agrandie par des modules (layout.js).
+  const L = saveLayout(d, { playerName: save.player || null });
+  const P = L.player, PC = P + (PLAYER_CLUB - PLAYER_REC);
+  const teams = readTeams(d, L);
+  const competitions = readCompetitions(d, L);
+  const competitionLogos = readCompetitionLogos(d, L);
+  const matches = readMatches(d, teams, competitions, L);
+  const clubRef = d.readUInt32LE(PC);
+  const nationalTeam = teams.get(d.readUInt32LE(PC + 4));
   return {
     game: file.gameVersion,
-    save: readDescription(file.description),
+    save,
+    // Sauvegarde du jeu sans modules (standard) ou agrandie, et ses places (rapport de problème).
+    layout: { standard: L.standard, ...(L.standard ? {} : Object.fromEntries(Object.entries(L).filter(([k]) => k !== 'standard').map(([k, v]) => [k, typeof v === 'number' && v > 0xFFFF ? `0x${v.toString(16)}` : v]))) },
     player: {
-      id: d.readUInt32LE(PLAYER_REC),
-      name: prettyName(cstr(d, PLAYER_REC + 8, 61)),
+      id: d.readUInt32LE(P),
+      name: prettyName(cstr(d, P + 8, 61)),
       nationality: nationalTeam?.name || null,
-      contractUntil: readDate(d, PLAYER_CLUB + 0x0C),
-      salary: readSalary(d),
-      history: readPlayerHistory(d, teams, competitions),
-      offers: readOffers(d, teams, d.readUInt32LE(PLAYER_REC), clubRef),
-      interests: readInterests(d, teams, d.readUInt32LE(PLAYER_REC)),
-      profile: readPlayerProfile(d, PLAYER_REC),
-      training: readTraining(d, PLAYER_REC - 48),
-      careerStart: d.readUInt32LE(CAREER_START_REC + 0x1C) === d.readUInt32LE(PLAYER_REC) ? readDate(d, CAREER_START_REC + 4) : null,
+      contractUntil: readDate(d, PC + 0x0C),
+      salary: readSalary(d, PC),
+      history: readPlayerHistory(d, teams, competitions, PC),
+      offers: readOffers(d, teams, d.readUInt32LE(P), clubRef, Math.min(OFFER_SEARCH_FROM, P)),
+      interests: readInterests(d, teams, d.readUInt32LE(P), Math.min(OFFER_SEARCH_FROM, P)),
+      profile: readPlayerProfile(d, P),
+      training: readTraining(d, P - 48),
+      careerStart: L.careerStart != null && d.readUInt32LE(L.careerStart + 0x1C) === d.readUInt32LE(P) ? readDate(d, L.careerStart + 4) : null,
     },
     club: teams.get(clubRef) || { ref: clubRef, name: null },
     // Sélection : son effectif est le groupe convoqué en cours (le jeu le met à jour à chaque rassemblement).
@@ -495,9 +507,9 @@ function readCareer(savePath) {
     competitions,
     competitionLogos,
     matches,
-    lastMatchEvents: readLastMatchEvents(d),
-    transferWindows: readTransferWindows(d),
-    playerOfYear: readPlayerOfYear(d),
+    lastMatchEvents: readLastMatchEvents(d, L),
+    transferWindows: readTransferWindows(d, L),
+    playerOfYear: readPlayerOfYear(d, L),
   };
 }
 

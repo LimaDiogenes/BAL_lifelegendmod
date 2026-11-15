@@ -138,6 +138,8 @@ function buildScores(career, { nameOf, clubRef, leagueId, playerId, today }) {
       table: c.table ? c.table.map((r) => [r.ref, r.p, r.w, r.d, r.l, r.gf, r.ga, r.pts, r.form.join('')]) : null,
       scorers,
       best: lg ? playerRanking(lg, { minApps: rankingMinApps(lg) }).filter((a) => nameOf(a.id)).slice(0, 20).map((a) => [nameOf(a.id), a.ref, a.rated, a.avg, a.goals, a.assists, a.line]) : null,
+      // Son championnat : tous les joueurs notés au moins une fois, pour choisir son rival (src/world/rival.js).
+      ...(lg && c.main ? { players: playerRanking(lg, { minApps: 1 }).filter((a) => nameOf(a.id)).map((a) => [nameOf(a.id), a.ref, a.apps, a.rated, a.avg, a.goals, a.assists, a.line]) } : {}),
       xi: lg && (monthXi || seasonXi) ? { ...(monthXi ? { month: { month: lastMonth, players: monthXi } } : {}), ...(seasonXi ? { season: { players: seasonXi } } : {}) } : null,
       totw: round ? { round: round.round, xi: round.xi.map((p) => [nameOf(p.id), p.ref, p.line, p.rating]), best: round.best && nameOf(round.best.id) ? [nameOf(round.best.id), round.best.ref, round.best.rating] : null } : null,
     };
@@ -177,7 +179,24 @@ function buildScores(career, { nameOf, clubRef, leagueId, playerId, today }) {
   const who = (id) => (id === playerId ? career.player?.name || nameOf(id) : nameOf(id));
   const poty = (career.playerOfYear || []).map((y) => ({ year: y.year, podium: y.podium.map((p) => [who(p.id) || null, p.teamRef, p.points, p.id === playerId ? 1 : 0]) }));
 
-  return { v: 1, gameDate: today, clubRef, comps: compsOut, matches, details, teams, potm, poty };
+  // La saison de chaque joueur des grandes compétitions et des siennes, toutes compétitions confondues (le comparateur
+  // de Scoreline) : [nom, ref du club, matchs, buts, passes, matchs notés (45 minutes ou plus), note moyenne].
+  const per = new Map();
+  for (const c of comps.filter((x) => x.big !== null || x.mine)) {
+    for (const m of c.ms) {
+      if (!m.played) continue;
+      for (const [ref, lu] of [[m.home.ref, m.homeLineup], [m.away.ref, m.awayLineup]]) {
+        for (const e of lu || []) {
+          const a = per.get(e.playerId) || { id: e.playerId, ref, apps: 0, goals: 0, assists: 0, rated: 0, sum: 0 };
+          a.apps++; a.goals += e.goals; a.assists += e.assists; a.ref = ref;
+          if (e.minutes >= 45) { a.rated++; a.sum += ratingFromRaw(e.ratingRaw); }
+          per.set(e.playerId, a);
+        }
+      }
+    }
+  }
+  const pstats = [...per.values()].filter((a) => nameOf(a.id)).map((a) => [nameOf(a.id), a.ref, a.apps, a.goals, a.assists, a.rated, a.rated ? Math.round((a.sum / a.rated) * 100) / 100 : null]);
+  return { v: 1, gameDate: today, clubRef, comps: compsOut, matches, details, teams, potm, poty, pstats };
 }
 
 module.exports = { buildScores };

@@ -16,6 +16,7 @@
 const fs = require('fs');
 const path = require('path');
 const { splitSave, joinSave, decryptSave } = require('./pesCrypt');
+const { assertStandard } = require('./layout');
 const { gameRunning } = require('./offerRedirect');
 const { PHASE, readPhase } = require('./formations');
 
@@ -166,6 +167,8 @@ function writeInSave({ savePath, backupDir, edit, check, tag = 'influence' }) {
   const before = fs.statSync(savePath);
   const original = fs.readFileSync(savePath);
   const parts = splitSave(original);
+  // Une sauvegarde agrandie par des modules (FL Mod Studio…) : ses places n'ont pas été vérifiées pour écrire.
+  assertStandard(parts.data);
   const result = edit(parts.data);
   parts.data = result.data;
   const out = joinSave(parts);

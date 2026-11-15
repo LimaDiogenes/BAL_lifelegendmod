@@ -14,7 +14,8 @@ const FIXTURES = process.env.LIFELEGEND_FIXTURES || path.join(__dirname, 'fixtur
 const SAVE = path.join(FIXTURES, 'BL00000000'), KEY = path.join(FIXTURES, 'key.bin');
 
 const TRAINING = 0xC7DCEC;
-const PROFILE = 0x1000; // fiche fictive : les bits des gestes partent de son octet 28
+// Fiche du joueur à sa place dans le jeu sans modules (48 octets avant son id) : l'entraînement est lu à son écart.
+const PROFILE = 0xB7E2C4 - 48; // les bits des gestes partent de son octet 28
 function save({ bars = [2, 2, 2, 0, 2, 2, 2, 0], skill = [106, 6], position = [2, 3], remaining = 0, total = 21, owned = [] } = {}) {
   const d = Buffer.alloc(TRAINING + 0x20);
   Buffer.from([...bars, skill[1], position[1], remaining, total]).copy(d, TRAINING);

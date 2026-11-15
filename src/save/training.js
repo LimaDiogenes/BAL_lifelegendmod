@@ -51,8 +51,10 @@ const owns = (d, profileAt, code) => Boolean(d[profileAt + SKILL_BITS_FROM + (co
 
 // profileAt : début de la fiche du joueur (48 octets avant son id). Renvoie null si la zone n'a pas la bonne forme.
 function readTraining(d, profileAt) {
-  if (TRAINING + 0x11 > d.length) return null;
-  const v = [...d.subarray(TRAINING, TRAINING + 0x11)];
+  // À son écart de la fiche du joueur (0xB7E2C4 dans le jeu sans modules) : suit une sauvegarde agrandie par des modules.
+  const at = profileAt + 48 + (TRAINING - 0xB7E2C4);
+  if (at < 0 || at + 0x11 > d.length) return null;
+  const v = [...d.subarray(at, at + 0x11)];
   const [skillPoints, positionPoints, remaining, total] = v.slice(8, 12);
   const skillCode = v[12], positionCode = v[16];
   const bars = v.slice(0, 8);

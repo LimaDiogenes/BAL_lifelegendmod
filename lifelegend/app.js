@@ -181,6 +181,33 @@ const view = { edition: null, thread: null, openPost: null };
 // ---------- utilitaires d'interface ----------
 
 // action : { label, run } ajoute un bouton (Réessayer, Réglages de l'IA…) ; la notification reste alors plus longtemps.
+// Partager en image : la ou les zones à l'écran (le premier élément amené au milieu), « LifeLegend » en petit dans le coin
+// du dernier, copiées dans le presse-papiers ; « Enregistrer » la garde en PNG.
+async function shareShot(els) {
+  const list = (Array.isArray(els) ? els : [els]).filter(Boolean);
+  if (!list.length) return;
+  list[0].scrollIntoView({ block: 'center' });
+  const host = list.at(-1);
+  const mark = Object.assign(document.createElement('span'), { className: 'll-shot-mark', textContent: 'LifeLegend' });
+  host.classList.add('ll-shot');
+  host.append(mark);
+  document.body.classList.add('ll-shooting');
+  try {
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 150))));
+    const rs = list.map((e) => e.getBoundingClientRect());
+    // Une petite marge autour, prise sur la page : le texte ne touche pas le bord de l'image.
+    const pad = 14;
+    const x = Math.max(0, Math.min(...rs.map((r) => r.left)) - pad), y = Math.max(0, Math.min(...rs.map((r) => r.top)) - pad);
+    const right = Math.min(innerWidth, Math.max(...rs.map((r) => r.right)) + pad), bottom = Math.min(innerHeight, Math.max(...rs.map((r) => r.bottom)) + 4);
+    await live.shareImage({ x, y, width: right - x, height: bottom - y });
+    toast(tr('Image copiée : colle-la où tu veux (Ctrl+V).'), false, { label: tr('Enregistrer'), run: () => live.saveShot(tr('Enregistrer l’image')).then((r) => { if (r) toast(tr('Image enregistrée.')); }).catch((err) => toast(err.message, true)) });
+  } catch (err) { toast(err.message, true); } finally {
+    mark.remove();
+    host.classList.remove('ll-shot');
+    document.body.classList.remove('ll-shooting');
+  }
+}
+
 function toast(msg, isError = false, action = null) {
   const t = $('#toast');
   t.textContent = '';
@@ -809,11 +836,14 @@ function gzFrame(x, ratio = '3x2') {
     const words = String(v.person).trim().split(/\s+/), family = words.pop(), given = words.join(' ');
     const kicker = v.caption && v.caption !== v.person ? v.caption : one || '';
     inner = `${club ? `<img class="gz-frame-wm" src="${esc(club)}" alt="">` : ''}<span class="gz-frame-who">${kicker ? `<span class="gz-frame-kick">${club ? gzCrest(one) : ''}${esc(kicker)}</span>` : ''}<b class="gz-frame-name">${given ? `<span>${esc(given)}</span>` : ''}${esc(family)}</b></span><span class="gz-frame-face">${v.isCoach ? coachFaceIn(v.person, fallback) : v.person === state.snapshot.player?.name ? myFaceIn(fallback) : faceIn(v.person, fallback)}</span>`;
+  } else if (v.mode === 'duel') {
+    const face = (n, i) => `<span class="gz-frame-face">${n === state.snapshot.player?.name ? myFaceIn(crest(v.teams[i])) : faceIn(n, crest(v.teams[i]))}</span>`;
+    inner = `${face(v.persons[0], 0)}<span class="gz-frame-mid gz-frame-vs gz-frame-score">vs</span>${face(v.persons[1], 1)}`;
   } else if (logo) inner = `<span class="gz-frame-plate"><img src="${esc(logo)}" alt=""></span>${mid}`;
   else if (two) inner = `${crest(one)}${mid}${crest(two)}`;
   else inner = `${one ? crest(one) : ''}${mid}`;
   const clubs = logo ? [] : [one, two].filter(Boolean);
-  return `<div class="gz-frame gz-frame--${ratio} gz-frame-is-${v.mode}"${clubs.map((n, k) => ` data-gzc${k + 1}="${esc(n)}"`).join('')}><div class="gz-frame-crests${mid ? ' has-mid' : ''}">${inner}</div>${v.caption && v.mode !== 'person' ? `<span class="gz-frame-cap">${esc(v.caption)}</span>` : ''}</div>`;
+  return `<div class="gz-frame gz-frame--${ratio} gz-frame-is-${v.mode}"${clubs.map((n, k) => ` data-gzc${k + 1}="${esc(n)}"`).join('')}><div class="gz-frame-crests${mid || v.mode === 'duel' ? ' has-mid' : ''}">${inner}</div>${v.caption && v.mode !== 'person' ? `<span class="gz-frame-cap">${esc(v.caption)}</span>` : ''}</div>`;
 }
 
 // Le liseré des vignettes : la couleur de chaque club (lue dans son écusson), à gauche et à droite ; un seul club, toute la
@@ -1063,6 +1093,10 @@ function gzSubjectOf(a, date) {
   const s = state.snapshot, club = s.club?.name, league = s.league?.name || '', kind = a.kind || '';
   const head = String(a.headline || ''), top = `${head} ${a.dek || ''}`, body = String(a.body || ''), all = `${top} ${body}`;
   const wide = (a.focus || (GZ_WIDE.has(kind) ? 'competition' : '')) === 'competition';
+  // L'entretien exclusif : son visage.
+  if (kind === 'entretien') return { mode: 'person', person: s.player.name, teams: [club], caption: tr('L’entretien') };
+  // Le duel : lui et son rival de la saison, les deux visages (src/world/rival.js).
+  if (kind === 'le duel' && a.rival) return { mode: 'duel', persons: [s.player.name, a.rival], teams: [club, ...(a.teams || []).filter((t) => t !== club)].slice(0, 2), caption: tr('Le duel') };
   // L'article donne-t-il ce score (dans un sens ou dans l'autre) ?
   const said = ([x, y]) => [[x, y], [y, x]].some(([p, q]) => new RegExp(`(^|[^\\d])${p}\\s*(-|–|à)\\s*${q}($|[^\\d])`).test(all));
   // Deux clubs qui viennent de se rencontrer : leur match, lu dans les scores (championnat, coupes, monde), comme pour son
@@ -1791,6 +1825,8 @@ function bindNational(page) {
   gzSpy();
   box.onscroll = () => { view.gzY = box.scrollTop; reading(); gzSpy(); };
   const copy = page.querySelector('[data-gzcopy]');
+  const shot = page.querySelector('[data-gzshot]');
+  if (shot) shot.onclick = () => shareShot([page.querySelector('.gz-article-cover'), page.querySelector('.gz-article-head')]);
   if (copy) copy.onclick = async () => { try { await navigator.clipboard.writeText(copy.dataset.gzcopy); copy.classList.add('flashed'); setTimeout(() => copy.classList.remove('flashed'), 1400); } catch { toast(tr('Copie impossible.'), true); } };
 }
 
@@ -1827,7 +1863,7 @@ function renderNationalArticle(page) {
         <header class="gz-article-head">
           ${rubric ? `<a class="gz-rub-chip" data-gzrubric="${esc(rubric)}">${gzCompLogo(rubric, 'gz-rub-chip-logo')}${esc(gzRubricTitle(rubric))}</a>` : ''}
           <div class="gz-article-titlerow"><h1 class="gz-article-title">${esc(a.headline)}</h1>
-            <div class="gz-share"><button class="gz-share-btn" data-gzcopy="${esc(`${a.headline} — La Transversale`)}" title="${tr('Copier le titre')}">${GZ_LINK}</button></div></div>
+            <div class="gz-share"><button class="gz-share-btn" data-gzshot title="${tr('Partager en image')}" aria-label="${tr('Partager en image')}">${hi('photo')}</button><button class="gz-share-btn" data-gzcopy="${esc(`${a.headline} — La Transversale`)}" title="${tr('Copier le titre')}">${GZ_LINK}</button></div></div>
           <div class="gz-byrow"><span class="gz-avatar">${gzInitials(a.author)}</span><span class="gz-name">${tr('Par {who}', { who: esc(a.author || tr('la rédaction')) })}</span><span class="gz-by-meta">${esc(role)} · ${esc(fmtDate(e.gameDate, { day: 'numeric', month: 'long', year: 'numeric' }))}</span>
             <span class="gz-tagline"><span class="gz-kind">${esc(gzKind(a) || gzTopic(a, comps))}</span><span>${tr('{n} min de lecture', { n: readTime(a) })}</span></span></div>
         </header>
@@ -2784,7 +2820,8 @@ function postHtml(p, { reply = false, parent = null, open = false } = {}) {
         <div class="tw-post-meta"><span class="tw-name" role="link" tabindex="0" data-twprofile="${esc(p.author.isMe ? '' : p.author.handle)}">${esc(p.author.name)}</span>${badgeHtml(p.author)}${badge ? `<span class="pill">${esc(badge)}</span>` : ''}<span class="tw-user">@${esc(p.author.handle)}</span>${timeLabel(p, parent) ? `·<span class="tw-user tw-time" title="${esc(fullStamp(p, parent))}">${esc(timeLabel(p, parent))}</span>` : ''}</div>
         <div class="tw-menu-wrap"><button class="tw-iconbtn" data-twmenu="${esc(p.id)}" aria-label="${tr('Plus d’options')}">${hi('ellipsis')}</button>${view.twMenu === p.id ? `<div class="tw-dropdown">
           <button data-twprofile="${esc(p.author.isMe ? '' : p.author.handle)}">${hi('user')}<span>${tr('Voir le profil de {handle}', { handle: `@${esc(p.author.handle)}` })}</span></button>
-          <button data-twshare="${esc(p.id)}">${hi('share')}<span>${tr('Copier le post')}</span></button></div>` : ''}</div>
+          <button data-twshare="${esc(p.id)}">${hi('share')}<span>${tr('Copier le post')}</span></button>
+          <button data-twshot="${esc(p.id)}">${hi('photo')}<span>${tr('Partager en image')}</span></button></div>` : ''}</div>
       </div>
       ${parent && (p.replyTo || !reply) ? `<p class="tw-replying">${tr('En réponse à')} <span>@${esc(p.replyTo || parent.author.handle)}</span></p>` : ''}
       <div class="tw-post-text">${linkify(p.text)}</div>${twPollHtml(p)}
@@ -3341,6 +3378,15 @@ function bindTribuneFeed(page) {
   }
   page.querySelectorAll('[data-twmenu]').forEach((b) => {
     b.onclick = (ev) => { ev.stopPropagation(); view.twMenu = view.twMenu === b.dataset.twmenu ? null : b.dataset.twmenu; view.twMore = false; view.twRtMenu = null; render(); };
+  });
+  page.querySelectorAll('[data-twshot]').forEach((b) => {
+    b.onclick = (ev) => {
+      ev.stopPropagation();
+      const id = b.dataset.twshot;
+      view.twMenu = null;
+      render();
+      shareShot(document.querySelector(`.tw-post[data-id="${CSS.escape(id)}"]`));
+    };
   });
   page.querySelectorAll('[data-twshare]').forEach((b) => {
     b.onclick = async (ev) => {
@@ -5866,7 +5912,7 @@ function renderMail(page) {
       <div class="sm-thread">${open.request ? requestCard(open.request) : ''}${open.messages.map(msgHtml).join('')}${open.sponsorOffer ? sponsorCard(open) : attach}${adviceCard(open)}${conductCard(open)}
         ${open.closed ? `<p class="sm-closed">${open.role === 'newsletter' ? tr('Envoyé automatiquement par La Transversale : on ne peut pas répondre à ce brief. Pour l’arrêter, {link} en bas de la une.', { link: quote(tr('Se désabonner')) }) : esc(tr('{name} ne répond plus à tes messages.', { name: open.from }))}</p>` : `
         <div class="sm-msg sm-reply"><div class="sm-msg-body"><label class="sm-reply-label" for="mail-reply">${ri('reply')} ${esc(tr('Répondre à {name}', { name: open.from }))}</label>
-          ${open.role === 'agent' ? agentQuickReplies() : ''}<textarea id="mail-reply" placeholder="${tr('Écris ta réponse…')}">${esc(drafts.mail[open.id] || '')}</textarea></div>
+          ${open.interview?.status === 'open' ? `<p class="fineprint sm-interview">${tr('Réponds à ses questions dans un seul message : ta réponse deviendra un long entretien dans La Transversale, tes mots tels quels.')}</p>` : ''}${open.role === 'agent' ? agentQuickReplies() : ''}<textarea id="mail-reply" placeholder="${tr('Écris ta réponse…')}">${esc(drafts.mail[open.id] || '')}</textarea></div>
           <div class="sm-footer"><button class="sm-btn sm-btn-primary" id="mail-send">${ri('send')} ${tr('Envoyer')}</button></div></div>`}
       </div>`
       : `<div class="sm-placeholder">${ri('empty')}<h5>${threads.length ? tr('Aucun message sélectionné') : tr('Aucun message ici')}</h5></div>`;
@@ -6947,6 +6993,53 @@ function scLeagueCard(s, d, cls) {
     ${best.length ? `<p class="sc-fine">${tr('Note moyenne des matchs d’au moins 45 minutes, d’après les notes du jeu.')}</p>` : ''}`, { cls });
 }
 
+// Le comparateur : lui contre un joueur des grandes compétitions ou des siennes (scores.pstats), la saison côte à côte,
+// toutes compétitions confondues. Par défaut, son rival ; la recherche en choisit un autre.
+function scCompareTab(d) {
+  const s = state.snapshot, p = s.player;
+  const search = `<div class="sc-find sc-cmp-find">${sfi('search')}<input id="sc-cmp-find" type="search" placeholder="${tr('Comparer avec un joueur')}" autocomplete="off" aria-label="${tr('Comparer avec un joueur')}"><div class="sc-find-pop hidden" id="sc-cmp-pop"></div></div>`;
+  if (!d?.pstats) return scCard(tr('Comparer'), scEmpty(tr('Pas encore de comparateur'), tr('Il arrive avec les scores de ta prochaine synchro.')), { cls: 'c12' });
+  const find = (name, ref) => d.pstats.find((x) => x[0] === name && x[1] === ref) || d.pstats.find((x) => x[0] === name) || null;
+  const me = find(p.name, s.club.ref);
+  const key = view.scCompare || (state.rival ? `${state.rival.ref}|${state.rival.name}` : null);
+  const cut = key ? key.indexOf('|') : -1;
+  const other = cut > 0 ? find(key.slice(cut + 1), Number(key.slice(0, cut))) : null;
+  if (!other) return scCard(tr('Comparer'), `${search}${scEmpty(tr('Choisis un joueur'), tr('Cherche n’importe quel joueur des grands championnats, des coupes d’Europe ou de tes compétitions.'))}`, { cls: 'c12' });
+  const row = (x) => (x ? { apps: x[2], goals: x[3], assists: x[4], avg: x[6] } : {});
+  const a = row(me), b = row(other);
+  const per = (x) => (x.apps ? Math.round(((x.goals + x.assists) / x.apps) * 100) / 100 : null);
+  const ini = (n) => esc(String(n).split(/\s+/).map((w) => w[0]).slice(0, 2).join(''));
+  const team = skName(d, other[1]);
+  const who = (name, club, mine) => `<div class="sc-rv-who${mine ? ' me' : ''}" data-scclub="${esc(club)}"><span class="sc-rv-face">${mine ? myFaceIn(ini(name)) : faceIn(name, ini(name))}</span><b>${esc(name)}</b><span class="sc-team">${scCrest(club, 18)}<span>${esc(club)}</span></span></div>`;
+  return `<div class="sc-grid-player">${scCard(tr('Comparer'), `${scShotBtn()}${search}<div class="sc-rv-head">${who(p.name, s.club.name, true)}<span class="sc-rv-vs">vs</span>${who(other[0], team, false)}</div>
+    <div class="sc-rv-names"><b>${esc(p.name)}</b><b>${esc(other[0])}</b></div>${[
+      [tr('Matchs'), a.apps, b.apps], [tr('Buts'), a.goals, b.goals], [tr('Passes D.'), a.assists, b.assists], [tr('Buts + passes'), (a.goals ?? 0) + (a.assists ?? 0), (b.goals ?? 0) + (b.assists ?? 0)],
+      [tr('Buts + passes par match'), per(a), per(b), (v) => v.toLocaleString(locale(), { maximumFractionDigits: 2 })], [tr('Note moyenne'), a.avg, b.avg, sfRating],
+    ].map(([l, x, y, f]) => scDuel(l, x, y, f)).join('')}<p class="sc-fine">${tr('Saison en cours, toutes compétitions suivies par Scoreline. Note moyenne des matchs d’au moins 45 minutes, d’après les notes du jeu.')}</p>`, { cls: 'c12' })}</div>`;
+}
+// Le bouton « Partager en image » d'une carte de Scoreline (la carte entière).
+const scShotBtn = () => `<button class="sc-shot" data-scshot title="${tr('Partager en image')}" aria-label="${tr('Partager en image')}">${hi('photo')}</button>`;
+// Son rival de la saison (src/world/rival.js) : les deux joueurs, la saison côte à côte, leurs confrontations et le
+// dernier match du rival. Rien avant quelques matchs.
+const RIVAL_LINE = { att: 'Attaquant', mid: 'Milieu', def: 'Défenseur', gk: 'Gardien' };
+function scRivalTab() {
+  const r = state.rival, s = state.snapshot, p = s.player;
+  if (!r) return scCard(tr('Rival'), scEmpty(tr('Pas encore de rival'), tr('Il arrive après quelques matchs : un joueur d’un autre club de ton championnat, à ta ligne, avec des chiffres proches des tiens.')));
+  const ini = (n) => esc(String(n).split(/\s+/).map((w) => w[0]).slice(0, 2).join(''));
+  const who = (name, team, mine) => `<div class="sc-rv-who${mine ? ' me' : ''}" data-scclub="${esc(team)}"><span class="sc-rv-face">${mine ? myFaceIn(ini(name)) : faceIn(name, ini(name))}</span><b>${esc(name)}</b><span class="sc-team">${scCrest(team, 18)}<span>${esc(team)}</span></span></div>`;
+  const head = scCard(tr('Ton rival'), `${scShotBtn()}<div class="sc-rv-head">${who(p.name, s.club.name, true)}<span class="sc-rv-vs">vs</span>${who(r.name, r.team, false)}</div>
+    <p class="sc-fine sc-center">${esc(tr('{line} de {league}, comparé à toi depuis le {date}.', { line: tr(RIVAL_LINE[r.line] || 'Joueur'), league: gzShort(r.league), date: fmtDate(r.since, { day: 'numeric', month: 'long', year: 'numeric' }) }))}</p>`, { cls: 'c12' });
+  const me = r.me || {}, him = r.stats || {}, sum = (x) => (x.goals ?? 0) + (x.assists ?? 0);
+  const season = scCard(tr('La saison'), `<div class="sc-rv-names"><b>${esc(p.name)}</b><b>${esc(r.name)}</b></div>${[
+    [tr('Matchs'), me.apps, him.apps], [tr('Buts'), me.goals, him.goals], [tr('Passes D.'), me.assists, him.assists], [tr('Buts + passes'), sum(me), sum(him)], [tr('Note moyenne'), me.avg, him.avg, sfRating],
+  ].map(([l, a, b, f]) => scDuel(l, a, b, f)).join('')}<p class="sc-fine">${tr('Championnat seulement. Note moyenne des matchs d’au moins 45 minutes, d’après les notes du jeu.')}</p>`, { cls: 'c6' });
+  const line = (x) => (x ? [x.goals ? trn(x.goals, '{n} but', '{n} buts') : null, x.assists ? trn(x.assists, '{n} passe D.', '{n} passes D.') : null, x.rating ? `${tr('note')} ${sfRating(x.rating)}` : null].filter(Boolean).join(' · ') || tr('{n} min', { n: x.minutes }) : tr('pas joué'));
+  const h2h = scCard(tr('Face à face'), r.h2h?.length ? `<ul class="sc-rv-h2h">${r.h2h.map((m) => `<li><small>${esc(fmtDate(m.date, { day: 'numeric', month: 'short' }))}</small><span>${scCrest(m.home, 18)}<b>${m.score[0]} - ${m.score[1]}</b>${scCrest(m.away, 18)}</span><p><b>${esc(tr('Toi'))}</b> ${esc(line(m.him))}</p><p><b>${esc(r.name)}</b> ${esc(line(m.rival))}</p></li>`).join('')}</ul>` : scEmpty(tr('Pas encore de face à face'), tr('Vos clubs ne se sont pas encore rencontrés en championnat cette saison.')), { cls: 'c6' });
+  const last = r.last ? scCard(tr('Son dernier match'), `<div class="sc-pick-top"><span>${scCrest(r.last.home, 32)}<b>${esc(r.last.home)}</b></span><div><strong>${r.last.score[0]} - ${r.last.score[1]}</strong></div><span class="away"><b>${esc(r.last.away)}</b>${scCrest(r.last.away, 32)}</span></div>
+    <p class="sc-fine sc-center">${esc(fmtDate(r.last.date, { weekday: 'long', day: 'numeric', month: 'long' }))} · ${esc(line(r.last))}</p>`, { cls: 'c12' }) : '';
+  return `<div class="sc-grid-player">${head}${season}${h2h}${last}</div>`;
+}
+
 // ----- Rubrique Joueur : l'aperçu, ses matchs, ses capacités, sa carrière, sa notoriété -----
 function scPlayer(d) {
   const s = state.snapshot, p = s.player, prof = p.profile || {};
@@ -6964,14 +7057,14 @@ function scPlayer(d) {
   const splitGames = several && firstGameHere > 0 ? { index: firstGameHere, label: `→ ${s.club.name}` } : null;
   const motm = s.fixtures.filter((f) => f.played && f.motm?.name === p.name).length;
   const comps = [...new Set(s.fixtures.map((f) => f.competition).filter(Boolean))];
-  const tabs = [['over', tr('Aperçu')], ['matches', tr('Matchs')], ['skills', tr('Capacités')], ['career', tr('Carrière')], ['fame', tr('Notoriété')]];
+  const tabs = [['over', tr('Aperçu')], ['matches', tr('Matchs')], ['skills', tr('Capacités')], ['career', tr('Carrière')], ['fame', tr('Notoriété')], ['rival', tr('Rival')], ['compare', tr('Comparer')]];
   const tab = tabs.some(([k]) => k === view.scPlayerTab) ? view.scPlayerTab : 'over';
   const fl = view.sfFilter || 'all';
   const head = `<header class="sc-head sc-head-player"><p class="sc-crumb"><button data-sk="sec" data-v="scores">${tr('Scores')}</button>${sfi('next')}<b>${tr('Joueur')}</b></p>${d ? `<div class="sc-find">${sfi('search')}<input id="sc-find" type="search" placeholder="${tr('Chercher un joueur')}" autocomplete="off" aria-label="${tr('Chercher un joueur')}"><div class="sc-find-pop hidden" id="sc-find-pop"></div></div>` : ''}<span class="sc-tag sc-tag-season">${sfi('matches')}${esc(tr('saison {season}', { season: s.season || '' }))}</span>${scTabs(tabs, tab, 'ptab')}</header>`;
   const fact = (icon, label, v) => (v ? `<div>${sfi(icon)}<span><small>${esc(label)}</small><b>${esc(v)}</b></span></div>` : '');
   const totw = d?.comps?.find((c) => c.main)?.totw;
-  const honours = [motm ? `${tr('Homme du match')} × ${motm}` : null, d?.potm?.me ? `${tr('Joueur du mois')} · ${monthYear(d.potm.month)}` : null, totw?.xi?.some((x) => scIsMe(x[0])) ? `${tr('Équipe type')} · ${roundLabel(totw.round)}` : null].filter(Boolean);
-  const hero = `<section class="sc-card sc-hero c8" data-scclub="${esc(s.club.name)}">${crestHtml(s.club.name, ' sc-hero-mark')}
+  const honours = [...(state.fanAwards || []).map((a) => `${tr('Joueur du mois des supporters')} · ${monthYear(a.month)}`), motm ? `${tr('Homme du match')} × ${motm}` : null, d?.potm?.me ? `${tr('Joueur du mois')} · ${monthYear(d.potm.month)}` : null, totw?.xi?.some((x) => scIsMe(x[0])) ? `${tr('Équipe type')} · ${roundLabel(totw.round)}` : null].filter(Boolean);
+  const hero = `<section class="sc-card sc-hero c8" data-scclub="${esc(s.club.name)}">${scShotBtn()}${crestHtml(s.club.name, ' sc-hero-mark')}
     <div class="sc-hero-main"><span class="sc-hero-face">${myFaceIn(esc(String(p.name).split(/\s+/).map((w) => w[0]).slice(0, 2).join('')))}</span>
       <div class="sc-hero-id"><h1>${esc(p.name)}</h1><p class="sc-team" role="link" tabindex="0" data-sk="team" data-v="${s.club.ref}">${scCrest(s.club.name, 22)}<span>${esc(s.club.name)}</span></p>
         <p class="sc-hero-line">${[prof.age ? trn(prof.age, '{n} an', '{n} ans') : null, p.nationality, posLabel(prof.position)].filter(Boolean).map(esc).join('<i></i>')}</p>
@@ -7051,6 +7144,10 @@ function scPlayer(d) {
     const race = s.scorerRace;
     body = `${reviewCard()}${scCard(tr('Par compétition'), `<div class="sc-pad"><table class="data"><thead><tr><th></th>${['MJ', 'Tit.', 'Min', 'B', 'PD', 'Note'].map((x) => `<th class="num">${tr(x)}</th>`).join('')}</tr></thead><tbody>${compRows}</tbody></table>
       <p class="sc-fine">${tr('Course au titre de meilleur buteur')}${colon()} ${race.myRank ? trn(race.myGoals, '{rank} avec {n} but', '{rank} avec {n} buts', { rank: ordinal(race.myRank) }) : tr('pas encore classé')} · ${tr('leader')}${colon()} ${trn(race.leaderGoals, '{n} but', '{n} buts')}${race.leaderTeam ? ` (${esc(race.leaderTeam)})` : ''}.</p></div>`)}${nationalCard(s)}${careerCard(s)}`;
+  } else if (tab === 'rival') {
+    body = scRivalTab();
+  } else if (tab === 'compare') {
+    body = scCompareTab(d);
   } else {
     const fame = notorietyCard();
     body = fame.html;
@@ -7124,12 +7221,25 @@ function renderStats(page) {
   page.querySelectorAll('[data-l]').forEach((i) => { i.style.left = `${i.dataset.l}%`; i.style.top = `${i.dataset.t}%`; });
   page.querySelectorAll('[data-scclub]').forEach((el) => { const c = clubColors(el.dataset.scclub); if (c) { el.style.setProperty('--sc-club', c.primary); } });
   if (out.series) bindSfCharts(page, out.series);
+  page.querySelectorAll('[data-scshot]').forEach((b) => { b.onclick = () => shareShot(b.closest('.sc-card')); });
   const main = page.querySelector('#sc-main');
   main.scrollTop = view[yKey] || 0;
   main.onscroll = () => { view[yKey] = main.scrollTop; };
   const side = page.querySelector('.sc-side-scroll');
   side.scrollTop = view.scSideY || 0;
   side.onscroll = () => { view.scSideY = side.scrollTop; };
+  const cmp = page.querySelector('#sc-cmp-find');
+  if (cmp && d?.pstats) {
+    const pop = page.querySelector('#sc-cmp-pop');
+    cmp.oninput = () => {
+      const q = plainText(cmp.value).trim();
+      if (q.length < 2) { pop.classList.add('hidden'); return; }
+      if (!d.pstatsIndex) d.pstatsIndex = d.pstats.map((x) => [x, plainText(x[0])]).sort((x, y) => y[0][2] - x[0][2]);
+      const hits = d.pstatsIndex.filter(([, t]) => t.includes(q)).slice(0, 8).map(([x]) => x);
+      pop.innerHTML = hits.map((x) => `<button data-sk="cmp" data-v="${esc(`${x[1]}|${x[0]}`)}">${scFace(x[0], skName(d, x[1]), 32)}<span><b>${esc(x[0])}</b><small>${esc(skName(d, x[1]))} · ${trn(x[2], '{n} match', '{n} matchs')}</small></span></button>`).join('') || `<p>${tr('Aucun joueur de club ne porte ce nom.')}</p>`;
+      pop.classList.remove('hidden');
+    };
+  }
   const find = page.querySelector('#sc-find');
   if (find) {
     const pop = page.querySelector('#sc-find-pop');
@@ -7163,6 +7273,7 @@ function renderStats(page) {
       case 'back': view.skOpen = null; render(); break;
       case 'mtab': view.skTab = v; render(); break;
       case 'pick': view.scPick = Number(v); render(); break;
+      case 'cmp': view.scCompare = v; render(); break;
       case 'mpill': view.scPill = v; render(); break;
       case 'comp': toTop(() => { view.skSec = 'comps'; view.skComp = Number(v); view.skCompTab = null; view.skRound = null; view.scPick = undefined; view.scPill = null; }); break;
       case 'ctab': view.skCompTab = v; view.scY = 0; render(); break;
@@ -7698,6 +7809,7 @@ function onAutoSync(ev) {
   softRender();
   const published = state.lastSync?.published;
   if (published) toast(tr('Nouvelle édition publiée (synchro automatique).'));
+  else if (state.lastSync?.backup) toast(tr('Quota de l’IA épuisé pour aujourd’hui : synchro de secours. Scores, Scoreline, posts officiels et mails sont à jour ; les articles sortiront à la prochaine synchro.'), true);
   else if (state.lastSync?.agentMail) toast(tr('Offre de contrat reçue : ton agent t’a écrit dans Mails.'));
   box.classList.add('hidden');
 }
@@ -7724,7 +7836,9 @@ async function doSync({ bioAsked = false } = {}) {
     view.edition = null;
     if (current === 'settings') current = 'national';
     render();
-    if (state.lastSync?.published === false) {
+    if (state.lastSync?.backup) {
+      toast(tr('Quota de l’IA épuisé pour aujourd’hui : synchro de secours. Scores, Scoreline, posts officiels et mails sont à jour ; les articles sortiront à la prochaine synchro.'), true);
+    } else if (state.lastSync?.published === false) {
       toast(state.lastSync.agentMail ? tr('Offre de contrat reçue : ton agent t’a écrit dans Mails.') : tr('Synchro terminée : rien de nouveau depuis la dernière fois.'));
     } else {
       toast(tr('Nouvelle édition publiée.'));

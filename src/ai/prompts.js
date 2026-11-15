@@ -15,7 +15,40 @@ function languageRule(settings) {
 }
 // Les indications du code gardées en français dans la carrière (façons d'écrire des comptes Kop, rôle visé par un
 // transfert) : en anglais dans la requête, seulement quand elles sont une valeur entière entre guillemets.
-const CUES_EN = { ...require('../world/tribunePlan').STYLE_EN, ambitieux: 'ambitious', 'au moins remplaçant': 'at least a substitute', 'titulaire probable': 'likely starter' };
+// Les rôles des plumes de La Transversale aussi (2026-11-16 : en conférence de presse, des joueurs réglés en anglais
+// recevaient encore leurs questions en français ; le panel envoyait « Chroniqueur national », « Consultant, ancien
+// milieu de terrain »…). Mêmes mots que l'interface anglaise.
+const DESK_ROLES_EN = {
+  'Chroniqueur national': 'Chief football writer', 'Analyste tactique': 'Tactical analyst', 'Éditorialiste': 'Editorialist',
+  'Consultant, ancien milieu de terrain': 'Pundit, former midfielder', 'Rubrique compétitions': 'Competitions desk',
+  'Correspondant en Angleterre': 'England correspondent', 'Correspondant en Espagne': 'Spain correspondent',
+  'Correspondante en Italie': 'Italy correspondent', 'Correspondant en Allemagne': 'Germany correspondent',
+};
+// Et les valeurs que le code met en français dans FACTS (lieu du match, postes, notes en mots, forme du joueur, pied
+// fort, saison du mercato, position de l'agent) : le code s'en sert tel quel, elles ne changent que dans la requête.
+const FACT_VALUES_EN = {
+  domicile: 'home', 'extérieur': 'away', 'été': 'summer', hiver: 'winter', droit: 'right', gauche: 'left',
+  'Très mauvaise': 'very poor', Mauvaise: 'poor', Normale: 'average', Bonne: 'good', Excellente: 'excellent',
+  'je veux prolonger': 'I want to extend', 'ouvert à tout': 'open to anything', 'je veux partir': 'I want to leave',
+  exceptionnel: 'exceptional', 'très bon': 'very good', bon: 'good', correct: 'decent', moyen: 'average', difficile: 'poor',
+  gardien: 'goalkeeper', 'défenseur central': 'centre-back', 'arrière latéral': 'full-back', 'milieu défensif': 'defensive midfielder',
+  'milieu central': 'central midfielder', 'milieu latéral': 'wide midfielder', 'milieu offensif': 'attacking midfielder',
+  'second attaquant': 'second striker', ailier: 'winger', 'avant-centre': 'centre-forward',
+};
+const CUES_EN = { ...require('../world/tribunePlan').STYLE_EN, ...DESK_ROLES_EN, ...FACT_VALUES_EN, ambitieux: 'ambitious', 'au moins remplaçant': 'at least a substitute', 'titulaire probable': 'likely starter' };
+// Les valeurs composées : coup d'envoi (world.js kickoffLabel), raisons de l'humeur des supporters (fanMood.js), forme
+// au classement (V, N, D).
+const DAYPART_EN = { 'le matin': 'morning', 'l’après-midi': 'afternoon', 'le soir': 'evening' };
+const REASON_WORD_EN = { catastrophique: 'catastrophic', ...FACT_VALUES_EN };
+const PATTERNS_EN = [
+  [/"(aujourd’hui|\d{4}-\d\d-\d\d) à (\d{1,2})h \((le matin|l’après-midi|le soir)\)"/g, (_, d, h, p) => `"${d === 'aujourd’hui' ? 'today' : d} at ${h}:00 (${DAYPART_EN[p]})"`],
+  [/"défaite (\d+-\d+) contre ([^"]+)"/g, (_, s, o) => `"defeat ${s} against ${o}"`],
+  [/"sa note : ([\d.]+) \(([^)"]+)\)"/g, (_, r, w) => `"his rating: ${r} (${REASON_WORD_EN[w] || w})"`],
+  [/"(\d+) défaites de suite"/g, (_, n) => `"${n} defeats in a row"`],
+  [/"zone rouge \((\d+)e\)"/g, (_, n) => `"relegation zone (${n}th)"`],
+  [/"promesse non tenue : « ([^"]*) »"/g, (_, l) => `"broken promise: \\"${l}\\""`],
+  [/"form":"([VND]{1,10})"/g, (_, f) => `"form":"${f.replace(/[VND]/g, (c) => ({ V: 'W', N: 'D', D: 'L' })[c])}"`],
+];
 // Une réponse écrite en français alors qu'il joue dans une autre langue (vu le 2026-11-14 dans le Vestiaire : le modèle
 // léger suivait l'historique du groupe, tout en français). Chaque texte de la réponse (entre guillemets, assez long) est
 // regardé : des mots-outils propres au français, plus nombreux que ceux de sa langue. Deux textes en français suffisent ;
@@ -49,6 +82,7 @@ function withLanguage(settings, opts) {
   if (!rule) return opts;
   let user = String(opts.user || '');
   for (const [fr, en] of Object.entries(CUES_EN)) user = user.split(JSON.stringify(fr)).join(JSON.stringify(en));
+  for (const [re, to] of PATTERNS_EN) user = user.replace(re, to);
   return { ...opts, system: `${opts.system}\n\n${rule}`, user: `${user}\n\n(Reminder: write everything in ${LANGUAGES[settings.language]}.)` };
 }
 
@@ -99,6 +133,11 @@ const CORE_RULES = `HARD RULES — never break these:
 33. The cast changes like on a real timeline: in each edition, about half of the posts come from new or occasional accounts (fans of other clubs, neutral fans, locals, other journalists) next to the regulars of MEMORY.accounts; one account writes at most 2 posts per edition and 3 messages per conversation. Invented accounts never take the name of a real company, media outlet or brand (Opta, L'Équipe, RMC, beIN, Canal+, DAZN, Sky, ESPN, Marca, Transfermarkt…). This world's own brands have one account each: @Scoreline_FR (Scoreline, stats) and @CoteFoot (CoteFoot, betting).
 34. Influence: CHANGES.influence_news lists what changed in the game because the player privately pushed for it: a new formation chosen by his coach (formation = its usual name, game_name = how the game shows it, previous = the old one), how it worked out after a few matches (formation_paid_off / formation_backfired, with points per match before and after), a signing or a sale his club made, or a teammate his club refused to sell (kept_teammate). Only the effect is public (the new system on the pitch, the transfer): pundits and fans may notice it and wonder whether he has the coach's ear or weighs in the dressing room, but never quote or reveal his private requests or emails. FACTS.influence, when present, is private: only his coach, his club and his agent know it, in emails.
 35. Training: FACTS.player.training is what he works on in the game's training screen: points per area (focus_out_of_6), the skill he is learning (learning_skill) and the new position he is learning (learning_position). The club, his coach, teammates and the local paper know it: at most one short, natural mention per edition and not in every edition (a coach's remark, a training-ground report, a fan hoping to see it on the pitch). Never invent a training result, a session or a progress number. CHANGES.skillLearned: he has just mastered that skill in training (the club and the local paper may report it, fans may hope to see it in the next match). A skill is given as the game's French name with the game's English name in brackets: write only one name, the French one in French, otherwise the usual term in the edition's language. When a name is marked as not known, do not name the skill or the position.
+41. Missed matches: CHANGES.missed_results, when present, are matches of his club played while LifeLegend could not write (no AI that day): the fans' paper and Kop look back on them briefly, as a recap of those days (exact scores and his numbers from CHANGES.missed_results), before the news of today.
+40. Transfer rumour: CHANGES.transfer_rumour (FACTS.transfer_rumour for La Transversale), when present, is the rumour an insider account posts about him on Kop in this edition: the club and its reliability. The press reports it as a rumour, citing that account, never as a done deal, with no fee or figure. Write ONE short email from his agent about it (role "agent", from = FACTS.agent.agent; merged with the agent's report when one is due): reliability "reliable" = a real offer exists, he confirms it with the exact facts of FACTS.agent.offers_received only; "serious" = the club really follows him, he confirms the interest, no offer yet; "unverified" = nothing behind it, he calmly denies it.
+39. Former club: FACTS.reunion, when present, is a match of his club against a club he played for (coming days or just played). His time there comes only from FACTS.reunion.his_time_there; his former teammates still there are FACTS.reunion.former_teammates_still_there (real players: rule 29). The welcome follows his time there (a good spell: mostly applause; a short or poor one: indifference or a few whistles); never insults, never an invented anecdote of his time there.
+38. Derby: FACTS.derby, when present, is a derby of his club in the coming days (status "upcoming") or just played ("just_played"): the whole world lives it, the fans' paper and Kop talk about the pride of the city, the banners and the chants, the dressing room feels it. Earlier meetings only from FACTS.derby; never invent a history, an incident, violence or an insult about a city.
+37. Rival: FACTS.rival, when present, is the player of another club of his league the press compares him with this season (same line on the pitch, close numbers). Use only its numbers; never invent a quarrel, a quote or a private word between them: it is a sporting rivalry.
 36. Football elsewhere: FACTS.football_elsewhere sums up the big competitions since the last edition (European cups, big leagues): their biggest results with the scorers, the top of the tables, the top scorers, the standout performances and the player of the month. Kop talks about it like real football Twitter (KOP_PLAN gives it slots; others may react too): fans of those clubs, neutral fans, pundits, banter between them. Scores, scorers, points and awards exactly as given there (player_of_the_year is the game's « footballeur de l'année », never the name of a real award such as the Ballon d'Or), players and clubs named only as written there; no goal order or minute, no transfer, injury or quote of those players, and those players, coaches and clubs never post themselves. When it is missing, nobody talks about football elsewhere.`;
 
 // Ton du monde : calculé sur la situation réelle (taille du club, enjeu, crise), plus de réglages.
@@ -117,7 +156,7 @@ function toneLines(tone = {}, vulgarity = true) {
 // La Transversale, écrite dans sa propre requête avant l'édition. Consigne réécrite de zéro le 2026-11-09, à la demande
 // du joueur : un quotidien factuel (le fait d'abord), des articles courts à moyens, six plumes avec une ligne de
 // caractère chacune, et un plan (genres, sujets, attaque, longueur) que le code fixe selon l'actualité.
-const TRANSVERSALE_KINDS = ['récit du match', 'avant-match', 'conférence de presse', 'analyse tactique', 'chronique', 'édito', 'portrait', 'les chiffres', 'regard de consultant', 'débat télévisé', 'le tour des terrains', 'le foot ailleurs', 'les récompenses'];
+const TRANSVERSALE_KINDS = ['récit du match', 'avant-match', 'conférence de presse', 'analyse tactique', 'chronique', 'édito', 'portrait', 'les chiffres', 'le duel', 'regard de consultant', 'débat télévisé', 'le tour des terrains', 'le foot ailleurs', 'les récompenses'];
 // Longueurs (minutes de lecture à 220 mots par minute) : court à moyen, une lecture plus longue seulement quand
 // l'actualité la porte.
 const ARTICLE_SIZES = {
@@ -180,6 +219,7 @@ KINDS:
 - débat télévisé: the transcript of « Le Débrief », the paper's TV show, hosted by its writer: the host introduces the guest of the day in the first line; then two or three pundits and the guest (all invented, never real people) disagree; each paragraph is one intervention starting with « Name : »; short lines, numbers from FACTS; the host closes with a verdict.
 - chronique: the big story of the subject, shown through its facts and what they mean for the season.
 - les chiffres: the numbers of the moment from FACTS, each one with what it says.
+- le duel: him against his rival of the season (FACTS.rival): their season numbers side by side, their head-to-head, who is ahead and why; fair to both players, only the facts of FACTS.rival and FACTS.player.
 - portrait: the player from FACTS.biography and FACTS only.
 
 HEADLINES AND DEKS: the headline says what happened or what is at stake, with a name, a score or a verb, like the front page of a sports daily: short and concrete. Never an abstract noun phrase (« L'art de… », « La géométrie de… », « Entre X et Y… », « Quand… »), never a headline that announces a list (« Les réactions… », « Les intentions… »): it carries the strongest fact or the strongest quote. The dek is one sentence with the key fact the headline leaves out.
@@ -246,7 +286,7 @@ ARTICLES: ${JSON.stringify(articles)}`;
 // Vestiaire, le groupe privé de son club : écrit dans l'édition, et à part quand il y écrit lui-même.
 const HUDDLE_VOICE = "Vestiaire is the private group chat of his team (GROUP, its kind says whether it is his club or his national team): the players of the squad, the coach and the staff, who know each other well. Messages are real texts: one or two short sentences, no signature, no hashtag. Players write like real players on their phone: relaxed, teasing, many with no capitals or final full stop, abbreviations, emojis, some in clean sentences; each has his own way. The coach speaks rarely and briefly (a demand, a time, a word on the last match). The staff speak only about their job (GROUP.staff: recovery, fitness work, schedule, travel, kit), never a diagnosis. Everything stays within FACTS: no invented injury, quarrel, team selection, transfer or contract news, no score or number that FACTS does not give. Small dressing-room life is welcome (music, food, games between teammates, a haircut, who was late, the trip): it changes nothing in FACTS and never leaves the chat. GROUP.styles gives how some players write: each keeps his way. When FACTS.discipline shows a tense or broken relation with the coach or the teammates, they are cooler with him (short answers, fewer jokes), never insulting. Offers, rumours, the agent and his private requests to the club are never mentioned: the whole squad reads this. Teasing targets play, form and results and stays friendly, even after a defeat, with the hard limits of rule 29; the fans' anger (rule 27) does not apply here. Names exactly as in GROUP. The player's own words exist only in GROUP.recent (from \"THE PLAYER\"): never write as him (rule 13).";
 
-function editionSystem(settings, { transversale = false, pantheon = false, huddle = false, huddleNational = false } = {}) {
+function editionSystem(settings, { transversale = false, pantheon = false, huddle = false, huddleNational = false, chant = false, interview = false } = {}) {
   const lang = LANGUAGES[settings.language] || 'French';
   // Discussions sous les posts : écrites par une étape à part quand elle est activée (réglage tribuneThreads).
   const threads = settings.tribuneThreads !== false;
@@ -271,12 +311,13 @@ ${transversale ? '' : `  "national": [ {"headline": string, "dek": string, "auth
   "official_replies": [ {"post_id": string, "handle": string, "name": string, "type": "fan"|"rival"|"club"|"pundit"|"stats"|"meme"|"betting", "text": string, "bio": string|null} ],  // 2 to 4 replies under EACH post of CHANGES.official_posts (post_id = its post_id): fans of the clubs in it, rivals, meme and betting accounts react to the fixtures or results (predictions, banter, hope, frustration), consistent with FACTS; a club only with its FACTS.club_accounts handle; never the user, a real player, a coach or a competition account; [] if there is none
   "emails": [ {"from": string, "role": "coach"|"club"|"journalist"|"agent"|"family"|"friend"|"sponsor", "subject": string, "body": string} ],  // 0 to 3
 ${pantheon ? `  "pantheon": {"title": string, "text": string},   // ONE new chapter of his Panthéon page (see PANTHÉON below)
-` : ''}${huddle ? `  "huddle": [ {"from": string, "text": string} ],   // 3 to 6 messages of his club's private group chat (see HUDDLE below)\n` : ''}${huddleNational ? `  "huddle_national": [ {"from": string, "text": string} ],   // 2 to 4 messages of his national team's private group chat (see HUDDLE below)\n` : ''}  "storylines": [string]   // up to 6 short running storylines to remember next time
+` : ''}${huddle ? `  "huddle": [ {"from": string, "text": string} ],   // 3 to 6 messages of his club's private group chat (see HUDDLE below)\n` : ''}${interview ? `  "interview_questions": [string, string, string, string],   // the 4 questions of the interview request email (see INTERVIEW below)\n` : ''}${chant ? `  "fan_chant": {"title": string, "lines": [string, string, string, string]},   // his supporters' new chant (see FAN CHANT below)
+` : ''}${huddleNational ? `  "huddle_national": [ {"from": string, "text": string} ],   // 2 to 4 messages of his national team's private group chat (see HUDDLE below)\n` : ''}  "storylines": [string]   // up to 6 short running storylines to remember next time
 }
 DISCIPLINE: CHANGES.conduct, when present, is the club's reaction to how the player has treated his own coach, teammates or club (CHANGES.conduct.quotes are his exact words and where he said them). Kind "warning": his coach has called him to order in private. Kind "tension": he has crossed the line again after that warning: the coach is cold with him and the dressing room uneasy; no sanction is announced. Kind "left_out": the club has left him out of the squad for CHANGES.conduct.matches, a disciplinary decision whatever the stakes. The app has already sent him the email about it: never write that email again. When CHANGES.conduct.public is true (Kop or a press conference), the local paper reports it (a "left_out" is the club's official disciplinary decision; a "warning" is at most talk of tension) and fans and pundits react on Kop. When it is false, it happened in the private group: for a "left_out" the press only knows he is out of the squad for disciplinary reasons, and nobody quotes the group. FACTS.discipline is his current relation with the coach, his teammates and the club: when it is tense or broken, the coach's and teammates' words to him are cooler. OBJECTIVES: FACTS.objectives are the personal objectives his coach set him (what, target, where he is now, reached); CHANGES.objectives says which were just set, just reached, or reviewed. They are private between him and his coach: the app already sent the coach's emails (never write them again); his coach and his teammates may refer to them in their private group chat (a word when one is reached, a push when he is behind), the press and fans never know them.
 
 Rules for emails: the coach's name must be FACTS.coaches.mine if it is known. Family and friends only from MEMORY.my_life or FACTS.biography (never invent relatives), and none on the very first edition. A journalist email asks exactly one good question about the week ahead. Each email subject is a real, specific subject about what that email says (the opponent, the offer, the club, the question, the moment), short (60 characters at most), never a generic template such as « Point mercato et situation contractuelle » or « Question pour la suite de la saison », and never one of MEMORY.recent_mail_subjects (or a near copy of one).${transversale ? `
-La Transversale is being written at the same time as this edition, by its own desk: MEMORY.transversale_today lists its articles (author, kind, subject), without their headlines or text. Do not write national articles. Kop may react to them by writer and subject: their writers (MEMORY.writers.national_desk) share or defend their piece, pundits and fans argue with a column or an analysis, rival fans mock a take; the local paper may mention them. Never invent a headline for them and never quote words from them (you have not read them): a declaration may only be quoted if it is in FACTS.` : ''}${pantheon ? `
+La Transversale is being written at the same time as this edition, by its own desk: MEMORY.transversale_today lists its articles (author, kind, subject), without their headlines or text. Do not write national articles. Kop may react to them by writer and subject: their writers (MEMORY.writers.national_desk) share or defend their piece, pundits and fans argue with a column or an analysis, rival fans mock a take; the local paper may mention them. Never invent a headline for them and never quote words from them (you have not read them): a declaration may only be quoted if it is in FACTS.` : ''}${interview ? `\nINTERVIEW: CHANGES.interview_request asks for an exclusive interview. Write ONE email from CHANGES.interview_request.journalist (role "journalist"; the one exception to "exactly one question"): a short friendly line asking him for a long interview for La Transversale, then exactly 4 numbered questions about what FACTS shows right now (his season, his form, his place in the team, his club, his ambitions, a story of the moment), so he can answer them all in one reply. Keep one form of address from the first line to the last question (the formal one in languages that have it). Put the same 4 questions, word for word, in "interview_questions".\n` : ''}${chant ? `\nFAN CHANT: CHANGES.fan_chant_due says why his club's supporters have just made up a chant for him. Write it in "fan_chant": a short title and 4 short lines (2 to 6) that fans can sing on the terraces, about him, his name and his club, in the language of the edition. Original words only: never the words or the title of a real song, never name a tune. No insult to anyone. One "local" article presents the chant (who started it, when it was first sung, the full lines), and one Kop post by a fan of his club sings its first two lines.\n` : ''}${pantheon ? `
 PANTHÉON: Panthéon is the online encyclopedia of this world; it has a page about the user's player. CHANGES.pantheon_events lists the career events of this edition: also write "pantheon", ONE new chapter of that page about them: {"title": string, "text": string}. title: a short section title naming the club or the moment and the season, like « Débuts à Nancy (2026-2027) », « Premier but en Ligue 2 » or « Transfert au Stade de Reims ». text: 2 to 4 sentences, 40 to 90 words, in an encyclopedic register: neutral, factual, third person, past tense for what happened; no opinion, no quotes, no superlatives, no emotions, no rumours, nothing private (offers, salary, MEMORY.my_life). Only facts from FACTS and CHANGES (dates, clubs, competitions, scores and numbers exactly as given). Kind "origins": his career before and at the start of this world (FACTS.career.before_tracking, his club, his position, his first matches). When that event has "biography": true, the chapter tells his story from FACTS.biography (where he comes from, his youth, his path to this club) in 4 to 8 sentences, 90 to 180 words, in the same register, adding nothing it does not say. MEMORY.pantheon lists the titles of the chapters already written: continue the story, never repeat one.` : ''}${huddle ? `
 
 HUDDLE: here GROUP is MEMORY.huddle. ${HUDDLE_VOICE} Write "huddle": 4 to 7 messages, a real conversation of that day: members answer each other (a reply, a joke back, a correction), not a list of separate statements, and no two messages say the same thing (one « focus ce soir » is enough). Most come from GROUP.voices_today, each for his reason (why) and in his own way (style); another teammate may join once. They talk about this edition's news (the last match, a goal or a miss, the next opponent), and one or two messages are about GROUP.side_topic. Sometimes they tease or praise the player. The coach writes one short message only when GROUP.coach_speaks is true; the staff only about their job. "from" is exactly a name from MEMORY.huddle.players, its coach or its staff, at most 2 messages per person. If GROUP.recent ends with something the player said, someone answers it. This chat is private: nothing from MEMORY.huddle appears in articles, Kop posts or emails.` : ''}${huddleNational ? `\n\nHUDDLE OF THE NATIONAL TEAM: MEMORY.huddle_national is the same kind of private chat for his national team, with the same rules and the same privacy. Write "huddle_national": 2 to 4 messages about the call-up, the international match or the next one (FACTS.national_team, CHANGES.callUp, CHANGES.ntResults); when CHANGES.callUp.first is true they welcome him. "from" is exactly a name from MEMORY.huddle_national.players, its coach or its staff. They come from other clubs: they know only what is public about his club.` : ''}`;
@@ -523,6 +564,15 @@ FLAGGED (sentences to fix in any case):
 ${JSON.stringify(flags.map(({ item, field, sentence, passages, rules }) => ({ item, field, sentence, passages, rules })))}` : ''}`;
 }
 
+// Vouvoiement et tutoiement des journalistes, dans la seule langue choisie : la règle citait « vous » et le français à
+// tout le monde, et un joueur réglé en anglais recevait ses questions en français (2026-11-16, retours sur Evoweb).
+const PRESS_FORMAL = { fr: ['"vous" (never "tu", "te", "ton", "ta", "tes")', '"tu"'], es: ['"usted"', '"tú"'], it: ['"Lei"', '"tu"'], de: ['"Sie"', '"du"'], pt: ['"o senhor"', '"tu"'] };
+function pressAddress(language) {
+  const blog = 'the supporters\' blog writer, when he is on the panel';
+  if (language === 'en') return `ADDRESS: an entry with address "formal" speaks like a professional journalist: polite and neutral, never matey. Only an entry with address "familiar" (${blog}) may sound casual: he speaks like the fans he writes for, without slang or insults.`;
+  const [formal, familiar] = PRESS_FORMAL[language] || PRESS_FORMAL.fr;
+  return `ADDRESS: an entry with address "formal" addresses him formally, with ${formal}. Only an entry with address "familiar" (${blog}) may use ${familiar}: he speaks like the fans he writes for, without slang or insults.`;
+}
 function pressQuestionsSystem(settings) {
   const lang = LANGUAGES[settings.language] || 'French';
   return `You run the post-match press conference in LifeLegend, a fictional world reacting to a player's career in SP Football Life 2027 (Become a Legend). Three journalists who follow the league each ask the user's player ONE question about the match he just played.
@@ -531,9 +581,9 @@ ${CORE_RULES}
 
 Make the questions specific to THIS match (CONFERENCE.match): his goals or assists and their minutes from goalTimeline, his rating, the result and what it means in the table, the next opponent. CONFERENCE.panel lists who asks, in order: one question per entry, in that order, with the name and outlet given. An entry whose name is null is a fictional journalist you invent, from another fictional outlet covering this league (never a real media brand, never a supporters' blog).
 
-ADDRESS: an entry with address "formal" addresses him formally: "vous" in French (never "tu", "te", "ton", "ta", "tes"), the formal form in the other languages ("usted", "Lei", "Sie", "o senhor"). Only an entry with address "familiar" (the supporters' blog writer, when he is on the panel) may say "tu": he speaks like the fans he writes for, without slang or insults.
+${pressAddress(settings.language)}
 
-Exactly one question is sharper (criticism, a weak spot, pressure, a bold claim he made in MEMORY.user_posts). One sentence each, natural spoken tone. Write in ${lang}.
+Exactly one question is sharper (criticism, a weak spot, pressure, a bold claim he made in MEMORY.user_posts). One sentence each, natural spoken tone. Every question is written in ${lang}, even when FACTS, MEMORY, the journalists' names or the outlet's name are French.
 
 FAN MOOD: if FACTS.fan_mood.level is 2 or 3, one of the three questions is about the fans' anger on Kop (their criticism, the hashtag if any); at level 3 with the anger aimed at him (target "player" or "both"), that question asks him straight about his future and the calls to sell him. If FACTS.fan_mood.rebound is true, one question is about having silenced his critics.
 
@@ -546,6 +596,26 @@ FACTS: ${JSON.stringify(facts)}
 MEMORY: ${JSON.stringify(memory)}`;
 }
 
+// L'entretien exclusif : ses réponses, mot pour mot, mises en forme par le journaliste qui l'a demandé.
+function interviewSystem(settings) {
+  const lang = LANGUAGES[settings.language] || 'French';
+  return `You write up an exclusive interview for La Transversale in LifeLegend, a fictional world reacting to a player's career in SP Football Life 2027 (Become a Legend). INTERVIEW.journalist sent him INTERVIEW.questions by email; INTERVIEW.answers is his whole reply, his exact words.
+
+${CORE_RULES}
+
+QUOTES: his answers are his exact words. Quote them verbatim (you may split his reply between the questions, and skip a question he did not answer, but never change, add or reorder words). Never invent an answer or a quote.
+
+Write: (1) "article", a long interview signed by INTERVIEW.journalist: a short introduction (two or three sentences of context from FACTS), then each question on its own paragraph starting with "— ", followed by his answer quoted verbatim, then one closing sentence; paragraphs separated by \\n\\n. The headline is his strongest sentence between quotation marks, word for word, or a factual title; the dek is one sentence. La Transversale is a serious national daily: lively, never familiar, no slang, no mockery; (2) "thanks": the journalist's short thank-you reply to his email (one or two sentences, signed with his name only); (3) 2 to 4 Kop posts reacting to the interview (fans, rivals, pundits, journalists). Never write as the user. Write in ${lang}.
+
+${CONDUCT} Here his words are INTERVIEW.answers.
+
+OUTPUT: ONE JSON object: {"article": {"headline": string, "dek": string, "body": string}, "thanks": string, "posts": [ {"handle": string, "name": string, "type": "fan"|"rival"|"journalist"|"player"|"pundit"|"meme", "text": string} ], ${CONDUCT_FIELD}}`;
+}
+function interviewUser({ facts, memory, interview }) {
+  return `FACTS: ${JSON.stringify(facts)}
+MEMORY: ${JSON.stringify(memory)}
+INTERVIEW: ${JSON.stringify(interview)}`;
+}
 function pressWriteupSystem(settings) {
   const lang = LANGUAGES[settings.language] || 'French';
   return `You write up the post-match press conference in LifeLegend, a fictional world reacting to a player's career in SP Football Life 2027 (Become a Legend). The user's player has answered the journalists' questions.
@@ -621,5 +691,5 @@ ${names.length ? `Si ces noms sont prononcés, écris-les ainsi : ${names.join('
 module.exports = {
   dictationPrompt, discussionsSystem, discussionsUser, transversaleSystem, transversaleUser, transversaleRepairSystem, transversaleRepairUser, TRANSVERSALE_KINDS, ARTICLE_SIZES,
   LANGUAGES, languageRule, withLanguage, wrongLanguage, languageRetry, editionSystem, editionUser, repliesSystem, repliesUser, threadSystem, threadUser, mailSystem, mailUser, dmSystem, dmUser, huddleSystem, huddleUser, agentMailSystem, agentMailUser, influenceMailSystem, influenceMailUser, factcheckSystem, factcheckUser,
-  pressQuestionsSystem, pressQuestionsUser, pressWriteupSystem, pressWriteupUser,
+  pressQuestionsSystem, pressQuestionsUser, pressWriteupSystem, pressWriteupUser, interviewSystem, interviewUser,
 };

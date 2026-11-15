@@ -37,3 +37,35 @@ test('réponse revenue en français : repérée, sans confondre les autres langu
   assert.ok(!prompts.wrongLanguage(posts(1), 'en'));
   assert.ok(prompts.wrongLanguage(posts(2), 'en'));
 });
+
+// Conférence de presse (2026-11-16, retours sur Evoweb : en anglais, les questions des journalistes arrivaient encore en
+// français) : la règle de politesse ne parle que de la langue choisie, et les rôles des journalistes passent en anglais.
+test('conférence de presse : rien qui pousse vers le français hors français', () => {
+  const en = prompts.pressQuestionsSystem({ language: 'en' });
+  assert.doesNotMatch(en, /"vous"|"tu"|\btutoie/, 'pas de vouvoiement à la française en anglais');
+  assert.match(en, /Every question is written in English/);
+  assert.match(prompts.pressQuestionsSystem({ language: 'es' }), /formally, with "usted"/);
+  assert.doesNotMatch(prompts.pressQuestionsSystem({ language: 'es' }), /"vous"/);
+  assert.match(prompts.pressQuestionsSystem({ language: 'fr' }), /"vous" \(never "tu"/, 'en français, le vouvoiement reste');
+  const panel = [{ name: 'Marc Lhermitte', outlet: 'La Transversale', role: 'Chroniqueur national', address: 'formal' }, { name: 'Bruno Vidaillac', outlet: 'La Transversale', role: 'Consultant, ancien milieu de terrain', address: 'formal' }];
+  const user = prompts.pressQuestionsUser({ facts: {}, memory: {}, conference: { match: 'Watford 0-2 Swansea', panel } });
+  const out = prompts.withLanguage({ language: 'en' }, { system: en, user }).user;
+  assert.match(out, /"role":"Chief football writer"/);
+  assert.match(out, /"role":"Pundit, former midfielder"/);
+  assert.doesNotMatch(out, /Chroniqueur|ancien milieu/);
+});
+
+// Les valeurs que le code met en français dans FACTS partent en anglais hors français (la requête reste du JSON valide).
+test('valeurs du code dans FACTS : en anglais hors français, intactes en français', () => {
+  const facts = { last_match: { venue: 'extérieur', clubLineup: [{ position: 'défenseur central' }, { position: 'avant-centre' }], me: { ratingWord: 'très bon' } },
+    next_match: { venue: 'domicile', kickoff: '2027-03-21 à 19h (le soir)' }, player: { game_profile: { strong_foot: 'gauche', form_arrow: 'Très mauvaise' } },
+    league_table: [{ form: 'VVNDV' }], mercato: { window: { next: { season: 'été' } } }, agent: { player_stance: 'ouvert à tout' },
+    fan_mood: { reasons: ['défaite 0-3 contre FC Metz', 'sa note : 4.5 (catastrophique)', '3 défaites de suite', 'zone rouge (18e)', 'promesse non tenue : « 10 buts »'] } };
+  const user = `FACTS: ${JSON.stringify(facts)}`;
+  const en = JSON.parse(prompts.withLanguage({ language: 'en' }, { system: 'S', user }).user.replace(/^FACTS: /, '').replace(/\n\n\(Reminder.*$/s, ''));
+  assert.deepStrictEqual(en, { last_match: { venue: 'away', clubLineup: [{ position: 'centre-back' }, { position: 'centre-forward' }], me: { ratingWord: 'very good' } },
+    next_match: { venue: 'home', kickoff: '2027-03-21 at 19:00 (evening)' }, player: { game_profile: { strong_foot: 'left', form_arrow: 'very poor' } },
+    league_table: [{ form: 'WWDLW' }], mercato: { window: { next: { season: 'summer' } } }, agent: { player_stance: 'open to anything' },
+    fan_mood: { reasons: ['defeat 0-3 against FC Metz', 'his rating: 4.5 (catastrophic)', '3 defeats in a row', 'relegation zone (18th)', 'broken promise: "10 buts"'] } });
+  assert.strictEqual(prompts.withLanguage({ language: 'fr' }, { system: 'S', user }).user, user, 'en français, rien ne change');
+});

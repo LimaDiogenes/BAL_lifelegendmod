@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, dialog, safeStorage, shell, Notification, nativeImage, nativeTheme, net } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, safeStorage, shell, Notification, nativeImage, nativeTheme, net, clipboard } = require('electron');
 const { tr, trError } = require('./src/i18n');
 const fs = require('fs');
 const path = require('path');
@@ -392,6 +392,25 @@ app.whenReady().then(() => {
     if (r.canceled || !r.filePath) return null;
     fs.writeFileSync(r.filePath, text, 'utf8');
     shell.showItemInFolder(r.filePath);
+    return { path: r.filePath };
+  });
+  // Partager en image : la zone de la page (pixels CSS, ramenés à l'écran), copiée dans le presse-papiers ; gardée pour
+  // « Enregistrer », qui l'écrit en PNG là où il le choisit.
+  let lastShot = null;
+  handle('share:image', async (r = {}) => {
+    const z = win.webContents.getZoomFactor() || 1;
+    const rect = { x: Math.max(0, Math.floor(r.x * z)), y: Math.max(0, Math.floor(r.y * z)), width: Math.max(1, Math.ceil(r.width * z)), height: Math.max(1, Math.ceil(r.height * z)) };
+    const img = await win.webContents.capturePage(rect);
+    if (img.isEmpty()) throw new Error(tr(lang0(), 'Image impossible pour l’instant.'));
+    clipboard.writeImage(img);
+    lastShot = img;
+    return { width: img.getSize().width, height: img.getSize().height };
+  });
+  handle('share:save', async ({ title } = {}) => {
+    if (!lastShot) return null;
+    const r = await dialog.showSaveDialog(win, { title: title || 'LifeLegend', defaultPath: path.join(app.getPath('pictures'), `LifeLegend-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.png`), filters: [{ name: 'PNG', extensions: ['png'] }] });
+    if (r.canceled || !r.filePath) return null;
+    fs.writeFileSync(r.filePath, lastShot.toPNG());
     return { path: r.filePath };
   });
   // « Vérifier les mises à jour » : la dernière version publiée sur la page GitHub de LifeLegend, seulement quand il

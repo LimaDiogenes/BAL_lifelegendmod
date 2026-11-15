@@ -1,5 +1,51 @@
 # Journal des changements
 
+## 1.1.0 — 2026-11-16
+
+### Ta carrière racontée autrement
+- **Un rival** : un joueur de ton championnat, d'un autre club, à ta ligne, avec des chiffres proches, choisi pour la
+  saison. La Transversale publie « le duel » (vos deux visages), Kop débat « lui ou toi ? », le Vestiaire en parle quand il
+  brille ou joue contre vous, et Scoreline a un onglet Rival sur ta page.
+- **Les derbys** (Nancy–Metz, PSG–OM, Lyon–Saint-Étienne, Liverpool–Everton, Real–Atlético, Milan–Inter… et deux clubs
+  de la même ville) : l'avant-match du derby, banderoles et chants sur Kop, le Vestiaire qui le vit, le récit qui dit ce
+  qu'il signifie.
+- **Les retrouvailles avec un ancien club** : « le retour » dans La Transversale, un ancien coéquipier encore là-bas et
+  les supporters de ton ancien club sur Kop, l'accueil selon ton passage là-bas.
+- **Le joueur du mois de ton club, élu par les supporters** : un sondage du compte officiel du club chaque mois ; ta
+  victoire entre au Panthéon et sur ta page Scoreline.
+- **Ton chant de supporters** : quand tu deviens le chouchou (triplé, but dans un derby gagné, vote des supporters, trois
+  matchs de suite avec un but), les supporters t'inventent un chant, présenté sur le blog et chanté sur Kop.
+- **Les rumeurs reprises par la presse** : La Transversale reprend une piste sérieuse ou une vraie offre, et ton agent
+  t'écrit pour confirmer ou démentir.
+- **L'interview exclusive** : environ une fois par mois, un journaliste te demande un entretien par mail, avec quatre
+  questions ; ta réponse devient un long article « L'entretien », tes mots tels quels.
+
+### Partager et comparer
+- **Partager en image** un article, un post Kop ou une carte de Scoreline : l'image est copiée, prête à coller sur X ou
+  Discord, avec « LifeLegend » en petit dans un coin ; « Enregistrer » la garde en PNG.
+- **Le comparateur de Scoreline** : toi contre n'importe quel joueur des grands championnats, des coupes d'Europe ou de
+  tes compétitions, la saison côte à côte.
+
+### Quand l'IA ne répond plus
+- **La synchro de secours** : quand le quota gratuit du jour est épuisé, la synchro garde tout ce qui se fait sans IA
+  (scores, Scoreline, posts officiels, mails) au lieu de tout perdre ; la synchro suivante rattrape les articles.
+
+### Compatibilité
+- **Les sauvegardes agrandies par des modules du jeu** (les modules Lua de FL Mod Studio, le GigaPack de Matozanato…)
+  sont lues : ces modules déplacent les tables de la sauvegarde, et LifeLegend y voyait 0 match, 0 but et « rien de
+  nouveau ». Il les retrouve maintenant à leur nouvelle place. Sur une sauvegarde de ce genre, LifeLegend n'écrit pas
+  (Influence, réorientation d'offres) : il le dit, et rien n'est modifié.
+
+### Langue
+- **Les questions des journalistes en conférence de presse** arrivaient encore en français pour un joueur réglé dans une
+  autre langue. La demande envoyée à l'IA contenait des repères français (rôles des journalistes, une règle sur le
+  « vous », et des valeurs comme « extérieur », « défenseur central », « à 19h (le soir) », la forme « VVNDV ») : tout
+  part maintenant dans la langue de l'IA, pour toutes les demandes.
+
+Aucune requête d'IA en plus par synchro ; seule l'interview en utilise une, quand tu y réponds (à la place de la réponse
+au mail). Une édition a au plus deux articles spéciaux sur ton club (derby, retrouvailles, rumeur, duel), pour garder la
+place des éditos.
+
 ## 1.0.1 — 2026-11-14
 
 ### Langue
