@@ -8,6 +8,7 @@ const { readCareer, competitionMatches } = require('../save/blReader');
 const { detectGameFolders, loadGameDb, matchRate } = require('../save/gameDb');
 const { buildSnapshot, diffSnapshots, hasNews, sameMatch } = require('./snapshot');
 const { complete: completeRaw, transcribe, parseJson, isDailyQuota } = require('../ai/providers');
+const { normalizePrivacy, buildPrivacyMap, maskText, unmaskText, previewMasked } = require('../ai/privacyShield');
 const { updateRival, rivalFacts, rivalInNews } = require('./rival');
 const { derbyFacts } = require('./derby');
 const { reunionFacts, formerClubs } = require('./reunion');
@@ -15,17 +16,42 @@ const { fanVote } = require('./fanVote');
 const { chantDue, keepChant } = require('./chant');
 const { interviewDue, markInterview } = require('./interview');
 const { clubAuthor: clubAuthorOf } = require('./clubPosts');
+
+function privacyMapFor(state, settings) {
+  const privacy = state?.privacy || (settings?.pendingBio?.savePath === settings?.savePath ? settings.pendingBio?.privacy : null) || settings?.privacy;
+  return buildPrivacyMap(privacy, {
+    careerId: state?.careerId || '',
+    playerName: state?.snapshot?.player?.name || '',
+    handle: state?.profile?.handle || '',
+  });
+}
+
+function savePrivacy({ store, privacy }) {
+  const state = store.activeCareer();
+  if (!state) throw new Error('Synchronise ta sauvegarde une première fois.');
+  state.privacy = normalizePrivacy(privacy);
+  store.saveCareer(state);
+  return state;
+}
+
 // Chaque requête porte la consigne de langue quand la langue n'est pas le français (prompts.withLanguage). Une réponse
 // revenue en français quand même (le modèle léger qui suit un historique en français) est redemandée une fois, avec le
 // modèle choisi et la consigne en tête : une requête de plus, seulement dans ce cas.
 async function complete(settings, apiKey, opts) {
-  const out = await completeRaw(settings, apiKey, prompts.withLanguage(settings, opts));
-  if (!prompts.wrongLanguage(out, settings.language)) return out;
-  opts.log?.('Réponse revenue en français : redemandée dans la langue choisie.');
-  try {
-    const again = await completeRaw(settings, apiKey, prompts.withLanguage(settings, { ...opts, light: false, user: `${prompts.languageRetry(settings)}\n\n${opts.user}` }));
-    return prompts.wrongLanguage(again, settings.language) ? out : again;
-  } catch { return out; }
+  const map = opts?.privacyMap || null;
+  const req = prompts.withLanguage(settings, opts);
+  const maskedReq = map?.enabled ? { ...req, system: maskText(req.system, map), user: maskText(req.user, map) } : req;
+  let out = await completeRaw(settings, apiKey, maskedReq);
+  if (prompts.wrongLanguage(out, settings.language)) {
+    opts.log?.('Réponse revenue en français : redemandée dans la langue choisie.');
+    try {
+      const retryReq = prompts.withLanguage(settings, { ...opts, light: false, user: `${prompts.languageRetry(settings)}\n\n${opts.user}` });
+      const maskedRetry = map?.enabled ? { ...retryReq, system: maskText(retryReq.system, map), user: maskText(retryReq.user, map) } : retryReq;
+      const again = await completeRaw(settings, apiKey, maskedRetry);
+      if (!prompts.wrongLanguage(again, settings.language)) out = again;
+    } catch { /* garde out */ }
+  }
+  return map?.enabled ? unmaskText(out, map) : out;
 }
 const prompts = require('../ai/prompts');
 const { factCheck } = require('../ai/factcheck');
@@ -192,7 +218,23 @@ function competitionsFacts(s) {
 // des autres clubs et les comptes officiels, qui pèsent lourd pour un message de deux phrases. Le dernier et le prochain
 // match de son club, le classement et l'effectif restent.
 function chatFacts(state) {
-  const { agent, influence, league_last_round, league_next_round, club_recent_results, club_accounts, competition_accounts, ...facts } = factsFor(state.snapshot, state.profile, state);
+  const { agent, influence, league_last_round, league_next_round, club_recent_results, club_accounts, competition_accounts, other_leagues, competitions, ...facts } = factsFor(state.snapshot, state.profile, state);
+  return facts;
+}
+
+function kopInteractionFacts(state) {
+  const { agent, discipline, other_leagues, competitions, ...facts } = factsFor(state.snapshot, state.profile, state);
+  return facts;
+}
+
+function pressFacts(state) {
+  const { agent, club_accounts, competition_accounts, football_elsewhere, other_leagues, ...facts } = factsFor(state.snapshot, state.profile, state);
+  return facts;
+}
+
+function mailReplyFacts(state, role) {
+  const { club_accounts, competition_accounts, football_elsewhere, other_leagues, ...facts } = factsFor(state.snapshot, state.profile, state);
+  if (role !== 'agent') delete facts.agent;
   return facts;
 }
 
@@ -871,7 +913,7 @@ function renameInventedAccounts(state, out, { voices = [], people = [], clubLeag
 // (réponses à d'autres réponses, désaccords, l'auteur qui réplique), sous les posts de l'édition et quelques posts
 // récents. Les faits envoyés sont réduits à ce qui sert à discuter (pas les autres compétitions, le mercato, l'agent).
 const DISCUSSION_FACTS = ['game_date', 'season', 'player', 'club', 'league', 'league_table', 'last_match', 'next_match', 'club_recent_results', 'league_last_round', 'league_next_round', 'scorer_race_in_league', 'season_stats', 'club_squad', 'coaches', 'fan_mood', 'club_accounts', 'competition_accounts', 'national_team', 'football_elsewhere'];
-async function writeDiscussions({ state, settings, apiKey, facts, fresh, people, gameDate, onProgress, clubLeague = null }) {
+async function writeDiscussions({ state, settings, apiKey, facts, fresh, people, gameDate, onProgress, clubLeague = null, privacyMap = null }) {
   const brief = (p, isNew) => {
     const q = quotedIn(state, p);
     return {
@@ -889,6 +931,7 @@ async function writeDiscussions({ state, settings, apiKey, facts, fresh, people,
   // De courts échanges entre comptes : le modèle léger suffit et ménage le quota du modèle choisi.
   const out = parseJson(await complete(settings, apiKey, {
     light: true,
+    privacyMap,
     system: prompts.discussionsSystem(settings),
     user: prompts.discussionsUser({
       facts: Object.fromEntries(DISCUSSION_FACTS.filter((k) => facts[k] !== undefined).map((k) => [k, facts[k]])),
@@ -1342,7 +1385,7 @@ function worldTeams(w) {
   return out;
 }
 
-async function writeTransversale({ state, settings, apiKey, facts, changes, rawChanges, snapshot, kind, outline = transversaleOutline({ state, snapshot, rawChanges, kind }), onProgress, log = () => {}, clock = null }) {
+async function writeTransversale({ state, settings, apiKey, facts, changes, rawChanges, snapshot, kind, outline = transversaleOutline({ state, snapshot, rawChanges, kind }), onProgress, log = () => {}, clock = null, privacyMap = null }) {
   const { desk, press, plan } = outline;
   const m = memoryFor(state);
   const memory = {
@@ -1355,6 +1398,7 @@ async function writeTransversale({ state, settings, apiKey, facts, changes, rawC
     my_life: m.my_life,
   };
   const out = parseJson(await complete(settings, apiKey, {
+    privacyMap,
     system: prompts.transversaleSystem(settings),
     user: prompts.transversaleUser({ facts, changes, memory, desk: desk.filter((w) => plan.some((p) => p.author === w.name)), plan, press, settings: withTone(settings, state), kind }),
     maxTokens: 24000,
@@ -1384,6 +1428,7 @@ async function writeTransversale({ state, settings, apiKey, facts, changes, rawC
   log(`La Transversale : ${checks.length} article${checks.length > 1 ? 's' : ''} à retravailler (${checks.map((c) => list[c.i].author.split(' ')[0]).join(', ')})…`);
   try {
     const r = parseJson(await complete(settings, apiKey, {
+      privacyMap,
       system: prompts.transversaleRepairSystem(settings),
       user: prompts.transversaleRepairUser({ facts, items: checks.map((c) => ({ id: c.i, writer: desk.find((w) => w.name === list[c.i].author), subject: plan[c.i].subject, size: plan[c.i].size, lead: plan[c.i].lead, article: list[c.i], problems: c.problems })) }),
       maxTokens: 14000,
@@ -1527,7 +1572,11 @@ async function syncInner({ store, settings, log, t }) {
   const state = store.loadCareer(careerId) || newCareerState(snapshot);
   store.setActiveCareer(careerId);
   // Biographie écrite dans la fenêtre de configuration, avant que la carrière existe : elle nourrit sa première édition.
-  if (!state.snapshot && settings.pendingBio?.savePath === settings.savePath) setBio(state, settings.pendingBio.text, settings.pendingBio.kind);
+  if (!state.snapshot && settings.pendingBio?.savePath === settings.savePath) {
+    setBio(state, settings.pendingBio.text, settings.pendingBio.kind);
+    if (settings.pendingBio.privacy) state.privacy = normalizePrivacy(settings.pendingBio.privacy);
+  }
+  const privacyMap = privacyMapFor(state, settings);
   migrateClubAccounts(state);
   migrateCompetitionAccounts(state);
   migratePageNames(state);
@@ -1896,7 +1945,7 @@ async function syncInner({ store, settings, log, t }) {
     t.ai(p?.phase === 'writing' ? { ...p, chars: chars.national + chars.edition } : p);
   };
   const nationalTrack = clock.track(), editionTrack = clock.track();
-  const writeNational = () => writeTransversale({ state, settings, apiKey, facts: nationalFacts, changes: aiChanges, rawChanges: changes, snapshot, kind, outline, onProgress: progressOf(nationalTrack, 'national'), log, clock: nationalTrack });
+  const writeNational = () => writeTransversale({ state, settings, apiKey, facts: nationalFacts, changes: aiChanges, rawChanges: changes, snapshot, kind, outline, onProgress: progressOf(nationalTrack, 'national'), log, clock: nationalTrack, privacyMap });
   const [nationalDone, editionDone] = await Promise.allSettled([
     writeNational().catch((err) => {
       nationalTrack.lap('La Transversale (échec)');
@@ -1904,6 +1953,7 @@ async function syncInner({ store, settings, log, t }) {
       return writeNational();
     }),
     complete(settings, apiKey, {
+      privacyMap,
       system: prompts.editionSystem(settings, { transversale: true, pantheon: chapterEvents.length > 0, huddle: Boolean(huddle), huddleNational: Boolean(ntHuddle), chant: Boolean(chant), interview: Boolean(interview) }),
       user: prompts.editionUser({ facts, changes: aiChanges, memory, settings: withTone(settings, state), kind, plan }),
       maxTokens: 16000,
@@ -1952,7 +2002,16 @@ async function syncInner({ store, settings, log, t }) {
     log('Vérification des faits…');
     try {
       t.step(2);
-      factcheck = await factCheck(out, { settings, apiKey, facts: { ...facts, next_opponent_squad: nationalFacts.next_opponent_squad, competition_stories: nationalFacts.competition_stories, world_football: nationalFacts.world_football || null, user_on_record: state.onRecord }, changes: aiChanges, flags: (out.national || []).flatMap((a, i) => ruleFlags(a).map((f) => ({ item: `national.${i}`, ...f }))), log, onProgress: t.ai });
+      const { club_accounts, competition_accounts, other_leagues, ...checkBase } = facts;
+      const checkWorld = (out.national || []).some((a) => a.focus === 'world' || a.focus === 'awards') || Boolean(facts.football_elsewhere);
+      const checkFacts = {
+        ...checkBase,
+        next_opponent_squad: nationalFacts.next_opponent_squad,
+        competition_stories: nationalFacts.competition_stories,
+        ...(checkWorld && nationalFacts.world_football ? { world_football: nationalFacts.world_football } : {}),
+        user_on_record: state.onRecord,
+      };
+      factcheck = await factCheck(out, { settings, apiKey, facts: checkFacts, changes: aiChanges, flags: (out.national || []).flatMap((a, i) => ruleFlags(a).map((f) => ({ item: `national.${i}`, ...f }))), log, onProgress: t.ai, privacyMap });
       const n = factcheck.corrections.length;
       log(n ? `Vérification des faits : ${n} correction${n > 1 ? 's' : ''} appliquée${n > 1 ? 's' : ''}.` : 'Vérification des faits : rien à corriger.');
     } catch (err) {
@@ -2011,7 +2070,7 @@ async function syncInner({ store, settings, log, t }) {
       t.step(settings.factCheck !== false ? 3 : 2);
       // Les posts officiels les plus suivis (résultats, programme, classement) ont aussi leurs réactions, comme sur X.
       const top = officialNow.filter((o) => o.importance >= 30).sort((a, b) => b.importance - a.importance).slice(0, 6).map((o) => o.item);
-      const r = await writeDiscussions({ state, settings, apiKey, facts, fresh: [...published, ...top], people, gameDate: snapshot.gameDate, onProgress: t.ai, clubLeague });
+      const r = await writeDiscussions({ state, settings, apiKey, facts, fresh: [...published, ...top], people, gameDate: snapshot.gameDate, onProgress: t.ai, clubLeague, privacyMap });
       log(r.messages || r.quotes ? `Kop : ${r.messages} messages sous ${r.threads} posts${r.quotes ? `, ${r.quotes} citation${r.quotes > 1 ? 's' : ''}` : ''}.` : 'Kop : pas de nouvelle discussion.');
       if (r.renamed) log(`Kop : ${r.renamed} compte(s) inventé(s) par l'IA renommé(s).`);
     } catch (err) {
@@ -2130,9 +2189,10 @@ async function postInner({ store, settings, text, quote, poll = null, t }) {
     ...(e.kind === 'coach' ? { club_account: e.side === 'opponent' ? clubHandle({ short: state.snapshot.rosters?.opponent?.short, name: e.team }) : clubHandle(state.snapshot.club) } : {}),
   }));
   const out = parseJson(await complete(settings, apiKey, {
+    privacyMap: privacyMapFor(state, settings),
     system: prompts.repliesSystem(settings),
     user: prompts.repliesUser({
-      facts: factsFor(state.snapshot, state.profile, state), memory: memoryFor(state), post: text, settings: withTone(settings, state), mentioned, poll: options,
+      facts: kopInteractionFacts(state), memory: memoryFor(state), post: text, settings: withTone(settings, state), mentioned, poll: options,
       quoted: q ? { handle: q.target.author.handle, name: q.target.author.name, type: q.target.author.type, text: q.target.text, can_reply: !q.target.author.isMe && !isCompetitionAuthor(state, q.target.author) } : null,
     }),
     maxTokens: 4000,
@@ -2271,9 +2331,10 @@ async function replyToPostInner({ store, settings, postId, replyId, text, t }) {
   const directory = mentionDirectory(state);
   const brief = (x) => ({ handle: x.author.handle, name: x.author.name, type: x.author.type, text: x.text });
   const out = parseJson(await complete(settings, apiKey, {
+    privacyMap: privacyMapFor(state, settings),
     system: prompts.threadSystem(settings),
     user: prompts.threadUser({
-      facts: factsFor(state.snapshot, state.profile, state),
+      facts: kopInteractionFacts(state),
       memory: memoryFor(state),
       post: brief(post),
       thread: post.replies.filter((r) => r !== mine).slice(-12).map(brief),
@@ -2346,10 +2407,12 @@ async function replyMailInner({ store, settings, threadId, text, t }) {
   store.saveCareer(state);
 
   const apiKey = store.getKey(settings.provider);
-  if (thread.interview?.status === 'open') return interviewReply({ store, settings, state, thread, text, apiKey, t });
+  const privacyMap = privacyMapFor(state, settings);
+  if (thread.interview?.status === 'open') return interviewReply({ store, settings, state, thread, text, apiKey, t, privacyMap });
   const out = parseJson(await complete(settings, apiKey, {
+    privacyMap,
     system: prompts.mailSystem(settings),
-    user: prompts.mailUser({ facts: { ...factsFor(state.snapshot, state.profile, state), influence: ['coach', 'club', 'agent'].includes(thread.role) ? influenceFacts(state) : undefined }, memory: memoryFor(state), thread: { from: thread.from, role: thread.role, subject: thread.subject, messages: thread.messages, former_club: formerClubOf(state, thread), request: thread.request ? { kind: thread.request.kind, about: thread.request.summary, accepted: thread.request.accepted } : undefined }, text }),
+    user: prompts.mailUser({ facts: { ...mailReplyFacts(state, thread.role), influence: ['coach', 'club', 'agent'].includes(thread.role) ? influenceFacts(state) : undefined }, memory: memoryFor(state), thread: { from: thread.from, role: thread.role, subject: thread.subject, messages: thread.messages, former_club: formerClubOf(state, thread), request: thread.request ? { kind: thread.request.kind, about: thread.request.summary, accepted: thread.request.accepted } : undefined }, text }),
     maxTokens: 3000,
     onProgress: t.ai,
   }));
@@ -2362,11 +2425,12 @@ async function replyMailInner({ store, settings, threadId, text, t }) {
 // L'entretien exclusif (src/world/interview.js) : sa réponse au mail du journaliste devient un long article de La
 // Transversale, ses mots tels quels (une citation retouchée est retirée, comme en conférence de presse), Kop réagit, le
 // journaliste le remercie. Une seule requête, celle de la réponse au mail.
-async function interviewReply({ store, settings, state, thread, text, apiKey, t }) {
+async function interviewReply({ store, settings, state, thread, text, apiKey, t, privacyMap = null }) {
   const gameDate = state.snapshot.gameDate;
   const out = parseJson(await complete(settings, apiKey, {
+    privacyMap: privacyMap || privacyMapFor(state, settings),
     system: prompts.interviewSystem(settings),
-    user: prompts.interviewUser({ facts: factsFor(state.snapshot, state.profile, state), memory: memoryFor(state), interview: { journalist: thread.from, questions: thread.interview.questions, answers: text } }),
+    user: prompts.interviewUser({ facts: pressFacts(state), memory: memoryFor(state), interview: { journalist: thread.from, questions: thread.interview.questions, answers: text } }),
     maxTokens: 6000,
     onProgress: t.ai,
   }));
@@ -2423,6 +2487,7 @@ async function sendDmInner({ store, settings, handle, text, t }) {
   const facts = chatFacts(state);
   const m = memoryFor(state);
   const out = parseJson(await complete(settings, store.getKey(settings.provider), {
+    privacyMap: privacyMapFor(state, settings),
     system: prompts.dmSystem(settings),
     user: prompts.dmUser({ facts, memory: { handle: m.handle, followers: m.followers, my_profile: m.my_profile, my_life: m.my_life, storylines: m.storylines, user_posts: m.user_posts, user_on_record: m.user_on_record }, thread: dmContext(state, thread) }),
     maxTokens: 1500,
@@ -2457,6 +2522,7 @@ async function sendHuddle({ store, settings, text, groupId = null, progress }) {
     const facts = chatFacts(state);
     const m = memoryFor(state);
     const out = parseJson(await complete(settings, store.getKey(settings.provider), {
+      privacyMap: privacyMapFor(state, settings),
       system: prompts.huddleSystem(settings),
       user: prompts.huddleUser({ facts, memory: { my_life: m.my_life, storylines: m.storylines, user_on_record: m.user_on_record }, group: huddleContext(group) }),
       maxTokens: 1500,
@@ -2534,8 +2600,11 @@ async function transcribeDictation({ store, settings, audio }) {
   const state = store.activeCareer();
   const s = state?.snapshot;
   const press = state?.press;
-  const names = [...new Set([s?.player?.name, s?.club?.name, s?.coaches?.mine, s?.next?.home, s?.next?.away, s?.last?.home, s?.last?.away, ...(s?.squad || []).map((p) => p.name), ...(press?.questions || []).map((q) => q.journalist)].filter(Boolean))].slice(0, 50);
-  return transcribe(settings, store.getKey(settings.provider), { audio: Buffer.from(audio).toString('base64'), prompt: prompts.dictationPrompt(names, settings.language) });
+  const privacyMap = privacyMapFor(state, settings);
+  const rawNames = [...new Set([s?.player?.name, s?.club?.name, s?.coaches?.mine, s?.next?.home, s?.next?.away, s?.last?.home, s?.last?.away, ...(s?.squad || []).map((p) => p.name), ...(press?.questions || []).map((q) => q.journalist)].filter(Boolean))].slice(0, 50);
+  const names = privacyMap.enabled ? rawNames.map((n) => maskText(n, privacyMap)) : rawNames;
+  const text = await transcribe(settings, store.getKey(settings.provider), { audio: Buffer.from(audio).toString('base64'), prompt: prompts.dictationPrompt(names, settings.language) });
+  return privacyMap.enabled ? unmaskText(text, privacyMap) : text;
 }
 
 async function openPress({ store, settings, progress }) {
@@ -2570,8 +2639,10 @@ const TUTOIE = /(^|[^\p{L}])((tu|te|toi|ton|ta|tes)($|[^\p{L}])|t['’]\p{L})/iu
 async function askQuestions({ store, settings, state, press, t }) {
   const panel = pressPanel(state, press);
   const blogger = state.writers?.local_beat_writer, blog = state.localPaper?.name;
-  const user = prompts.pressQuestionsUser({ facts: factsFor(state.snapshot, state.profile, state), memory: memoryFor(state), conference: { match: pressMatch(state, press), panel } });
+  const privacyMap = privacyMapFor(state, settings);
+  const user = prompts.pressQuestionsUser({ facts: pressFacts(state), memory: memoryFor(state), conference: { match: pressMatch(state, press), panel } });
   const ask = async (extra = '') => parseJson(await complete(settings, store.getKey(settings.provider), {
+    privacyMap,
     system: prompts.pressQuestionsSystem(settings),
     user: `${user}${extra}`,
     maxTokens: 3000,
@@ -2627,10 +2698,12 @@ async function submitPressInner({ store, settings, answers, log, t }) {
   if (!press.questions) throw new Error('La conférence n’a pas encore commencé.');
   const exchanges = press.questions.map((q, i) => ({ ...q, answer: String(answers?.[i] || '').trim() || null }));
   const apiKey = store.getKey(settings.provider);
-  const facts = { ...factsFor(state.snapshot, state.profile, state), press_conference: exchanges };
+  const privacyMap = privacyMapFor(state, settings);
+  const facts = { ...pressFacts(state), press_conference: exchanges };
   const desk = transversaleDesk(state);
   const reporter = desk.find((w) => w.role === 'Reporter') || desk[0];
   const out = parseJson(await complete(settings, apiKey, {
+    privacyMap,
     system: prompts.pressWriteupSystem(settings),
     user: prompts.pressWriteupUser({ facts, memory: memoryFor(state), conference: { match: pressMatch(state, press), exchanges, writer: reporter.name } }),
     maxTokens: 6000,
@@ -2642,7 +2715,7 @@ async function submitPressInner({ store, settings, answers, log, t }) {
   if (settings.factCheck !== false) {
     try {
       t.step(1);
-      press.factcheck = await factCheck(draft, { settings, apiKey, facts, changes: {}, log, onProgress: t.ai });
+      press.factcheck = await factCheck(draft, { settings, apiKey, facts, changes: {}, log, onProgress: t.ai, privacyMap });
     } catch (err) {
       press.factcheck = { checked: false, error: err.message, corrections: [] };
     }
@@ -2721,12 +2794,14 @@ function transversaleBrief(snapshot, edition, language = 'fr') {
 
 async function writeAgentMail({ store, state, snapshot, settings, log, t, occasion = 'offer' }) {
   const agent = state.agent;
-  const facts = factsFor(snapshot, state.profile, state);
+  const facts = mailReplyFacts(state, 'agent');
   const offers = facts.agent?.offers_received || [];
   log(`${AGENT_OCCASION_LOG[occasion](offers)} : ${agent.name}, ton agent, t’écrit…`);
   const apiKey = store.getKey(settings.provider);
+  const privacyMap = privacyMapFor(state, settings);
   t.step(1, 'Mail de ton agent');
   const out = parseJson(await complete(settings, apiKey, {
+    privacyMap,
     system: prompts.agentMailSystem(settings, occasion),
     user: prompts.agentMailUser({ facts, memory: memoryFor(state), offers }),
     maxTokens: 3000,
@@ -2737,7 +2812,7 @@ async function writeAgentMail({ store, state, snapshot, settings, log, t, occasi
   if (settings.factCheck !== false) {
     try {
       t.step(2);
-      const fc = await factCheck(draft, { settings, apiKey, facts, changes: { new_offers: offers }, log, onProgress: t.ai });
+      const fc = await factCheck(draft, { settings, apiKey, facts, changes: { new_offers: offers }, log, onProgress: t.ai, privacyMap });
       if (fc.corrections.length) log(`Vérification des faits : ${fc.corrections.length} correction(s) dans le mail de l’agent.`);
     } catch (err) {
       log(`Vérification des faits impossible (${err.message}) : mail envoyé sans relecture.`);
@@ -2896,8 +2971,9 @@ async function influenceRequestInner({ store, settings, kind, params, message, t
   try {
     const apiKey = store.getKey(settings.provider);
     const out = parseJson(await complete(settings, apiKey, {
+      privacyMap: privacyMapFor(state, settings),
       system: prompts.influenceMailSystem(settings),
-      user: prompts.influenceMailUser({ facts: { ...factsFor(s, state.profile, state), influence: influenceFacts(state) }, memory: memoryFor(state), request: requestFacts(state, s, request, effect, text) }),
+      user: prompts.influenceMailUser({ facts: { ...mailReplyFacts(state, request.role), influence: influenceFacts(state) }, memory: memoryFor(state), request: requestFacts(state, s, request, effect, text) }),
       maxTokens: 3000,
       onProgress: t.ai,
     }));
@@ -3023,4 +3099,4 @@ function loadScores({ store }) {
   return state ? store.loadAux(state.careerId, 'scores') : null;
 }
 
-module.exports = { conductApply, pollOptions, pollPercents, bigEdition, pressPanel, transcribeDictation, chatFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };
+module.exports = { savePrivacy, privacyMapFor, previewMasked, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };

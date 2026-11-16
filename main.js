@@ -11,6 +11,7 @@ const { answerAdvice } = require('./src/world/coachAdvice');
 const { answerSponsor } = require('./src/world/sponsors');
 const { dmContacts, findDm } = require('./src/world/dms');
 const { setBio } = require('./src/world/pantheon');
+const { normalizePrivacy, previewMasked } = require('./src/ai/privacyShield');
 const { PROVIDERS, isDailyQuota } = require('./src/ai/providers');
 const { detectGameFolders, isGameDir } = require('./src/save/gameDb');
 const { defaultClipsDir } = require('./src/world/media');
@@ -211,7 +212,7 @@ function startMediaWatch() {
 }
 
 // Langue choisie dans les réglages (interface et contenus).
-const lang0 = () => { try { return store?.getSettings().language || 'fr'; } catch { return 'fr'; } };
+const lang0 = () => { try { return store?.getSettings().language || 'en'; } catch { return 'en'; } };
 
 // Toutes les erreurs remontent à l'interface sous forme de message lisible, dans la langue choisie,
 // et sont gardées dans errors.log (en français) pour le diagnostic.
@@ -373,6 +374,15 @@ app.whenReady().then(() => {
     store.saveCareer(state);
     return state;
   });
+  handle('privacy:save', (privacy) => world.savePrivacy({ store, privacy }));
+  handle('privacy:preview', ({ text, privacy, player, handle: h } = {}) => {
+    const state = store.activeCareer();
+    return previewMasked(text, normalizePrivacy(privacy), {
+      careerId: state?.careerId || '',
+      playerName: player || state?.snapshot?.player?.name || '',
+      handle: h || state?.profile?.handle || '',
+    });
+  });
   handle('life:save', (facts) => {
     const state = store.activeCareer();
     if (!state) throw new Error('Synchronise ta sauvegarde une première fois.');
@@ -416,14 +426,14 @@ app.whenReady().then(() => {
   // « Vérifier les mises à jour » : la dernière version publiée sur la page GitHub de LifeLegend, seulement quand il
   // clique. Rien d'autre n'est envoyé (ni identifiant, ni réglage, ni donnée de carrière).
   handle('update:check', async () => {
-    const res = await net.fetch('https://api.github.com/repos/Saamz09/lifelegendmod/releases/latest', { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'LifeLegend' } });
+    const res = await net.fetch('https://api.github.com/repos/LimaDiogenes/BAL_lifelegendmod/releases/latest', { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'LifeLegend' } });
     if (!res.ok) throw new Error(`GitHub ${res.status}`);
     const r = await res.json();
     const latest = String(r.tag_name || '').replace(/^v/, '');
     const parts = (v) => String(v).split('-')[0].split('.').map((x) => parseInt(x, 10) || 0);
     const [a, b] = [parts(latest), parts(app.getVersion())];
     const diff = [0, 1, 2].map((i) => (a[i] || 0) - (b[i] || 0)).find((d) => d !== 0) || 0;
-    const url = /^https:\/\/github\.com\/Saamz09\/lifelegendmod\//.test(r.html_url || '') ? r.html_url : 'https://github.com/Saamz09/lifelegendmod/releases/latest';
+    const url = /^https:\/\/github\.com\/LimaDiogenes\/BAL_lifelegendmod\//.test(r.html_url || '') ? r.html_url : 'https://github.com/LimaDiogenes/BAL_lifelegendmod/releases/latest';
     return { current: app.getVersion(), latest, newer: Boolean(latest) && diff > 0, url };
   });
   // Visages des joueurs qu'une page affiche, lus dans le jeu : { nom : fichier du dossier faces de la carrière }.
