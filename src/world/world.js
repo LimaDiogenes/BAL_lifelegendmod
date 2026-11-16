@@ -34,6 +34,19 @@ function savePrivacy({ store, privacy }) {
   return state;
 }
 
+const aiAuditLog = [];
+function recordAiAudit(req, map) {
+  aiAuditLog.unshift({
+    at: new Date().toISOString(),
+    masked: Boolean(map?.enabled),
+    pairs: map?.pairs?.length || 0,
+    system: String(req?.system || '').slice(0, 500),
+    user: String(req?.user || '').slice(0, 1500),
+  });
+  if (aiAuditLog.length > 12) aiAuditLog.length = 12;
+}
+function getAiAuditLog() { return aiAuditLog; }
+
 // Chaque requête porte la consigne de langue quand la langue n'est pas le français (prompts.withLanguage). Une réponse
 // revenue en français quand même (le modèle léger qui suit un historique en français) est redemandée une fois, avec le
 // modèle choisi et la consigne en tête : une requête de plus, seulement dans ce cas.
@@ -41,12 +54,14 @@ async function complete(settings, apiKey, opts) {
   const map = opts?.privacyMap || null;
   const req = prompts.withLanguage(settings, opts);
   const maskedReq = map?.enabled ? { ...req, system: maskText(req.system, map), user: maskText(req.user, map) } : req;
+  recordAiAudit(maskedReq, map);
   let out = await completeRaw(settings, apiKey, maskedReq);
   if (prompts.wrongLanguage(out, settings.language)) {
     opts.log?.('Réponse revenue en français : redemandée dans la langue choisie.');
     try {
       const retryReq = prompts.withLanguage(settings, { ...opts, light: false, user: `${prompts.languageRetry(settings)}\n\n${opts.user}` });
       const maskedRetry = map?.enabled ? { ...retryReq, system: maskText(retryReq.system, map), user: maskText(retryReq.user, map) } : retryReq;
+      recordAiAudit(maskedRetry, map);
       const again = await completeRaw(settings, apiKey, maskedRetry);
       if (!prompts.wrongLanguage(again, settings.language)) out = again;
     } catch { /* garde out */ }
@@ -2011,7 +2026,7 @@ async function syncInner({ store, settings, log, t }) {
         ...(checkWorld && nationalFacts.world_football ? { world_football: nationalFacts.world_football } : {}),
         user_on_record: state.onRecord,
       };
-      factcheck = await factCheck(out, { settings, apiKey, facts: checkFacts, changes: aiChanges, flags: (out.national || []).flatMap((a, i) => ruleFlags(a).map((f) => ({ item: `national.${i}`, ...f }))), log, onProgress: t.ai, privacyMap });
+      factcheck = await factCheck(out, { settings, apiKey, facts: checkFacts, changes: aiChanges, flags: (out.national || []).flatMap((a, i) => ruleFlags(a).map((f) => ({ item: `national.${i}`, ...f }))), log, onProgress: t.ai, privacyMap, onAudit: (req) => recordAiAudit(req, privacyMap) });
       const n = factcheck.corrections.length;
       log(n ? `Vérification des faits : ${n} correction${n > 1 ? 's' : ''} appliquée${n > 1 ? 's' : ''}.` : 'Vérification des faits : rien à corriger.');
     } catch (err) {
@@ -2715,7 +2730,7 @@ async function submitPressInner({ store, settings, answers, log, t }) {
   if (settings.factCheck !== false) {
     try {
       t.step(1);
-      press.factcheck = await factCheck(draft, { settings, apiKey, facts, changes: {}, log, onProgress: t.ai, privacyMap });
+      press.factcheck = await factCheck(draft, { settings, apiKey, facts, changes: {}, log, onProgress: t.ai, privacyMap, onAudit: (req) => recordAiAudit(req, privacyMap) });
     } catch (err) {
       press.factcheck = { checked: false, error: err.message, corrections: [] };
     }
@@ -2812,7 +2827,7 @@ async function writeAgentMail({ store, state, snapshot, settings, log, t, occasi
   if (settings.factCheck !== false) {
     try {
       t.step(2);
-      const fc = await factCheck(draft, { settings, apiKey, facts, changes: { new_offers: offers }, log, onProgress: t.ai, privacyMap });
+      const fc = await factCheck(draft, { settings, apiKey, facts, changes: { new_offers: offers }, log, onProgress: t.ai, privacyMap, onAudit: (req) => recordAiAudit(req, privacyMap) });
       if (fc.corrections.length) log(`Vérification des faits : ${fc.corrections.length} correction(s) dans le mail de l’agent.`);
     } catch (err) {
       log(`Vérification des faits impossible (${err.message}) : mail envoyé sans relecture.`);
@@ -3099,4 +3114,4 @@ function loadScores({ store }) {
   return state ? store.loadAux(state.careerId, 'scores') : null;
 }
 
-module.exports = { savePrivacy, privacyMapFor, previewMasked, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };
+module.exports = { savePrivacy, privacyMapFor, previewMasked, getAiAuditLog, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };

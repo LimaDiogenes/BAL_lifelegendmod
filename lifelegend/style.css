@@ -4199,3 +4199,13 @@ html, body { height: 100%; overflow: hidden; background: var(--sh-back); }
 .priv-preview p { margin: 0 0 8px; white-space: pre-wrap; color: var(--ink); }
 .priv-tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .priv-tag { padding: 2px 8px; border-radius: var(--r-pill); background: var(--surface-2); border: 1px solid var(--line); font-size: 12px; font-weight: 500; color: var(--ink-2); }
+.priv-notice { margin: 10px 0 12px; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--gold); border-radius: var(--r-s); background: var(--surface-2); font-size: 13px; line-height: 1.45; color: var(--ink-2); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.priv-people-box { border: 1px solid var(--line); border-radius: var(--r-s); background: var(--surface); padding: 10px 12px; }
+.priv-people-box > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 600; list-style: none; }
+.priv-people-box > summary::-webkit-details-marker { display: none; }
+.priv-people-list { display: grid; gap: 8px; margin: 10px 0; }
+.priv-person-row { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(120px, 1fr) minmax(110px, 1fr) auto; gap: 6px; align-items: center; }
+.priv-person-row input { width: 100%; padding: 7px 9px; border: 1px solid var(--line-2); border-radius: var(--r-s); background: var(--surface); color: var(--ink); font-size: 13px; font-weight: 400; }
+.priv-person-del { padding: 6px 10px; border: 1px solid var(--line-2); border-radius: var(--r-s); background: var(--surface-2); color: var(--ink-2); font-size: 13px; font-weight: 600; cursor: pointer; }
+.priv-audit-entry { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.priv-audit-pre { margin: 4px 0 0; padding: 8px; border-radius: var(--r-s); background: var(--surface-2); color: var(--ink-2); font-size: 12px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; max-height: 180px; overflow: auto; }

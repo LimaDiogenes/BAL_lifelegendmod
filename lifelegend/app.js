@@ -420,22 +420,51 @@ const PRIVACY_FIELD_META = [
   ['school', () => tr('École ou lycée'), () => tr('Nom de l’établissement')],
 ];
 
+const PRIVACY_MAX_PEOPLE = 10;
+
+function privacyPersonRowHtml(prefix, person = {}) {
+  return `<div class="priv-person-row">
+    <input class="priv-person-label" value="${esc(person.label || '')}" placeholder="${esc(tr('Libellé (ex. Cousin, Agent)'))}" maxlength="60">
+    <input class="priv-person-real" value="${esc(person.real || '')}" placeholder="${esc(tr('Nom réel'))}" maxlength="120">
+    <input class="priv-person-decoy" value="${esc(person.decoy || '')}" placeholder="${esc(tr('Pseudo (auto)'))}" maxlength="120">
+    <button type="button" class="priv-person-del" title="${esc(tr('Supprimer'))}" aria-label="${esc(tr('Supprimer'))}">×</button>
+  </div>`;
+}
+
+function privacyNoticeHtml(prefix) {
+  return `<div class="priv-notice">
+    <span>${tr('Confidentialité activée par défaut : le nom de ton joueur issu de la sauvegarde est déjà remplacé automatiquement avant tout envoi à l’IA. Si tu mentionnes ta vraie ville, ta famille ou des proches dans cette histoire, ajoute-les dans le bouclier ci-dessous.')}</span>
+    <button type="button" class="btn" id="${prefix}-priv-open-btn">${tr('Configurer le bouclier')}</button>
+  </div>`;
+}
+
 function privacyFormHtml(prefix, priv, { playerName = '', handle = '' } = {}) {
-  const on = Boolean(priv?.enabled);
+  const on = priv?.enabled !== false;
   const f = priv?.fields || {};
+  const people = Array.isArray(priv?.customPeople) ? priv.customPeople.slice(0, PRIVACY_MAX_PEOPLE) : [];
+  const hasFilled = Boolean(f.custom || people.length || PRIVACY_FIELD_META.some(([k]) => Boolean(f[k])));
   const inputs = PRIVACY_FIELD_META.map(([key, labelFn, hintFn]) => {
     const val = f[key] || '';
     const ph = key === 'playerName' && playerName ? playerName : key === 'handle' && handle ? handle : hintFn();
     return `<label class="priv-field"><span>${esc(labelFn())}</span><input id="${prefix}-priv-f-${key}" value="${esc(val)}" placeholder="${esc(ph)}" maxlength="120"></label>`;
   }).join('');
-  return `<details class="priv-box"${on ? ' open' : ''}>
+  return `<details class="priv-box" id="${prefix}-priv-box"${hasFilled ? ' open' : ''}>
     <summary><span>${tr('Confidentialité')}</span><span class="priv-badge${on ? ' on' : ''}" id="${prefix}-priv-badge">${on ? tr('Activé') : tr('Désactivé')}</span></summary>
     <div class="priv-body">
       ${rgSwitch(`${prefix}-priv-on`, on, tr('Protéger mes informations personnelles (remplacées par des pseudonymes avant tout envoi à l’IA)'),
         tr('Tout reste sur ce PC : chaque mot ci-dessous est remplacé par un pseudonyme réaliste avant l’envoi à l’IA, puis rétabli au retour. Laisse vide ce que tu ne mentionnes pas ; ajoute « réel = pseudo » dans les mots libres pour choisir toi-même le remplacement.'))}
       <div class="priv-grid">${inputs}</div>
+      <details class="priv-people-box"${people.length ? ' open' : ''}>
+        <summary><span>${tr('Personnes personnalisées')}</span><span class="priv-badge${people.length ? ' on' : ''}" id="${prefix}-priv-people-count">${people.length} / ${PRIVACY_MAX_PEOPLE}</span></summary>
+        <p class="fineprint">${esc(tr('Ajoute jusqu’à 10 personnes (tu peux renommer chaque libellé).'))}</p>
+        <div class="priv-people-list" id="${prefix}-priv-people-list">${people.map((p) => privacyPersonRowHtml(prefix, p)).join('')}</div>
+        <button type="button" class="btn" id="${prefix}-priv-add-person"${people.length >= PRIVACY_MAX_PEOPLE ? ' disabled' : ''}>${tr('Ajouter une personne')}</button>
+      </details>
       <label class="priv-custom"><span>${tr('Autres mots à masquer')}</span><input id="${prefix}-priv-custom" value="${esc(f.custom || '')}" placeholder="${esc(tr('ex. Rue des Lilas, Rex = Bolt'))}" maxlength="500"></label>
-      <div class="priv-actions"><button type="button" class="btn" id="${prefix}-priv-preview-btn">${tr('Aperçu de ce que voit l’IA')}</button></div>
+      <div class="priv-actions">
+        <button type="button" class="btn" id="${prefix}-priv-preview-btn">${tr('Aperçu de ce que voit l’IA')}</button>
+        <button type="button" class="btn" id="${prefix}-priv-audit-btn">${tr('Voir les derniers envois IA')}</button>
+      </div>
       <div class="priv-preview hidden" id="${prefix}-priv-preview"></div>
     </div>
   </details>`;
@@ -447,10 +476,28 @@ function readPrivacyForm(prefix) {
   const fields = {};
   for (const [key] of PRIVACY_FIELD_META) fields[key] = $(`#${prefix}-priv-f-${key}`)?.value.trim() || '';
   fields.custom = $(`#${prefix}-priv-custom`)?.value.trim() || '';
-  return { enabled: toggle.checked, fields };
+  const list = $(`#${prefix}-priv-people-list`);
+  const customPeople = [];
+  if (list) {
+    list.querySelectorAll('.priv-person-row').forEach((row) => {
+      if (customPeople.length >= PRIVACY_MAX_PEOPLE) return;
+      const label = row.querySelector('.priv-person-label')?.value.trim() || '';
+      const real = row.querySelector('.priv-person-real')?.value.trim() || '';
+      const decoy = row.querySelector('.priv-person-decoy')?.value.trim() || '';
+      if (label || real || decoy) customPeople.push({ label, real, decoy });
+    });
+  }
+  return { enabled: toggle.checked, fields, customPeople };
 }
 
 function bindPrivacyForm(prefix, { getBio, getPlayer, getHandle, onChange } = {}) {
+  const openBtn = $(`#${prefix}-priv-open-btn`);
+  if (openBtn) {
+    openBtn.onclick = () => {
+      const box = $(`#${prefix}-priv-box`);
+      if (box) { box.open = true; box.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+    };
+  }
   const toggle = $(`#${prefix}-priv-on`);
   if (!toggle) return;
   const syncBadge = () => {
@@ -467,6 +514,45 @@ function bindPrivacyForm(prefix, { getBio, getPlayer, getHandle, onChange } = {}
   }
   const custom = $(`#${prefix}-priv-custom`);
   if (custom) custom.oninput = () => onChange?.(readPrivacyForm(prefix));
+
+  const peopleList = $(`#${prefix}-priv-people-list`);
+  const addPersonBtn = $(`#${prefix}-priv-add-person`);
+  const peopleCount = $(`#${prefix}-priv-people-count`);
+  const syncPeopleUi = () => {
+    if (!peopleList) return;
+    const n = peopleList.querySelectorAll('.priv-person-row').length;
+    if (peopleCount) {
+      peopleCount.textContent = `${n} / ${PRIVACY_MAX_PEOPLE}`;
+      peopleCount.classList.toggle('on', n > 0);
+    }
+    if (addPersonBtn) addPersonBtn.disabled = n >= PRIVACY_MAX_PEOPLE;
+  };
+  const bindRow = (row) => {
+    row.querySelectorAll('input').forEach((inp) => { inp.oninput = () => onChange?.(readPrivacyForm(prefix)); });
+    const del = row.querySelector('.priv-person-del');
+    if (del) {
+      del.onclick = () => {
+        row.remove();
+        syncPeopleUi();
+        onChange?.(readPrivacyForm(prefix));
+      };
+    }
+  };
+  if (peopleList) peopleList.querySelectorAll('.priv-person-row').forEach(bindRow);
+  if (addPersonBtn && peopleList) {
+    addPersonBtn.onclick = () => {
+      if (peopleList.querySelectorAll('.priv-person-row').length >= PRIVACY_MAX_PEOPLE) return;
+      const wrap = document.createElement('div');
+      wrap.innerHTML = privacyPersonRowHtml(prefix, {});
+      const row = wrap.firstElementChild;
+      peopleList.appendChild(row);
+      bindRow(row);
+      syncPeopleUi();
+      row.querySelector('.priv-person-label')?.focus();
+      onChange?.(readPrivacyForm(prefix));
+    };
+  }
+
   const btn = $(`#${prefix}-priv-preview-btn`);
   if (btn) {
     btn.onclick = async () => {
@@ -485,11 +571,35 @@ function bindPrivacyForm(prefix, { getBio, getPlayer, getHandle, onChange } = {}
       } catch (err) { toast(err.message, true); }
     };
   }
+
+  const auditBtn = $(`#${prefix}-priv-audit-btn`);
+  if (auditBtn) {
+    auditBtn.onclick = async () => {
+      const box = $(`#${prefix}-priv-preview`);
+      if (!box) return;
+      try {
+        const logs = await live.auditPrivacy();
+        box.classList.remove('hidden');
+        if (!logs?.length) {
+          box.innerHTML = `<p class="fineprint">${esc(tr('Aucune requête IA envoyée durant cette session pour l’instant. Lance une synchro ou écris un message, puis clique ici pour vérifier ce qui est parti.'))}</p>`;
+          return;
+        }
+        const entries = logs.slice(0, 5).map((e) => {
+          const status = e.masked ? tr('{n} mot(s) masqué(s)', { n: e.pairs }) : tr('Protection désactivée');
+          return `<div class="priv-audit-entry">
+            <div class="fineprint">${esc(e.at.slice(11, 19))} · ${esc(status)}</div>
+            <pre class="priv-audit-pre">${esc(e.user || e.system || '')}</pre>
+          </div>`;
+        }).join('');
+        box.innerHTML = `<h4>${esc(tr('Derniers envois réels à l’IA (ce qui a quitté ce PC)'))}</h4>${entries}`;
+      } catch (err) { toast(err.message, true); }
+    };
+  }
 }
 
 function openBioStep(info) {
   const pb = settings.pendingBio?.savePath === settings.savePath ? settings.pendingBio : null;
-  view.setup = { step: 3, newCareer: true, savePath: settings.savePath, info, bio: pb?.text || '', kind: pb?.kind || null, privacy: pb?.privacy || { enabled: false, fields: {} } };
+  view.setup = { step: 3, newCareer: true, savePath: settings.savePath, info, bio: pb?.text || '', kind: pb?.kind || null, privacy: pb?.privacy || { enabled: true, fields: {}, customPeople: [] } };
   if (current === 'settings') current = 'national';
   render();
   viewScrollTo(0);
@@ -561,6 +671,7 @@ function setupBioHtml(su) {
       <p class="su-ask">${tr('Qui incarnes-tu ?')}</p>
       <div class="saves su-kind">${kindOptions('su-kind', su.kind, su.busy)}</div>
       ${written ? `<p class="su-text">${tr('Raconte son histoire : d’où il vient, où il a grandi, ses premiers clubs, sa famille, son caractère, ce dont il rêve. Dans ce monde, tout cela sera vrai : la presse le présentera ainsi dès la première édition, et Panthéon en fera le premier chapitre de sa page.')}</p>
+      ${privacyNoticeHtml('su')}
       <textarea id="su-bio" rows="11" maxlength="${BIO_MAX}" placeholder="${tr('Il est né à… Il a grandi dans… Il a commencé le football à…')}"${su.busy ? ' disabled' : ''}>${esc(su.bio)}</textarea>
       <p class="su-count" id="su-count">${su.bio.length} / ${BIO_MAX}</p>
       <p class="fineprint">${tr('Si elle contredit la sauvegarde (âge, club, sélection), c’est la sauvegarde qui l’emporte. Tu pourras l’écrire ou la modifier plus tard dans les réglages.')}</p>
@@ -7639,9 +7750,10 @@ async function renderSettings(page) {
     ${state ? panel('me', [
     // « Ton histoire » réunit la biographie et l'ancien « Ma vie » : ses lignes, s'il en reste, s'ajoutent au texte.
     rgRow('rg-mebio', tr('Ton histoire'), `<p class="su-ask">${tr('Qui incarnes-tu ?')}</p><div class="saves su-kind">${kindOptions('rg-kind', state.playerKind)}</div>
+      ${state.playerKind === 'real' ? '' : privacyNoticeHtml('rg')}
       <textarea id="bio" aria-label="${tr('Ton histoire')}" class="${state.playerKind === 'real' ? 'hidden' : ''}" rows="10" maxlength="${BIO_MAX}">${esc([state.bio?.text, ...(state.myLife || [])].filter(Boolean).join('\n'))}</textarea>`,
       tr('D’où vient ton joueur, ses premiers clubs, son caractère, et aussi sa vie d’aujourd’hui : sa famille, sa ville, son chien… Tout le monde dans ce monde la tient pour vraie, et Panthéon en fait le premier chapitre de sa page à la prochaine édition.')),
-    rgRow('rg-privacy', tr('Confidentialité'), privacyFormHtml('rg', state.privacy || settings.privacy || { enabled: false, fields: {} }, { playerName: state.snapshot?.player?.name || '', handle: state.profile?.handle || '' })),
+    rgRow('rg-privacy', tr('Confidentialité'), privacyFormHtml('rg', state.privacy || settings.privacy || { enabled: true, fields: {}, customPeople: [] }, { playerName: state.snapshot?.player?.name || '', handle: state.profile?.handle || '' })),
   ]) : ''}
     ${panel('about', [
     rgRow('rg-about', tr('À propos de LifeLegend'), `<p class="fineprint">${esc(/-/.test(appVersion || '') ? tr('Version {v} · bêta', { v: appVersion }) : tr('Version {v}', { v: appVersion || '—' }))}</p>
