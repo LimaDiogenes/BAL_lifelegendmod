@@ -5,6 +5,7 @@
 // joueur ni de texte personnel (biographie, posts, mails, messages) : les chemins et les journaux sont nettoyés.
 
 const os = require('os');
+const { privacyWords } = require('./ai/privacyShield');
 
 const SETTINGS = ['provider', 'model', 'language', 'theme', 'autoSync', 'factCheck', 'tribuneThreads', 'transversaleBrief', 'replays', 'offerRedirect', 'influenceWrites', 'fanVulgarity'];
 const PATHS = ['savePath', 'gameDir', 'clipsDir'];
@@ -48,7 +49,7 @@ function careerLines(state) {
 
 // Le rapport complet. logs : { errors, activity, sync } (textes bruts, nettoyés ici).
 function buildReport({ version, settings = {}, state = null, logs = {}, env = {}, now = new Date() }) {
-  const names = [state?.snapshot?.player?.name, ...(String(state?.snapshot?.player?.name || '').split(/\s+/)), state?.profile?.displayName, state?.profile?.handle, state?.careerId];
+  const names = [state?.snapshot?.player?.name, ...(String(state?.snapshot?.player?.name || '').split(/\s+/)), state?.profile?.displayName, state?.profile?.handle, state?.careerId, ...privacyWords(state?.privacy)];
   const clean = (t) => scrub(t, { names });
   const lines = [
     'LifeLegend · rapport de problème',

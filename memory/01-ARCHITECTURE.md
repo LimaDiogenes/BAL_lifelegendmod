@@ -17,11 +17,12 @@ All file paths below are relative to `F:\_Antigravity_Projects\BAL_lifelegendmod
   - Loads 64-byte `.bin` save decryption keys from `%APPDATA%\LiveTweet\data\keys\`.
   - `setupAutoSync()` polls `settings.savePath` every 4 s (`fs.watchFile`), waits 8 s after modification finishes, validates with `peekSave()`, and calls `world.sync()`.
   - `startMediaWatch()` checks every 10 s (when not syncing) for new `REPLAY*` files and captured clips.
-  - Registers IPC handlers including `share:image` / `share:save` (1.1.0 PNG card capture to clipboard/file), `update:check` (currently checks `Saamz09/lifelegendmod`), `report:make`, and save-write endpoints.
-- [`preload.js`](../preload.js): Exposes `window.live` via `contextBridge` with `contextIsolation: true` and `sandbox: true`.
-- [`src/store.js`](../src/store.js): Persists `settings.json` (API keys encrypted via Electron `safeStorage`), `active.json`, and per-career folders `careers/<playerId>-<slug>/` (`state.json`, `scores.json`, `clubs.json`, `influence.json`, `backups/`, `emblems/`, `faces/`, `boots/`, `profile/`).
-- [`src/i18n.js`](../src/i18n.js): Shares `lifelegend/i18n/<lang>.js` dictionaries (`en`, `es`, `it`, `pt`, `de`; French is the base key language) with main process dialogs, notifications, and error regex patterns.
-- [`src/report.js`](../src/report.js): Generates sanitized problem reports (`scrub()` masks user paths, player names, emails, and API key patterns).
+  - Registers IPC handlers including `share:image` / `share:save` (PNG card capture to clipboard/file), `privacy:save` / `privacy:preview` (Privacy Shield configuration & live preview), `update:check` (points to `LimaDiogenes/BAL_lifelegendmod`), `report:make`, and save-write endpoints.
+  - Defaults fallback language (`lang0`) to `'en'`.
+- [`preload.js`](../preload.js): Exposes `window.live` via `contextBridge` with `contextIsolation: true` and `sandbox: true` (including `savePrivacy` and `previewPrivacy`).
+- [`src/store.js`](../src/store.js): Persists `settings.json` (defaults `language: 'en'`; API keys encrypted via Electron `safeStorage`), `active.json`, and per-career folders `careers/<playerId>-<slug>/` (`state.json`, `scores.json`, `clubs.json`, `influence.json`, `backups/`, `emblems/`, `faces/`, `boots/`, `profile/`).
+- [`src/i18n.js`](../src/i18n.js): Shares `lifelegend/i18n/<lang>.js` dictionaries (`en`, `pt` as `Português (Brasil)`, `es`, `it`, `de`; French strings remain the source keys in JS code).
+- [`src/report.js`](../src/report.js): Generates sanitized problem reports (`scrub()` masks user paths, player names, emails, API key patterns, and configured Privacy Shield words via `privacyWords()`).
 
 ## 3. Save Reading, Game DB & Safe Writing (`src/save/`)
 - [`pesCrypt.js`](../src/save/pesCrypt.js): JS port of `libpesXcrypter` (MT19937 stream cipher + SHA-512 header hashes). Built-in PES 2021 key + extra 64-byte keys loaded via `setSaveKeys()`. `splitSave()` / `joinSave()` preserve the encryption key used to open the file.
@@ -38,12 +39,13 @@ All file paths below are relative to `F:\_Antigravity_Projects\BAL_lifelegendmod
   - Unpacks `@UTF` CPK tables, inflates `WESYS` zlib streams, decodes `DXT1`/`DXT3`/`DXT5` DDS to PNG, and reads `TEMBLEM*` / `REPLAY*` save slots.
 
 ## 4. AI Pipeline (`src/ai/`)
+- [`privacyShield.js`](../src/ai/privacyShield.js) *(added in fork Phase 2)*: Deterministic local decoy substitution (`maskText`) and restoration (`unmaskText`) for personal identifiers (`playerName`, `nickname`, `handle`, `hometown`, `region`, family/friends/pet, youth club/coach, school, custom `real = decoy` entries) across all AI prompts (`world.js`, `factcheck.js`), voice dictation, and diagnostic reports (`src/report.js`).
 - [`providers.js`](../src/ai/providers.js): Supports `anthropic` (`@anthropic-ai/sdk`), `google` (Gemini REST SSE), `openai`, `groq`, `openrouter`, and `custom` (OpenAI-compatible `baseUrl`). Handles rate-limit `retryAfter` waits (`<= 60 s`), 1-hour daily-quota cooldown tracking (`exhausted` map), backup model fallback chains (`google.backups`), `lightModel()` routing for lightweight chats/threads, and Gemini audio dictation (`transcribe()`).
 - [`prompts.js`](../src/ai/prompts.js): Builds system/user prompts for *La Transversale*, repair pass, edition bundle (local paper, Kop, Mails, Panthéon, Vestiaire), Kop replies/threads/discussions, DMs, press conferences, agent mails, influence mails, interviews, and fact-check. Appends target-language rules via `withLanguage()` and checks for French leakage via `wrongLanguage()`.
-- [`factcheck.js`](../src/ai/factcheck.js): Post-generation verification against `FACTS`/`CHANGES` + deterministic `paperRules` flags, applying literal `find -> replace` patches (with truncated-JSON salvage via `salvageCorrections()` in 1.1.0).
+- [`factcheck.js`](../src/ai/factcheck.js): Post-generation verification against `FACTS`/`CHANGES` + deterministic `paperRules` flags, applying literal `find -> replace` patches (with truncated-JSON salvage via `salvageCorrections()`). In fork Phase 2–3, adds deterministic banter pre-filtering (`hasFactualClaim`, `needsAiFactCheck`, `draftItems(..., { filterBanter: true })`) to skip empty AI checks and applies `privacyMap` masking/unmasking.
 
 ## 5. World Simulation (`src/world/`)
-- [`world.js`](../src/world/world.js) orchestrates `sync()` and interactive actions (`post`, `replyToPost`, `sendDm`, `sendHuddle`, `replyMail`, `openPress`/`submitPress`, `influenceRequest`/`influenceApply`, `redirectOffer`, `conductApply`).
+- [`world.js`](../src/world/world.js) orchestrates `sync()` and interactive actions (`post`, `replyToPost`, `sendDm`, `sendHuddle`, `replyMail`, `openPress`/`submitPress`, `influenceRequest`/`influenceApply`, `redirectOffer`, `conductApply`), plus `savePrivacy` / `privacyMapFor` / `previewMasked`. In fork Phase 3, trims interactive `FACTS` payloads via `kopInteractionFacts`, `pressFacts`, `mailReplyFacts`, and slims `checkFacts`.
 - **Sync flow:**
   1. Read save + DB -> `snapshot.js` (`buildSnapshot`, `diffSnapshots`).
   2. Deterministic updates: `seasons.js`, `pantheon.js`, `awards.js`, `agent.js`, `promises.js`, `fanMood.js`, `toneContext.js`, `mercato.js`, `influence.js`, `rival.js`, `derby.js`, `reunion.js`, `fanVote.js`, `chant.js`, `clubPosts.js`, `competitions.js`, `media.js`, `coachAdvice.js`, `dms.js`, `huddle.js`, `conduct.js`, `objectives.js`, `sponsors.js`, `interview.js`.

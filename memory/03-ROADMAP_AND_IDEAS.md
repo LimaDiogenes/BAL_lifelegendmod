@@ -13,18 +13,19 @@
 
 ## 2. Owner's 12 Improvement Ideas (Tracked Scope)
 
-1. **English-Based Core + More Translations:**
-   - Currently French is the base key language in `src/store.js` (`language: 'fr'`), `lifelegend/app.js`, `src/i18n.js`, and error strings; `prompts.js` is mostly English with French examples/data cues.
-   - Goal: make English (`en`) the default/base language, migrate prompts/cues cleanly, and make adding new translations easy.
+1. **English-Based Core + More Translations — *Phase 1 Implemented & Verified*:**
+   - Default language switched to English (`en`) in `src/store.js`, `main.js`, and `lifelegend/app.js`; `Português (Brasil)` (`pt`) prioritized second in `LANGS`; `update:check` in `main.js` updated to `LimaDiogenes/BAL_lifelegendmod`. Preserved `fr/es/it/pt/de` with full parity verified by `tests/i18n.test.js` (`tests 229, pass 206, fail 0, skipped 23`).
+   - Remaining future work: optional source-key migration from French literals and adding extra languages.
 2. **UI Improvements:**
    - Pure HTML/CSS/vanilla JS in `lifelegend/` (zero build step). Clean up UX, layouts, onboarding, and readability.
 3. **Country-Specific Newspapers (`La Transversale` -> Regional Dailies):**
    - Map `snapshot.league.id` / country to a distinct national sports daily masthead, editorial tone, and writer desk per country (England, Spain, Italy, Germany, France, Brazil, Argentina, Portugal, Netherlands, etc.) while still covering world football.
-4. **AI Usage & Token Efficiency:**
-   - Optimize `FACTS` payload size, avoid sending unused fields, gate `factCheck` AI call behind deterministic pre-checks (e.g., `paperRules.js` / regex number-name verification), and consider structured output schemas (`responseSchema`) where supported.
-5. **Privacy via Local Decoy Aliases / Variables:**
-   - Never leak personal user identifiers (real player name, family/bio names, hometown, handles) to external AI APIs.
-   - Preferred design: deterministic local alias substitution (swap personal names/places with language-appropriate decoy names before calling AI, then reverse-substitute back locally in the parsed result) so grammar/gender stays natural across all languages.
+4. **AI Usage & Token Efficiency — *Phase 3 Implemented & Verified*:**
+   - Added deterministic `hasFactualClaim` / `needsAiFactCheck` pre-filtering and `filterBanter` support in `src/ai/factcheck.js` so banter-only drafts skip AI calls (`skipped: true`), trimmed interactive `FACTS` builders (`kopInteractionFacts`, `pressFacts`, `mailReplyFacts`), and slimmed `factCheck` `checkFacts` in `src/world/world.js` (verified by `npm test`, `tests/privacy.test.js`).
+   - Remaining future work: consider structured output schemas (`responseSchema`) where supported.
+5. **Privacy via Local Decoy Aliases / Variables — *Phase 2 Implemented & Verified*:**
+   - Implemented `src/ai/privacyShield.js` (`normalizePrivacy`, `buildPrivacyMap`, `maskText`, `unmaskText`, `privacyWords`, `previewMasked`) wired across all AI prompts (`world.js`, `factcheck.js`), voice dictation, and `src/report.js`, plus IPC `privacy:save`/`privacy:preview` and UI Privacy Shield controls + live preview in Setup Step 3 & Settings › *Your Player* across all 5 `i18n/*.js` dictionaries.
+   - Zero personal identifiers leave the PC; verified by `tests/privacy.test.js` (`pass 10/10`) and full `npm test` (`pass 206, fail 0, skipped 23`).
 6. **Expanded AI Model & Free/Open-Source API Support:**
    - Add presets in `src/ai/providers.js` for local zero-key endpoints (Ollama, LM Studio) and additional free-tier/open-weight OpenAI-compatible providers (Mistral, Cerebras, SambaNova, GitHub Models, DeepSeek, etc.) + easy model refresh.
 7. **Multi-Season Career History Reading (Beyond Current Season):**
@@ -48,4 +49,4 @@
 - **Recommended integration (side-by-side packaging & launch):**
   - Package LifeLegend portable build inside a Mod Studio subfolder (or downloadable module) using `tools/build-portable.js`.
   - Add a Mod Studio launcher action that pre-populates `%APPDATA%\LiveTweet\data\settings.json` (and copies/registers `FL_key.bin` into `%APPDATA%\LiveTweet\data\keys/` if missing) with the game path, language, and active save path, then starts `LifeLegend.exe`.
-  - Note: Check `update:check` URL in `main.js` before release so it points to `LimaDiogenes/BAL_lifelegendmod` instead of upstream `Saamz09/lifelegendmod`.
+  - `update:check` URL in `main.js` now points to `LimaDiogenes/BAL_lifelegendmod` (updated in Phase 1).

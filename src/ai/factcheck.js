@@ -4,6 +4,7 @@
 
 const providers = require('./providers');
 const prompts = require('./prompts');
+const { maskText, unmaskText } = require('./privacyShield');
 
 const FIELDS = {
   national: ['headline', 'dek', 'body'],
@@ -16,13 +17,23 @@ const FIELDS = {
 };
 
 const LABELS = { national: 'La Transversale', local: 'Journal local', posts: 'Kop', emails: 'Mails', pantheon: 'Panthéon', huddle: 'Vestiaire', huddle_national: 'Vestiaire' };
+const ALWAYS_CHECK = new Set(['national', 'local', 'pantheon', 'emails']);
+const FACT_CLAIM_RE = /\d|[«»“”"]|\b(buts?|goals?|gols?|tore|pass(?:e|es)|assists?|victoires?|défaites?|wins?|defeats?|draws?|nuls?|bless\w*|injur\w*|lesi[oóã]n\w*|transfers?|sign(?:ed|ing)?|contrats?|contracts?|leaders?|premiers?|first|derniers?|last|champions?|titres?|titles?|triplés?|doublés?|hat-tricks?|braces?|clean sheets?)\b/i;
+
+function hasFactualClaim(entry, fields) {
+  return fields.some((f) => typeof entry?.[f] === 'string' && FACT_CLAIM_RE.test(entry[f]));
+}
 
 // Brouillon à relire : un élément par article, post ou mail, repéré par « section.index ».
-function draftItems(out) {
+function draftItems(out, opts = null) {
+  const filterBanter = Boolean(opts?.filterBanter);
+  const flagged = new Set((opts?.flags || []).map((f) => f.item));
   const items = [];
   for (const [section, fields] of Object.entries(FIELDS)) {
     (out[section] || []).forEach((entry, i) => {
-      const item = { item: `${section}.${i}` };
+      const ref = `${section}.${i}`;
+      if (filterBanter && !ALWAYS_CHECK.has(section) && !flagged.has(ref) && !hasFactualClaim(entry, fields)) return;
+      const item = { item: ref };
       if (section === 'posts') item.author = `@${entry.handle}`;
       if (section === 'huddle' || section === 'huddle_national') item.author = entry.from;
       if (section === 'emails') item.from = entry.from;
@@ -31,6 +42,10 @@ function draftItems(out) {
     });
   }
   return items;
+}
+
+function needsAiFactCheck(out, { flags = [] } = {}) {
+  return flags.length > 0 || draftItems(out, { flags, filterBanter: true }).length > 0;
 }
 
 function locate(out, ref) {
@@ -83,16 +98,19 @@ function salvageCorrections(text) {
 }
 
 // flags : les phrases que le code a prises en faute (src/world/paperRules.js), corrigées dans la même requête.
-async function factCheck(out, { settings, apiKey, facts, changes, flags = [], log, onProgress }) {
-  const draft = draftItems(out);
-  if (!draft.length) return { checked: true, corrections: [] };
-  const text = await providers.complete(settings, apiKey, prompts.withLanguage(settings, {
+async function factCheck(out, { settings, apiKey, facts, changes, flags = [], log, onProgress, privacyMap = null }) {
+  const draft = draftItems(out, { flags, filterBanter: true });
+  if (!needsAiFactCheck(out, { flags }) || !draft.length) return { checked: true, skipped: true, corrections: [] };
+  const req = prompts.withLanguage(settings, {
     system: prompts.factcheckSystem(settings),
     user: prompts.factcheckUser({ facts, changes, draft, flags }),
     maxTokens: 9000,
     log,
     onProgress,
-  }));
+  });
+  const maskedReq = privacyMap?.enabled ? { ...req, system: maskText(req.system, privacyMap), user: maskText(req.user, privacyMap) } : req;
+  const rawText = await providers.complete(settings, apiKey, maskedReq);
+  const text = privacyMap?.enabled ? unmaskText(rawText, privacyMap) : rawText;
   let result;
   try { result = providers.parseJson(text); } catch (err) {
     const saved = salvageCorrections(text);
@@ -103,4 +121,4 @@ async function factCheck(out, { settings, apiKey, facts, changes, flags = [], lo
   return { checked: true, corrections: applyCorrections(out, result.corrections) };
 }
 
-module.exports = { factCheck, applyCorrections, draftItems, salvageCorrections };
+module.exports = { factCheck, applyCorrections, draftItems, salvageCorrections, hasFactualClaim, needsAiFactCheck };

@@ -54,6 +54,8 @@ contextBridge.exposeInMainWorld('live', {
   sendHuddle: (text, groupId) => call('huddle:send', { text, groupId }),
   readHuddle: (groupId) => call('huddle:read', groupId),
   saveBio: (bio) => call('bio:save', bio),
+  savePrivacy: (privacy) => call('privacy:save', privacy),
+  previewPrivacy: (arg) => call('privacy:preview', arg),
   newCareerInfo: () => call('career:new'),
   saveLife: (facts) => call('life:save', facts),
   saveProfile: (profile) => call('profile:save', profile),

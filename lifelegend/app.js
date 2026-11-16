@@ -13,7 +13,7 @@ const linkify = (text) => esc(text).replace(/(^|\s)(@\w+)/g, '$1<span class="men
 // étant remplacé par la valeur donnée. trn() choisit la forme selon le nombre, avec les règles de la langue (en
 // français 0 et 1 sont au singulier, en anglais seul 1). Un texte absent du dictionnaire reste en français.
 const LOCALES = { fr: 'fr-FR', en: 'en-GB', es: 'es-ES', it: 'it-IT', pt: 'pt-BR', de: 'de-DE' };
-const lang = () => (LOCALES[settings?.language] ? settings.language : 'fr');
+const lang = () => (settings ? (LOCALES[settings.language] ? settings.language : 'en') : 'fr');
 const locale = () => LOCALES[lang()];
 // Italien : l'article devant un nom de club s'accorde à sa première lettre (« dell’Heerenveen », « lo Sparta »).
 const IT_ART = { 'con il ': ['con l’', 'con lo '], 'del ': ['dell’', 'dello '], 'al ': ['all’', 'allo '], 'dal ': ['dall’', 'dallo '], 'nel ': ['nell’', 'nello '], 'il ': ['l’', 'lo '] };
@@ -403,8 +403,93 @@ const setupActive = () => !state || Boolean(view.setup?.newCareer);
 const SETUP_STEPS = ['Ta sauvegarde', 'Ta clé d’IA', 'Sa biographie'];
 const BIO_MAX = 3000;
 
+const PRIVACY_FIELD_META = [
+  ['playerName', () => tr('Nom du joueur'), () => tr('Nom dans la sauvegarde (ex. Lucas Silva)')],
+  ['nickname', () => tr('Surnom'), () => tr('Surnom personnel')],
+  ['handle', () => tr('Pseudo Kop'), () => tr('Sans @')],
+  ['hometown', () => tr('Ville d’origine'), () => tr('Ville natale ou de résidence')],
+  ['region', () => tr('Quartier ou région'), () => tr('Quartier, État ou région')],
+  ['partner', () => tr('Conjoint(e)'), () => tr('Prénom')],
+  ['father', () => tr('Père'), () => tr('Prénom')],
+  ['mother', () => tr('Mère'), () => tr('Prénom')],
+  ['siblings', () => tr('Frères, sœurs, enfants'), () => tr('Séparés par des virgules')],
+  ['friend', () => tr('Meilleur ami'), () => tr('Prénom')],
+  ['pet', () => tr('Animal'), () => tr('Nom')],
+  ['youthClub', () => tr('Club formateur réel'), () => tr('Premier club')],
+  ['youthCoach', () => tr('Entraîneur formateur'), () => tr('Nom')],
+  ['school', () => tr('École ou lycée'), () => tr('Nom de l’établissement')],
+];
+
+function privacyFormHtml(prefix, priv, { playerName = '', handle = '' } = {}) {
+  const on = Boolean(priv?.enabled);
+  const f = priv?.fields || {};
+  const inputs = PRIVACY_FIELD_META.map(([key, labelFn, hintFn]) => {
+    const val = f[key] || '';
+    const ph = key === 'playerName' && playerName ? playerName : key === 'handle' && handle ? handle : hintFn();
+    return `<label class="priv-field"><span>${esc(labelFn())}</span><input id="${prefix}-priv-f-${key}" value="${esc(val)}" placeholder="${esc(ph)}" maxlength="120"></label>`;
+  }).join('');
+  return `<details class="priv-box"${on ? ' open' : ''}>
+    <summary><span>${tr('Confidentialité')}</span><span class="priv-badge${on ? ' on' : ''}" id="${prefix}-priv-badge">${on ? tr('Activé') : tr('Désactivé')}</span></summary>
+    <div class="priv-body">
+      ${rgSwitch(`${prefix}-priv-on`, on, tr('Protéger mes informations personnelles (remplacées par des pseudonymes avant tout envoi à l’IA)'),
+        tr('Tout reste sur ce PC : chaque mot ci-dessous est remplacé par un pseudonyme réaliste avant l’envoi à l’IA, puis rétabli au retour. Laisse vide ce que tu ne mentionnes pas ; ajoute « réel = pseudo » dans les mots libres pour choisir toi-même le remplacement.'))}
+      <div class="priv-grid">${inputs}</div>
+      <label class="priv-custom"><span>${tr('Autres mots à masquer')}</span><input id="${prefix}-priv-custom" value="${esc(f.custom || '')}" placeholder="${esc(tr('ex. Rue des Lilas, Rex = Bolt'))}" maxlength="500"></label>
+      <div class="priv-actions"><button type="button" class="btn" id="${prefix}-priv-preview-btn">${tr('Aperçu de ce que voit l’IA')}</button></div>
+      <div class="priv-preview hidden" id="${prefix}-priv-preview"></div>
+    </div>
+  </details>`;
+}
+
+function readPrivacyForm(prefix) {
+  const toggle = $(`#${prefix}-priv-on`);
+  if (!toggle) return null;
+  const fields = {};
+  for (const [key] of PRIVACY_FIELD_META) fields[key] = $(`#${prefix}-priv-f-${key}`)?.value.trim() || '';
+  fields.custom = $(`#${prefix}-priv-custom`)?.value.trim() || '';
+  return { enabled: toggle.checked, fields };
+}
+
+function bindPrivacyForm(prefix, { getBio, getPlayer, getHandle, onChange } = {}) {
+  const toggle = $(`#${prefix}-priv-on`);
+  if (!toggle) return;
+  const syncBadge = () => {
+    const badge = $(`#${prefix}-priv-badge`);
+    if (!badge) return;
+    badge.classList.toggle('on', toggle.checked);
+    badge.textContent = toggle.checked ? tr('Activé') : tr('Désactivé');
+  };
+  const notify = () => { syncBadge(); onChange?.(readPrivacyForm(prefix)); };
+  toggle.onchange = notify;
+  for (const [key] of PRIVACY_FIELD_META) {
+    const el = $(`#${prefix}-priv-f-${key}`);
+    if (el) el.oninput = () => onChange?.(readPrivacyForm(prefix));
+  }
+  const custom = $(`#${prefix}-priv-custom`);
+  if (custom) custom.oninput = () => onChange?.(readPrivacyForm(prefix));
+  const btn = $(`#${prefix}-priv-preview-btn`);
+  if (btn) {
+    btn.onclick = async () => {
+      const box = $(`#${prefix}-priv-preview`);
+      if (!box) return;
+      try {
+        const priv = readPrivacyForm(prefix);
+        const r = await live.previewPrivacy({ text: getBio?.() || '', privacy: { ...priv, enabled: true }, player: getPlayer?.() || '', handle: getHandle?.() || '' });
+        box.classList.remove('hidden');
+        if (!r.pairs.length) {
+          box.innerHTML = `<p class="fineprint">${esc(tr('Aucun mot protégé pour l’instant : active la protection ou remplis un champ.'))}</p>`;
+          return;
+        }
+        const tags = r.pairs.map((p) => `<span class="priv-tag">${esc(p.real)} → <b>${esc(p.decoy)}</b></span>`).join('');
+        box.innerHTML = `${r.masked ? `<h4>${esc(tr('Ce que l’IA recevra'))}</h4><p>${esc(r.masked)}</p>` : ''}<h4>${esc(tr('Remplacements actifs'))}</h4><div class="priv-tags">${tags}</div>`;
+      } catch (err) { toast(err.message, true); }
+    };
+  }
+}
+
 function openBioStep(info) {
-  view.setup = { step: 3, newCareer: true, savePath: settings.savePath, info, ...(settings.pendingBio?.savePath === settings.savePath ? { bio: settings.pendingBio.text, kind: settings.pendingBio.kind || null } : { bio: '', kind: null }) };
+  const pb = settings.pendingBio?.savePath === settings.savePath ? settings.pendingBio : null;
+  view.setup = { step: 3, newCareer: true, savePath: settings.savePath, info, bio: pb?.text || '', kind: pb?.kind || null, privacy: pb?.privacy || { enabled: false, fields: {} } };
   if (current === 'settings') current = 'national';
   render();
   viewScrollTo(0);
@@ -478,7 +563,8 @@ function setupBioHtml(su) {
       ${written ? `<p class="su-text">${tr('Raconte son histoire : d’où il vient, où il a grandi, ses premiers clubs, sa famille, son caractère, ce dont il rêve. Dans ce monde, tout cela sera vrai : la presse le présentera ainsi dès la première édition, et Panthéon en fera le premier chapitre de sa page.')}</p>
       <textarea id="su-bio" rows="11" maxlength="${BIO_MAX}" placeholder="${tr('Il est né à… Il a grandi dans… Il a commencé le football à…')}"${su.busy ? ' disabled' : ''}>${esc(su.bio)}</textarea>
       <p class="su-count" id="su-count">${su.bio.length} / ${BIO_MAX}</p>
-      <p class="fineprint">${tr('Si elle contredit la sauvegarde (âge, club, sélection), c’est la sauvegarde qui l’emporte. Tu pourras l’écrire ou la modifier plus tard dans les réglages.')}</p>` : ''}
+      <p class="fineprint">${tr('Si elle contredit la sauvegarde (âge, club, sélection), c’est la sauvegarde qui l’emporte. Tu pourras l’écrire ou la modifier plus tard dans les réglages.')}</p>
+      ${privacyFormHtml('su', su.privacy, { playerName: su.info?.player || '' })}` : ''}
     </section>
     <div class="su-nav"><button class="btn big" id="su-back"${su.busy ? ' disabled' : ''}>${su.newCareer ? tr('Annuler') : tr('Retour')}</button><button class="btn primary big" id="su-publish"${su.busy ? ' disabled' : ''}>${su.busy ? tr('Première édition en préparation…') : tr('Publier la première édition')}</button></div>`;
 }
@@ -498,10 +584,12 @@ async function setupScan() {
 async function setupPublish() {
   const su = view.setup;
   const text = su.kind === 'real' ? '' : su.bio.trim();
+  const privacy = readPrivacyForm('su') || su.privacy || { enabled: false, fields: {} };
+  su.privacy = privacy;
   su.busy = true;
   render();
   try {
-    settings = await live.saveSettings({ savePath: su.savePath, pendingBio: { savePath: su.savePath, text, kind: su.kind } });
+    settings = await live.saveSettings({ savePath: su.savePath, pendingBio: { savePath: su.savePath, text, kind: su.kind, privacy } });
     if (await doSync({ bioAsked: true })) {
       view.setup = null;
       render();
@@ -514,7 +602,7 @@ async function setupPublish() {
 }
 
 function renderSetup(page) {
-  const su = (view.setup ||= { step: 1, savePath: settings.savePath || null, info: null, saves: null, bio: settings.pendingBio?.text || '', kind: settings.pendingBio?.kind || null });
+  const su = (view.setup ||= { step: 1, savePath: settings.savePath || null, info: null, saves: null, bio: settings.pendingBio?.text || '', kind: settings.pendingBio?.kind || null, privacy: settings.pendingBio?.privacy || { enabled: false, fields: {} } });
   const steps = su.newCareer ? '' : `<ol class="su-steps">${SETUP_STEPS.map((l, i) => `<li class="${i + 1 === su.step ? 'on' : i + 1 < su.step ? 'done' : ''}"><b>${i + 1}</b><span>${tr(l)}</span></li>`).join('')}</ol>`;
   const hero = su.step === 1 ? `<p class="k-eyebrow">${tr('Première édition · bientôt en kiosque')}</p>
       <h1>${tr('Ta carrière va faire <em>la une</em>.')}</h1><div class="k-rule"></div>
@@ -574,6 +662,7 @@ function renderSetup(page) {
     });
     const ta = $('#su-bio');
     if (ta) ta.oninput = () => { su.bio = ta.value; $('#su-count').textContent = `${ta.value.length} / ${BIO_MAX}`; };
+    bindPrivacyForm('su', { getBio: () => su.bio, getPlayer: () => su.info?.player || '', onChange: (p) => { su.privacy = p; } });
     $('#su-publish').onclick = setupPublish;
   }
 }
@@ -7451,7 +7540,7 @@ addEventListener('scroll', ptScrollSpy, { passive: true, capture: true });
 // Réglages (refonte du 2026-11-09, sur sa référence « Settings ») : un titre, des onglets, et dans chaque onglet des
 // lignes (l'intitulé à gauche, le réglage et son explication à droite) ; en bas, Annuler et Enregistrer. Tous les
 // onglets restent dans la page (cachés) : Enregistrer prend aussi ce qui a changé dans un autre onglet.
-const LANGS = [['fr', 'Français'], ['en', 'English'], ['es', 'Español'], ['it', 'Italiano'], ['pt', 'Português'], ['de', 'Deutsch']];
+const LANGS = [['en', 'English'], ['pt', 'Português (Brasil)'], ['es', 'Español'], ['fr', 'Français'], ['it', 'Italiano'], ['de', 'Deutsch']];
 const LANG_FLAGS = { fr: '🇫🇷', en: '🇬🇧', es: '🇪🇸', it: '🇮🇹', pt: '🇧🇷', de: '🇩🇪' };
 const RG_TABS = [
   ['save', 'Sauvegarde', 'Où LifeLegend lit ta carrière, et ce qu’il a le droit d’y écrire.'],
@@ -7462,7 +7551,7 @@ const RG_TABS = [
   ['about', 'À propos', ''],
 ];
 // L'onglet de chaque section qu'ouvrent les autres pages (« Réglages de l'IA », « Ajouter ma clé… », la bio de Panthéon).
-const RG_SECTION_TAB = { 'rg-save': 'save', 'rg-key': 'save', 'rg-names': 'save', 'rg-ai': 'ai', 'rg-lang': 'look', 'rg-theme': 'look', 'rg-tone': 'world', 'rg-replays': 'world', 'rg-mebio': 'me','rg-about': 'about', 'rg-update': 'about' };
+const RG_SECTION_TAB = { 'rg-save': 'save', 'rg-key': 'save', 'rg-names': 'save', 'rg-ai': 'ai', 'rg-lang': 'look', 'rg-theme': 'look', 'rg-tone': 'world', 'rg-replays': 'world', 'rg-mebio': 'me', 'rg-privacy': 'me', 'rg-about': 'about', 'rg-update': 'about' };
 const rgRow = (id, label, control, note = '') => `<div class="rg-row"${id ? ` id="${id}"` : ''}><div class="rg-label"><h3>${label}</h3>${note ? `<p>${note}</p>` : ''}</div><div class="rg-ctl">${control}</div></div>`;
 const rgSwitch = (id, on, label, note = '') => `<label class="rg-switch"><input type="checkbox" id="${id}"${on ? ' checked' : ''}><span class="rg-switch-text"><b>${label}</b>${note ? `<small>${note}</small>` : ''}</span></label>`;
 // Miniature d'un thème : le cadre de LifeLegend (rail, barre, blocs), clair ou sombre ; Automatique est coupé en diagonale.
@@ -7552,6 +7641,7 @@ async function renderSettings(page) {
     rgRow('rg-mebio', tr('Ton histoire'), `<p class="su-ask">${tr('Qui incarnes-tu ?')}</p><div class="saves su-kind">${kindOptions('rg-kind', state.playerKind)}</div>
       <textarea id="bio" aria-label="${tr('Ton histoire')}" class="${state.playerKind === 'real' ? 'hidden' : ''}" rows="10" maxlength="${BIO_MAX}">${esc([state.bio?.text, ...(state.myLife || [])].filter(Boolean).join('\n'))}</textarea>`,
       tr('D’où vient ton joueur, ses premiers clubs, son caractère, et aussi sa vie d’aujourd’hui : sa famille, sa ville, son chien… Tout le monde dans ce monde la tient pour vraie, et Panthéon en fait le premier chapitre de sa page à la prochaine édition.')),
+    rgRow('rg-privacy', tr('Confidentialité'), privacyFormHtml('rg', state.privacy || settings.privacy || { enabled: false, fields: {} }, { playerName: state.snapshot?.player?.name || '', handle: state.profile?.handle || '' })),
   ]) : ''}
     ${panel('about', [
     rgRow('rg-about', tr('À propos de LifeLegend'), `<p class="fineprint">${esc(/-/.test(appVersion || '') ? tr('Version {v} · bêta', { v: appVersion }) : tr('Version {v}', { v: appVersion || '—' }))}</p>
@@ -7632,6 +7722,7 @@ async function renderSettings(page) {
   };
   $('#save-settings').onclick = saveSettings;
   page.querySelectorAll('input[name=rg-kind]').forEach((r) => { r.onchange = () => $('#bio').classList.toggle('hidden', r.value === 'real'); });
+  if (state) bindPrivacyForm('rg', { getBio: () => $('#bio')?.value || '', getPlayer: () => state.snapshot?.player?.name || '', getHandle: () => state.profile?.handle || '' });
   $('#browse-clips').onclick = async () => {
     try {
       const dir = await live.browseClips();
@@ -7718,6 +7809,8 @@ async function saveSettings() {
     if (state && $('#bio')) {
       state = await live.saveBio({ text: $('#bio').value, kind: document.querySelector('input[name=rg-kind]:checked')?.value || null });
       if (state.myLife?.length) state = await live.saveLife([]);
+      const priv = readPrivacyForm('rg');
+      if (priv) state = await live.savePrivacy(priv);
     }
     pendingSave = null;
     pendingGameDir = null;

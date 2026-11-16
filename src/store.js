@@ -18,7 +18,7 @@ const DEFAULT_SETTINGS = {
   provider: 'google',
   model: 'gemini-3.6-flash',
   baseUrl: '',
-  language: 'fr',
+  language: 'en',
   fanVulgarity: true, // supporters vulgaires possibles après de très mauvais résultats (décochable)
   theme: 'auto',
   keys: {},          // fournisseur -> clé chiffrée (base64)

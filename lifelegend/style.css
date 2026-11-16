@@ -4181,3 +4181,21 @@ html, body { height: 100%; overflow: hidden; background: var(--sh-back); }
 :root[data-theme="dark"] .dc-tag.hot { background: rgba(255, 111, 102, .18); color: #ff9a92; }
 :root[data-theme="dark"] .dc-plot::before { border-top-color: rgba(255, 255, 255, .12); border-bottom-color: rgba(255, 255, 255, .2); background: linear-gradient(transparent calc(50% - .5px), rgba(255, 255, 255, .08) calc(50% - .5px), rgba(255, 255, 255, .08) calc(50% + .5px), transparent calc(50% + .5px)); }
 :root[data-theme="dark"] .dc-field, :root[data-theme="dark"] .dc-chart-box { box-shadow: 0 0 0 1px rgba(255, 255, 255, .05); }
+
+/* Bouclier de confidentialité (Ton joueur / configuration) */
+.priv-box { margin-top: 14px; border: 1px solid var(--line); border-radius: var(--r-m); background: var(--surface-2); padding: 12px 14px; }
+.priv-box > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; font-size: 14px; font-weight: 600; list-style: none; }
+.priv-box > summary::-webkit-details-marker { display: none; }
+.priv-badge { padding: 2px 8px; border-radius: var(--r-pill); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; background: var(--surface-3); color: var(--ink-3); }
+.priv-badge.on { background: var(--gold-soft); color: var(--gold-ink); }
+.priv-body { margin-top: 12px; display: grid; gap: 12px; }
+.priv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.priv-field { display: grid; gap: 4px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.priv-field input, .priv-custom input { width: 100%; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: var(--r-s); background: var(--surface); color: var(--ink); font-size: 13px; font-weight: 400; }
+.priv-custom { display: grid; gap: 4px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.priv-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.priv-preview { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-s); background: var(--surface); font-size: 13px; line-height: 1.5; }
+.priv-preview h4 { margin: 0 0 6px; font-size: 12px; font-weight: 700; color: var(--ink-2); text-transform: uppercase; letter-spacing: .06em; }
+.priv-preview p { margin: 0 0 8px; white-space: pre-wrap; color: var(--ink); }
+.priv-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.priv-tag { padding: 2px 8px; border-radius: var(--r-pill); background: var(--surface-2); border: 1px solid var(--line); font-size: 12px; font-weight: 500; color: var(--ink-2); }
