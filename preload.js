@@ -56,6 +56,7 @@ contextBridge.exposeInMainWorld('live', {
   saveBio: (bio) => call('bio:save', bio),
   savePrivacy: (privacy) => call('privacy:save', privacy),
   previewPrivacy: (arg) => call('privacy:preview', arg),
+  auditPrivacy: () => call('privacy:audit'),
   newCareerInfo: () => call('career:new'),
   saveLife: (facts) => call('life:save', facts),
   saveProfile: (profile) => call('profile:save', profile),

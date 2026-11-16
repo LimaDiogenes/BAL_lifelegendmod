@@ -98,7 +98,7 @@ function salvageCorrections(text) {
 }
 
 // flags : les phrases que le code a prises en faute (src/world/paperRules.js), corrigées dans la même requête.
-async function factCheck(out, { settings, apiKey, facts, changes, flags = [], log, onProgress, privacyMap = null }) {
+async function factCheck(out, { settings, apiKey, facts, changes, flags = [], log, onProgress, privacyMap = null, onAudit = null }) {
   const draft = draftItems(out, { flags, filterBanter: true });
   if (!needsAiFactCheck(out, { flags }) || !draft.length) return { checked: true, skipped: true, corrections: [] };
   const req = prompts.withLanguage(settings, {
@@ -109,6 +109,7 @@ async function factCheck(out, { settings, apiKey, facts, changes, flags = [], lo
     onProgress,
   });
   const maskedReq = privacyMap?.enabled ? { ...req, system: maskText(req.system, privacyMap), user: maskText(req.user, privacyMap) } : req;
+  onAudit?.(maskedReq);
   const rawText = await providers.complete(settings, apiKey, maskedReq);
   const text = privacyMap?.enabled ? unmaskText(rawText, privacyMap) : rawText;
   let result;

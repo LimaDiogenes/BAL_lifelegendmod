@@ -22,7 +22,7 @@ global.fetch = async (url, init) => {
 
 test('dictée : le son et les noms du contexte partent chez Gemini, le texte revient propre', async () => {
   asked.length = 0;
-  const store = { activeCareer: () => ({ snapshot: { player: { name: 'Ilan Morel' }, club: { name: 'AS Nancy Lorraine' }, coaches: { mine: 'Oswald Tanchot' }, squad: [{ name: 'Pape Meïssa Ba' }] }, press: { questions: [{ journalist: 'Julien Mercier' }] } }), getKey: () => 'cle-de-test' };
+  const store = { activeCareer: () => ({ privacy: { enabled: false }, snapshot: { player: { name: 'Ilan Morel' }, club: { name: 'AS Nancy Lorraine' }, coaches: { mine: 'Oswald Tanchot' }, squad: [{ name: 'Pape Meïssa Ba' }] }, press: { questions: [{ journalist: 'Julien Mercier' }] } }), getKey: () => 'cle-de-test' };
   const wav = new Uint8Array([82, 73, 70, 70, 1, 2, 3]);
   const text = await world.transcribeDictation({ store, settings, audio: wav });
   assert.strictEqual(text, 'Bonjour à tous.');

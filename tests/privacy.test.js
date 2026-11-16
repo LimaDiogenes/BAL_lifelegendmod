@@ -46,15 +46,20 @@ describe('Phase 1 defaults & Phase 2 Privacy Shield', () => {
     assert.equal(settings.language, 'en');
   });
 
-  it('normalizes privacy settings cleanly', () => {
+  it('normalizes privacy settings cleanly and enables Privacy Shield by default', () => {
     const def = normalizePrivacy();
-    assert.equal(def.enabled, false);
+    assert.equal(def.enabled, true);
     assert.equal(typeof def.fields, 'object');
     assert.equal(typeof def.overrides, 'object');
+    assert.deepEqual(def.customPeople, []);
     for (const { key } of PRIVACY_FIELDS) {
       assert.equal(typeof def.fields[key], 'string');
     }
 
+    const disabled = normalizePrivacy({ enabled: false });
+    assert.equal(disabled.enabled, false);
+
+    const manyPeople = Array.from({ length: 12 }, (_, i) => ({ label: `Person ${i + 1}`, real: `RealName${i + 1}`, decoy: i === 0 ? 'Vasco' : '' }));
     const custom = normalizePrivacy({
       enabled: true,
       fields: {
@@ -62,6 +67,7 @@ describe('Phase 1 defaults & Phase 2 Privacy Shield', () => {
         pet: 'Koda',
         custom: 'Ponta Negra = Praia Nova',
       },
+      customPeople: manyPeople,
       overrides: { hometown: 'Porto Claro' },
     });
     assert.equal(custom.enabled, true);
@@ -69,6 +75,31 @@ describe('Phase 1 defaults & Phase 2 Privacy Shield', () => {
     assert.equal(custom.fields.pet, 'Koda');
     assert.equal(custom.fields.custom, 'Ponta Negra = Praia Nova');
     assert.equal(custom.overrides.hometown, 'Porto Claro');
+    assert.equal(custom.customPeople.length, 10);
+    assert.equal(custom.customPeople[0].label, 'Person 1');
+    assert.equal(custom.customPeople[0].decoy, 'Vasco');
+  });
+
+  it('masks and unmasks customPeople entries with renamable labels and auto/manual decoys', () => {
+    const privacy = {
+      enabled: true,
+      fields: {},
+      customPeople: [
+        { label: 'Cousin', real: 'Matheus Ferreira', decoy: '' },
+        { label: 'Agent', real: 'Ricardo', decoy: 'Sebastien' },
+      ],
+    };
+    const map = buildPrivacyMap(privacy, { careerId: 'c-custom' });
+    const raw = 'Spoke with Matheus Ferreira (and Ferreira alone) plus Ricardo today.';
+    const masked = maskText(raw, map);
+    assert.equal(masked.includes('Matheus'), false);
+    assert.equal(masked.includes('Ferreira'), false);
+    assert.equal(masked.includes('Ricardo'), false);
+    assert.ok(masked.includes('Sebastien'));
+    assert.equal(unmaskText(masked, map), raw);
+    const words = privacyWords(privacy);
+    assert.ok(words.includes('Matheus Ferreira'));
+    assert.ok(words.includes('Ricardo'));
   });
 
   it('builds deterministic decoy map, masks and unmasks without collisions', () => {
@@ -504,5 +535,11 @@ describe('End-to-end world.post & world.sendHuddle privacy masking', () => {
     assert.ok(huddleText.includes('Manaus'), `Unmasked huddle reply missing town: ${huddleText}`);
     assert.ok(huddleText.includes('Carolina'), `Unmasked huddle reply missing partner: ${huddleText}`);
     assert.ok(huddleText.includes('Koda'), `Unmasked huddle reply missing pet: ${huddleText}`);
+
+    const audit = world.getAiAuditLog();
+    assert.ok(audit.length >= 2, 'Expected outgoing AI audit log entries');
+    assert.equal(audit[0].masked, true);
+    assert.equal(audit[0].user.includes('Diogenes'), false);
+    assert.equal(audit[0].user.includes('Manaus'), false);
   });
 });

@@ -35,6 +35,8 @@ const PRIVACY_FIELDS = [
   { key: 'custom', kind: 'customList' },
 ];
 
+const MAX_CUSTOM_PEOPLE = 10;
+
 const PARTICLES = new Set(['de', 'da', 'do', 'dos', 'das', 'du', 'des', 'di', 'del', 'della', 'la', 'le', 'les', 'van', 'von', 'den', 'der', 'el', 'al', 'y', 'e']);
 
 const stripAccents = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -48,6 +50,21 @@ function hashStr(s) {
   return h;
 }
 
+function normalizeCustomPeople(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  for (const item of list) {
+    if (out.length >= MAX_CUSTOM_PEOPLE) break;
+    if (!item || typeof item !== 'object') continue;
+    const label = cleanVal(item.label).slice(0, 60);
+    const real = cleanVal(item.real).slice(0, 120);
+    const decoy = cleanVal(item.decoy).slice(0, 120);
+    if (!label && !real && !decoy) continue;
+    out.push({ label, real, decoy });
+  }
+  return out;
+}
+
 function normalizePrivacy(raw) {
   const fields = {};
   const overrides = {};
@@ -57,7 +74,12 @@ function normalizePrivacy(raw) {
     const ov = cleanVal(raw?.overrides?.[key]);
     if (ov) overrides[key] = ov;
   }
-  return { enabled: Boolean(raw?.enabled), fields, overrides };
+  return {
+    enabled: raw?.enabled !== false,
+    fields,
+    customPeople: normalizeCustomPeople(raw?.customPeople),
+    overrides,
+  };
 }
 
 function pickFrom(pool, seed, usedDecoys, realLower) {
@@ -109,6 +131,11 @@ function buildPrivacyMap(privacy, { careerId = '', playerName = '', handle = '' 
       realLowers.add(p.real.toLowerCase());
       for (const tok of p.real.split(/\s+/)) if (tok.length >= 3) realLowers.add(tok.toLowerCase());
     }
+  }
+  for (const person of norm.customPeople) {
+    if (!person.real) continue;
+    realLowers.add(person.real.toLowerCase());
+    for (const tok of person.real.split(/\s+/)) if (tok.length >= 3) realLowers.add(tok.toLowerCase());
   }
 
   const addPair = (real, decoy, kind) => {
@@ -194,6 +221,35 @@ function buildPrivacyMap(privacy, { careerId = '', playerName = '', handle = '' 
     }
   }
 
+  for (const [idx, person] of norm.customPeople.entries()) {
+    if (!person.real || person.real.length < 2) continue;
+    const tokens = person.real.split(/\s+/).filter(Boolean);
+    let decoyFull = person.decoy || '';
+    let decoyTokens;
+    if (decoyFull) {
+      decoyTokens = decoyFull.split(/\s+/).filter(Boolean);
+      for (const t of decoyTokens) usedDecoys.add(t.toLowerCase());
+    } else {
+      const f = pickFrom(DECOYS.firstName, `${careerId}:customPerson:${idx}:f:${person.real}`, usedDecoys, person.real.toLowerCase());
+      const l = tokens.length > 1 ? pickFrom(DECOYS.lastName, `${careerId}:customPerson:${idx}:l:${person.real}`, usedDecoys, person.real.toLowerCase()) : '';
+      decoyFull = l ? `${f} ${l}` : f;
+      decoyTokens = l ? [f, l] : [f];
+    }
+    const kindTag = person.label ? `custom:${person.label}` : 'customPerson';
+    addPair(person.real, decoyFull, kindTag);
+    const sigReal = tokens.filter((t) => t.length >= 3 && !PARTICLES.has(t.toLowerCase()));
+    if (sigReal.length >= 2) {
+      sigReal.forEach((tok, ti) => {
+        const dt = ti === 0
+          ? decoyTokens[0]
+          : ti === sigReal.length - 1
+            ? decoyTokens[decoyTokens.length - 1]
+            : pickFrom(DECOYS.lastName, `${careerId}:customPerson:${idx}:m${ti}:${tok}`, usedDecoys, tok.toLowerCase());
+        if (dt && !realLowers.has(dt.toLowerCase())) addPair(tok, dt, `${kindTag}_part`);
+      });
+    }
+  }
+
   // Deduplicate by lowercase `real` (longest/most-specific kept first).
   const byReal = new Map();
   for (const p of rawEntries) {
@@ -267,6 +323,11 @@ function privacyWords(privacy) {
       for (const tok of p.real.split(/\s+/)) if (tok.length >= 3 && !PARTICLES.has(tok.toLowerCase())) words.push(tok);
     }
   }
+  for (const person of norm.customPeople) {
+    if (!person.real) continue;
+    words.push(person.real);
+    for (const tok of person.real.split(/\s+/)) if (tok.length >= 3 && !PARTICLES.has(tok.toLowerCase())) words.push(tok);
+  }
   return [...new Set(words)];
 }
 
@@ -281,6 +342,7 @@ function previewMasked(text, privacy, ctx = {}) {
 module.exports = {
   DECOYS,
   PRIVACY_FIELDS,
+  MAX_CUSTOM_PEOPLE,
   normalizePrivacy,
   buildPrivacyMap,
   maskText,

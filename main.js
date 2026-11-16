@@ -383,6 +383,7 @@ app.whenReady().then(() => {
       handle: h || state?.profile?.handle || '',
     });
   });
+  handle('privacy:audit', () => world.getAiAuditLog());
   handle('life:save', (facts) => {
     const state = store.activeCareer();
     if (!state) throw new Error('Synchronise ta sauvegarde une première fois.');
