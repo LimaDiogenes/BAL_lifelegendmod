@@ -10,3 +10,17 @@ tests/fixtures/
 *.tmp
 .DS_Store
 Thumbs.db
+
+# Save files, encryption keys, secrets, and binaries (never commit)
+BL0000000*
+REPLAY0*
+TEMBLEM*
+FL_key.bin
+*.bin
+data/keys/
+.env
+.env.*
+*.exe
+*.dll
+*.pak
+*.legendlife-tmp
