@@ -377,6 +377,7 @@ function buildSnapshot(career, names = null) {
     otherLeagues,
     competitions: competitionsHub(career, { clubRef: club.ref, leagueId, today: career.save.date || played[played.length - 1]?.date || '' }),
     nationalTeam,
+    playerOfYear: career.playerOfYear || [],
     windows: career.transferWindows || [],
     coaches: {
       mine: club.coach,

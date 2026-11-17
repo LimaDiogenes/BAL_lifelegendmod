@@ -7530,7 +7530,10 @@ function renderPantheon(page) {
     </div></header>`;
 
   // ----- La fiche -----
-  const clubsPlayed = [...new Set([...seasons.map((x) => x.club), club])];
+  const rec = s.player?.careerRecords;
+  const aliases = state.clubAliases || {};
+  const recClubNames = (rec?.clubs || []).map((c) => c.name || aliases[String(c.clubRef)]).filter(Boolean);
+  const clubsPlayed = [...new Set([...recClubNames, ...seasons.map((x) => x.club), club])];
   const facts = [[tr('Nom complet'), p.name], [tr('Âge'), prof.age ? trn(prof.age, '{n} an', '{n} ans') : null], [tr('Taille'), prof.height ? `${prof.height} cm` : null], [tr('Poids'), prof.weight ? `${prof.weight} kg` : null],
     [tr('Nationalité'), p.nationality], [tr('Pied fort'), prof.strongFoot && tr(prof.strongFoot)], [tr('Poste'), position], [tr('Style de jeu'), prof.playingStyle && tr(prof.playingStyle)],
     [tr('Arrivée au club'), p.history?.joinedClub && date(p.history.joinedClub)], [tr('Contrat'), p.contractUntil && date(p.contractUntil)], [tr('Équipementier'), state.sponsor?.deal?.brand], [tr('Valeur'), prof.marketValue ? millions(prof.marketValue) : null], [tr('Sélection'), s.nationalTeam?.name]].filter(([, v]) => v);
@@ -7563,16 +7566,24 @@ function renderPantheon(page) {
   }).join('');
   const clubSeasons = seasons.filter((x) => seasonKey === 'all' || x.season === seasonKey);
   const clubTotal = compKey === 'all' && clubSeasons.length ? `<div class="pt-tw"><table class="pt-table pt-grand">${cols}<tbody><tr class="sum"><td colspan="2">${tr('Total en club')}</td>${cells(sumStats(clubSeasons.map((x) => x.stats)))}</tr></tbody></table></div>` : '';
-  // Le parcours : un club par ligne, avec ses saisons, ses matchs et ses buts.
+  // Le parcours : toutes les étapes de la sauvegarde si disponibles, sinon les saisons archivées.
   const route = [];
-  for (const x of seasons) {
-    const last = route.at(-1);
-    if (last?.club === x.club) { last.to = x.season; last.apps += x.stats.apps; last.goals += x.stats.goals; } else route.push({ club: x.club, from: x.season, to: x.season, apps: x.stats.apps, goals: x.stats.goals });
+  if (rec?.clubs?.length) {
+    rec.clubs.forEach((c, idx) => {
+      const cname = c.name || aliases[String(c.clubRef)] || tr('Club inconnu');
+      const nextClub = rec.clubs[idx + 1];
+      const from = c.startYear ? String(c.startYear) : '';
+      const to = nextClub?.startYear ? String(nextClub.startYear) : (s.season ? String(s.season).slice(-4) : '');
+      route.push({ club: cname, from, to: to || from, apps: c.apps || 0, goals: c.goals || 0 });
+    });
+  } else {
+    for (const x of seasons) {
+      const last = route.at(-1);
+      if (last?.club === x.club) { last.to = x.season; last.apps += x.stats.apps; last.goals += x.stats.goals; } else route.push({ club: x.club, from: x.season, to: x.season, apps: x.stats.apps, goals: x.stats.goals });
+    }
   }
-  const years = (r) => (r.from === r.to ? r.from : `${String(r.from).slice(0, 4)}-${String(r.to).slice(-4)}`);
-  const routeHtml = route.length ? `<div class="pt-route"><h3>${tr('Parcours en club')}</h3><ol>${route.map((r) => `<li>${crestHtml(r.club, ' sc-crest s28')}<span><b>${esc(r.club)}</b><small>${esc(years(r))}</small></span><em>${trn(r.apps, '{n} match', '{n} matchs')} · ${trn(r.goals, '{n} but', '{n} buts')}</em></li>`).join('')}</ol></div>` : '';
-  const rec = s.player?.careerRecords;
-  const aliases = state.clubAliases || {};
+  const years = (r) => (!r.from ? '' : r.from === r.to ? r.from : `${String(r.from).slice(0, 4)}-${String(r.to).slice(-4)}`);
+  const routeHtml = route.length ? `<div class="pt-route"><h3>${tr('Parcours en club')}</h3><ol>${route.map((r) => `<li>${crestHtml(r.club, ' sc-crest s28')}<span><b>${esc(r.club)}</b>${years(r) ? `<small>${esc(years(r))}</small>` : ''}</span><em>${trn(r.apps, '{n} match', '{n} matchs')} · ${trn(r.goals, '{n} but', '{n} buts')}</em></li>`).join('')}</ol></div>` : '';
   const saveRecHtml = rec && (rec.clubs?.length || rec.international) ? (() => {
     const recHead = `<thead><tr><th>${tr('Équipe')}</th><th class="n">${tr('Matchs')}</th><th class="n">${tr('Buts')}</th><th class="n">${tr('Passes D.')}</th><th class="n">${tr('Note')}</th></tr></thead>`;
     const recCells = (x) => `<td class="n">${x.apps ?? 0}</td><td class="n">${x.goals ?? 0}</td><td class="n">${x.assists ?? 0}</td><td class="n">${ratingChip(x.avgRating)}</td>`;
@@ -7584,7 +7595,8 @@ function renderPantheon(page) {
         : `<span class="pt-unknown">${esc(tr('Club inconnu'))}${esc(period)}</span> <button type="button" class="btn pt-alias-btn" data-ptalias="${esc(c.clubRef)}">${esc(tr('Nommer'))}</button>`;
       return `<tr><td class="pt-cut">${label}</td>${recCells(c)}</tr>`;
     }).join('');
-    const ntRow = rec.international ? `<tr><td class="pt-cut">${crestHtml(rec.international.name, ' sc-crest s18')}<span>${esc(rec.international.name || tr('Sélection nationale'))}</span></td>${recCells(rec.international)}</tr>` : '';
+    const ntName = rec.international?.name || s.nationalTeam?.name || p.nationality || null;
+    const ntRow = rec.international ? `<tr><td class="pt-cut">${crestHtml(ntName || '', ' sc-crest s18')}<span>${esc(ntName || tr('Sélection nationale'))}</span></td>${recCells(rec.international)}</tr>` : '';
     const combRow = rec.combinedTotals ? `<tr class="sum"><td>${esc(tr('Total combiné (Club + Sélection)'))}</td>${recCells(rec.combinedTotals)}</tr>` : '';
     return `<div class="pt-grp"><h3>${esc(tr('Bilan complet de carrière (sauvegarde)'))}</h3><div class="pt-tw"><table class="pt-table">${recHead}<tbody>${clubRows}${ntRow}${combRow}</tbody></table></div></div>`;
   })() : '';
@@ -7593,15 +7605,24 @@ function renderPantheon(page) {
       <select class="pt-select" id="pt-season" aria-label="${tr('Saison')}"><option value="all">${tr('Toutes les saisons')}</option>${seasonList.map((x) => `<option value="${esc(x)}"${x === seasonKey ? ' selected' : ''}>${esc(x)}</option>`).join('')}</select></div>
       ${groups || `<p class="pt-none">${tr('Aucun match')}</p>`}${clubTotal}${routeHtml}` : ''}` : `<p class="pt-none">${tr('Pas encore de match officiel.')}</p>`}</section>`;
 
-  // ----- Les records, à partir des matchs archivés saison par saison -----
+  // ----- Les records, à partir des débuts de la sauvegarde et des matchs archivés -----
   const games = seasons.flatMap((x) => (x.log || []).map((m) => ({ ...m, club: x.club }))).sort((a, b) => String(a.date).localeCompare(String(b.date)));
-  const opponent = (m) => (m.home === m.club ? m.away : m.home);
-  const gameLine = (m) => `${m.home} ${m.score ? `${m.score[0]}-${m.score[1]}` : '–'} ${m.away} · ${fmtDate(m.date, { day: 'numeric', month: 'short', year: 'numeric' })}`;
+  const opponent = (m) => (m.home === m.club ? (m.away || tr('Inconnu')) : (m.home || tr('Inconnu')));
+  const gameLine = (m) => `${m.home || tr('Inconnu')} ${m.score ? `${m.score[0]}-${m.score[1]}` : '–'} ${m.away || tr('Inconnu')} · ${fmtDate(m.date, { day: 'numeric', month: 'short', year: 'numeric' })}`;
   const top = (val) => games.reduce((a, m) => (Number.isFinite(val(m)) && val(m) > (a ? val(a) : -Infinity) ? m : a), null);
-  const firstGoal = games.find((m) => m.goals > 0), bestRated = top((m) => m.rating), mostGoals = top((m) => m.goals);
+  const clubDebut = p.history?.debuts?.find((d) => d.kind === 'club');
+  const ntDebut = p.history?.debuts?.find((d) => d.kind === 'national_team');
+  const trackedStart = !clubDebut || seasons.some((x) => String(x.season).includes(clubDebut.date.slice(0, 4)));
+  const scopeNote = !trackedStart && seasons.length <= 1 ? ` (${tr('cette saison')})` : '';
+  const debutLine = (d) => `${d.team || club} – ${d.opponent || tr('Inconnu')}${d.competition ? ` · ${d.competition}` : ''} · ${d.date}`;
+  const firstMatchRec = clubDebut ? [clubDebut.opponent || clubDebut.team || club, tr('Premier match'), debutLine(clubDebut)]
+    : (games[0] ? [opponent(games[0]), tr('Premier match'), gameLine(games[0])] : null);
+  const ntDebutRec = ntDebut ? [ntDebut.opponent || ntDebut.team || p.nationality, tr('Premier match en sélection'), debutLine(ntDebut)] : null;
+  const firstGoal = trackedStart ? games.find((m) => m.goals > 0) : null;
+  const bestRated = top((m) => m.rating), mostGoals = top((m) => m.goals);
   const manOfMatch = s.fixtures.filter((f) => f.played && f.motm?.name === p.name).length;
-  const records = [games[0] && [opponent(games[0]), tr('Premier match'), gameLine(games[0])], firstGoal && [opponent(firstGoal), tr('Premier but'), gameLine(firstGoal)],
-    bestRated && [opponent(bestRated), `${tr('Meilleure note')} · ${sfRating(bestRated.rating)}`, gameLine(bestRated)], mostGoals?.goals > 1 && [opponent(mostGoals), `${tr('Plus de buts en un match')} · ${mostGoals.goals}`, gameLine(mostGoals)],
+  const records = [firstMatchRec, ntDebutRec, firstGoal && [opponent(firstGoal), tr('Premier but'), gameLine(firstGoal)],
+    bestRated && [opponent(bestRated), `${tr('Meilleure note')}${scopeNote} · ${sfRating(bestRated.rating)}`, gameLine(bestRated)], mostGoals?.goals > 1 && [opponent(mostGoals), `${tr('Plus de buts en un match')}${scopeNote} · ${mostGoals.goals}`, gameLine(mostGoals)],
     manOfMatch && [club, `${tr('Homme du match')} × ${manOfMatch}`, esc(tr('saison {season}', { season: s.season || '' }))]].filter(Boolean);
   const recordsCard = records.length ? `<section class="pt-card" id="pt-records"><h2>${tr('Records')}</h2><ul class="pt-pairs">${records.map(([team, t, line]) => `<li>${crestHtml(team, ' sc-crest s32')}<span><b>${esc(t)}</b><small>${esc(line)}</small></span></li>`).join('')}</ul></section>` : '';
 
@@ -7612,7 +7633,10 @@ function renderPantheon(page) {
   const aw = state.awards || {};
   const rounds = {};
   for (const r of aw.rounds || []) (rounds[`${r.competition} ${r.season}`] ||= []).push(r);
-  const distinctions = [...Object.entries(aw.seasons || {}).flatMap(([season, x]) => (x.won || []).map((k) => [tr(AWARD_LABEL[k]), `${x.competition} ${season}`])),
+  const potyYears = [...new Set((s.playerOfYear || []).filter((x) => x.podium?.[0]?.id === p.id).map((x) => x.year))].sort();
+  const distinctions = [
+    ...(potyYears.length ? [[tr('Footballeur de l’année'), potyYears.join(', ')]] : []),
+    ...Object.entries(aw.seasons || {}).flatMap(([season, x]) => (x.won || []).map((k) => [tr(AWARD_LABEL[k]), `${x.competition} ${season}`])),
     ...Object.entries(rounds).flatMap(([where, rs]) => [
       ...(rs.some((r) => r.inTeam) ? [[tr('Équipe type de la journée'), `${where} : ${rs.filter((r) => r.inTeam).map((r) => roundLabel(r.round)).join(', ')}`]] : []),
       ...(rs.some((r) => r.best) ? [[tr('Joueur de la journée'), `${where} : ${rs.filter((r) => r.best).map((r) => roundLabel(r.round)).join(', ')}`]] : [])])];

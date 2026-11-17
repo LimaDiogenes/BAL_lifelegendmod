@@ -1875,4 +1875,6 @@ window.LL_I18N.en = {
   "Ajoute des dates importantes hors football (anniversaire, événement caritatif, déménagement…). Quand le jeu atteint cette date, la presse, les supporters et le vestiaire peuvent réagir.": "Add important off-pitch dates (birthday, charity event, move…). When the game reaches that date, the press, fans, and dressing room can react.",
   "Événement (ex. Anniversaire, gala de charité…)": "Event (e.g. Birthday, charity gala…)",
   "Ajouter une date": "Add date",
+  "cette saison": "this season",
+  "Premier match en sélection": "International debut",
 };

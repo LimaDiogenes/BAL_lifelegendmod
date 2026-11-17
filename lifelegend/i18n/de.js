@@ -1875,4 +1875,6 @@ window.LL_I18N.de = {
   "Ajoute des dates importantes hors football (anniversaire, événement caritatif, déménagement…). Quand le jeu atteint cette date, la presse, les supporters et le vestiaire peuvent réagir.": "Füge wichtige Termine abseits des Platzes hinzu (Geburtstag, Charity-Event, Umzug…). Erreicht das Spiel dieses Datum, können Presse, Fans und Kabine reagieren.",
   "Événement (ex. Anniversaire, gala de charité…)": "Ereignis (z. B. Geburtstag, Benefizgala…)",
   "Ajouter une date": "Datum hinzufügen",
+  "cette saison": "diese Saison",
+  "Premier match en sélection": "Länderspieldebüt",
 };
