@@ -7571,10 +7571,27 @@ function renderPantheon(page) {
   }
   const years = (r) => (r.from === r.to ? r.from : `${String(r.from).slice(0, 4)}-${String(r.to).slice(-4)}`);
   const routeHtml = route.length ? `<div class="pt-route"><h3>${tr('Parcours en club')}</h3><ol>${route.map((r) => `<li>${crestHtml(r.club, ' sc-crest s28')}<span><b>${esc(r.club)}</b><small>${esc(years(r))}</small></span><em>${trn(r.apps, '{n} match', '{n} matchs')} · ${trn(r.goals, '{n} but', '{n} buts')}</em></li>`).join('')}</ol></div>` : '';
+  const rec = s.player?.careerRecords;
+  const aliases = state.clubAliases || {};
+  const saveRecHtml = rec && (rec.clubs?.length || rec.international) ? (() => {
+    const recHead = `<thead><tr><th>${tr('Équipe')}</th><th class="n">${tr('Matchs')}</th><th class="n">${tr('Buts')}</th><th class="n">${tr('Passes D.')}</th><th class="n">${tr('Note')}</th></tr></thead>`;
+    const recCells = (x) => `<td class="n">${x.apps ?? 0}</td><td class="n">${x.goals ?? 0}</td><td class="n">${x.assists ?? 0}</td><td class="n">${ratingChip(x.avgRating)}</td>`;
+    const clubRows = (rec.clubs || []).map((c) => {
+      const cname = c.name || aliases[String(c.clubRef)] || null;
+      const period = c.startYear ? ` (${c.startYear})` : '';
+      const label = cname
+        ? `${crestHtml(cname, ' sc-crest s18')}<span>${esc(cname)}${esc(period)}</span>`
+        : `<span class="pt-unknown">${esc(tr('Club inconnu'))}${esc(period)}</span> <button type="button" class="btn pt-alias-btn" data-ptalias="${esc(c.clubRef)}">${esc(tr('Nommer'))}</button>`;
+      return `<tr><td class="pt-cut">${label}</td>${recCells(c)}</tr>`;
+    }).join('');
+    const ntRow = rec.international ? `<tr><td class="pt-cut">${crestHtml(rec.international.name, ' sc-crest s18')}<span>${esc(rec.international.name || tr('Sélection nationale'))}</span></td>${recCells(rec.international)}</tr>` : '';
+    const combRow = rec.combinedTotals ? `<tr class="sum"><td>${esc(tr('Total combiné (Club + Sélection)'))}</td>${recCells(rec.combinedTotals)}</tr>` : '';
+    return `<div class="pt-grp"><h3>${esc(tr('Bilan complet de carrière (sauvegarde)'))}</h3><div class="pt-tw"><table class="pt-table">${recHead}<tbody>${clubRows}${ntRow}${combRow}</tbody></table></div></div>`;
+  })() : '';
   const statsCard = `<section class="pt-card" id="pt-stats"><h2>${esc(tr('Statistiques de carrière de {name}', { name: p.name }))}</h2>
-    ${byComp.size ? `<div class="pt-filters"><div class="pt-filt"><button class="${compKey === 'all' ? 'on' : ''}" data-ptcomp="all">${tr('Tout')}</button>${[...byComp.keys()].map((c) => `<button class="${c === compKey ? 'on' : ''}" data-ptcomp="${esc(c)}">${esc(gzShort(c))}</button>`).join('')}</div>
+    ${byComp.size || saveRecHtml ? `${saveRecHtml}${byComp.size ? `<div class="pt-filters"><div class="pt-filt"><button class="${compKey === 'all' ? 'on' : ''}" data-ptcomp="all">${tr('Tout')}</button>${[...byComp.keys()].map((c) => `<button class="${c === compKey ? 'on' : ''}" data-ptcomp="${esc(c)}">${esc(gzShort(c))}</button>`).join('')}</div>
       <select class="pt-select" id="pt-season" aria-label="${tr('Saison')}"><option value="all">${tr('Toutes les saisons')}</option>${seasonList.map((x) => `<option value="${esc(x)}"${x === seasonKey ? ' selected' : ''}>${esc(x)}</option>`).join('')}</select></div>
-      ${groups || `<p class="pt-none">${tr('Aucun match')}</p>`}${clubTotal}${routeHtml}` : `<p class="pt-none">${tr('Pas encore de match officiel.')}</p>`}</section>`;
+      ${groups || `<p class="pt-none">${tr('Aucun match')}</p>`}${clubTotal}${routeHtml}` : ''}` : `<p class="pt-none">${tr('Pas encore de match officiel.')}</p>`}</section>`;
 
   // ----- Les records, à partir des matchs archivés saison par saison -----
   const games = seasons.flatMap((x) => (x.log || []).map((m) => ({ ...m, club: x.club }))).sort((a, b) => String(a.date).localeCompare(String(b.date)));
@@ -7618,6 +7635,23 @@ function renderPantheon(page) {
   page.querySelectorAll('[data-ptbio]').forEach((a) => { a.onclick = () => openSettings('rg-mebio'); });
   page.querySelectorAll('[data-ptsite]').forEach((a) => { a.onclick = () => go(a.dataset.ptsite); });
   page.querySelectorAll('[data-ptcomp]').forEach((b) => { b.onclick = () => { view.ptComp = b.dataset.ptcomp; renderPantheon(page); }; });
+  page.querySelectorAll('[data-ptalias]').forEach((btn) => {
+    btn.onclick = () => {
+      const ref = btn.dataset.ptalias;
+      const cell = btn.closest('td');
+      if (!cell) return;
+      cell.innerHTML = `<span class="pt-alias-edit"><input type="text" class="pt-alias-in" placeholder="${esc(tr('Nom du club'))}" maxlength="80"><button type="button" class="btn primary pt-alias-save">${esc(tr('Enregistrer'))}</button></span>`;
+      const inp = cell.querySelector('.pt-alias-in');
+      const save = async () => {
+        const val = inp.value.trim();
+        if (!val) return;
+        try { state = await live.setClubAlias(ref, val); renderPantheon(page); } catch (err) { toast(err.message, true); }
+      };
+      cell.querySelector('.pt-alias-save').onclick = save;
+      inp.onkeydown = (e) => { if (e.key === 'Enter') save(); };
+      inp.focus();
+    };
+  });
   const pick = page.querySelector('#pt-season');
   if (pick) pick.onchange = () => { view.ptSeason = pick.value; renderPantheon(page); };
   ptScrollSpy();
@@ -7696,6 +7730,60 @@ function rgTabInView() {
   if (bar && bar.scrollWidth > bar.clientWidth) bar.scrollLeft = Math.max(0, b.offsetLeft - bar.offsetLeft - (bar.clientWidth - b.offsetWidth) / 2);
 }
 
+const LIFE_EVENTS_MAX = 20;
+
+function lifeEventRowHtml(ev = {}, defaultDate = '') {
+  return `<div class="life-ev-row"${ev.id ? ` data-evid="${esc(ev.id)}"` : ''}>
+    <input type="date" class="life-ev-date" value="${esc(ev.date || defaultDate || '')}">
+    <input type="text" class="life-ev-title" value="${esc(ev.title || '')}" placeholder="${esc(tr('Événement (ex. Anniversaire, gala de charité…)'))}" maxlength="140">
+    <button type="button" class="priv-person-del life-ev-del" title="${esc(tr('Supprimer'))}" aria-label="${esc(tr('Supprimer'))}">×</button>
+  </div>`;
+}
+
+function lifeEventsFormHtml(events = [], defaultDate = '') {
+  const list = Array.isArray(events) ? events.slice(0, LIFE_EVENTS_MAX) : [];
+  return `<div class="life-ev-wrap">
+    <div class="life-ev-list" id="rg-life-list">${list.map((e) => lifeEventRowHtml(e, defaultDate)).join('')}</div>
+    <button type="button" class="btn" id="rg-life-add"${list.length >= LIFE_EVENTS_MAX ? ' disabled' : ''}>${tr('Ajouter une date')}</button>
+  </div>`;
+}
+
+function readLifeEventsForm() {
+  const list = $('#rg-life-list');
+  if (!list) return null;
+  const out = [];
+  list.querySelectorAll('.life-ev-row').forEach((row) => {
+    if (out.length >= LIFE_EVENTS_MAX) return;
+    const date = row.querySelector('.life-ev-date')?.value.trim() || '';
+    const title = row.querySelector('.life-ev-title')?.value.trim() || '';
+    const id = row.dataset.evid || undefined;
+    if (date && title) out.push({ ...(id ? { id } : {}), date, title });
+  });
+  return out;
+}
+
+function bindLifeEventsForm(defaultDate = '') {
+  const list = $('#rg-life-list');
+  const addBtn = $('#rg-life-add');
+  if (!list || !addBtn) return;
+  const syncBtn = () => { addBtn.disabled = list.querySelectorAll('.life-ev-row').length >= LIFE_EVENTS_MAX; };
+  const bindRow = (row) => {
+    const del = row.querySelector('.life-ev-del');
+    if (del) del.onclick = () => { row.remove(); syncBtn(); };
+  };
+  list.querySelectorAll('.life-ev-row').forEach(bindRow);
+  addBtn.onclick = () => {
+    if (list.querySelectorAll('.life-ev-row').length >= LIFE_EVENTS_MAX) return;
+    const wrap = document.createElement('div');
+    wrap.innerHTML = lifeEventRowHtml({}, defaultDate);
+    const row = wrap.firstElementChild;
+    list.appendChild(row);
+    bindRow(row);
+    syncBtn();
+    row.querySelector('.life-ev-title')?.focus();
+  };
+}
+
 async function renderSettings(page) {
   const prov = providers[settings.provider] || {};
   const colors = themeColors(settings.colors);
@@ -7754,6 +7842,8 @@ async function renderSettings(page) {
       <textarea id="bio" aria-label="${tr('Ton histoire')}" class="${state.playerKind === 'real' ? 'hidden' : ''}" rows="10" maxlength="${BIO_MAX}">${esc([state.bio?.text, ...(state.myLife || [])].filter(Boolean).join('\n'))}</textarea>`,
       tr('D’où vient ton joueur, ses premiers clubs, son caractère, et aussi sa vie d’aujourd’hui : sa famille, sa ville, son chien… Tout le monde dans ce monde la tient pour vraie, et Panthéon en fait le premier chapitre de sa page à la prochaine édition.')),
     rgRow('rg-privacy', tr('Confidentialité'), privacyFormHtml('rg', state.privacy || settings.privacy || { enabled: true, fields: {}, customPeople: [] }, { playerName: state.snapshot?.player?.name || '', handle: state.profile?.handle || '' })),
+    rgRow('rg-lifeevents', tr('Dates de vie'), lifeEventsFormHtml(state.lifeEvents || [], state.snapshot?.gameDate || ''),
+      tr('Ajoute des dates importantes hors football (anniversaire, événement caritatif, déménagement…). Quand le jeu atteint cette date, la presse, les supporters et le vestiaire peuvent réagir.')),
   ]) : ''}
     ${panel('about', [
     rgRow('rg-about', tr('À propos de LifeLegend'), `<p class="fineprint">${esc(/-/.test(appVersion || '') ? tr('Version {v} · bêta', { v: appVersion }) : tr('Version {v}', { v: appVersion || '—' }))}</p>
@@ -7835,6 +7925,7 @@ async function renderSettings(page) {
   $('#save-settings').onclick = saveSettings;
   page.querySelectorAll('input[name=rg-kind]').forEach((r) => { r.onchange = () => $('#bio').classList.toggle('hidden', r.value === 'real'); });
   if (state) bindPrivacyForm('rg', { getBio: () => $('#bio')?.value || '', getPlayer: () => state.snapshot?.player?.name || '', getHandle: () => state.profile?.handle || '' });
+  if (state) bindLifeEventsForm(state.snapshot?.gameDate || '');
   $('#browse-clips').onclick = async () => {
     try {
       const dir = await live.browseClips();
@@ -7923,6 +8014,8 @@ async function saveSettings() {
       if (state.myLife?.length) state = await live.saveLife([]);
       const priv = readPrivacyForm('rg');
       if (priv) state = await live.savePrivacy(priv);
+      const lifeEvs = readLifeEventsForm();
+      if (lifeEvs) state = await live.saveLifeEvents(lifeEvs);
     }
     pendingSave = null;
     pendingGameDir = null;

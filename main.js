@@ -375,6 +375,8 @@ app.whenReady().then(() => {
     return state;
   });
   handle('privacy:save', (privacy) => world.savePrivacy({ store, privacy }));
+  handle('career:aliasClub', ({ clubRef, name }) => world.saveClubAlias({ store, clubRef, name }));
+  handle('lifeEvents:save', (events) => world.saveLifeEvents({ store, events }));
   handle('privacy:preview', ({ text, privacy, player, handle: h } = {}) => {
     const state = store.activeCareer();
     return previewMasked(text, normalizePrivacy(privacy), {

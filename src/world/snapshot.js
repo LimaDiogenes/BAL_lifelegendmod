@@ -346,7 +346,7 @@ function buildSnapshot(career, names = null) {
     slot: career.save.slot,
     gameDate: career.save.date || played[played.length - 1]?.date || null,
     season: seasonLabel(leagueMatches),
-    player: { id: player.id, name: player.name, nationality: player.nationality, contractUntil: player.contractUntil || null, salary: player.salary || null, history: player.history || null, offers: player.offers || [], interests: player.interests || [], profile: player.profile || null, training: player.training || null, careerStart: player.careerStart || null },
+    player: { id: player.id, name: player.name, nationality: player.nationality, contractUntil: player.contractUntil || null, salary: player.salary || null, history: player.history || null, offers: player.offers || [], interests: player.interests || [], profile: player.profile || null, training: player.training || null, careerStart: player.careerStart || null, careerRecords: player.careerRecords || null },
     club: { ref: club.ref, name: club.name, short: club.short, stadium: club.stadium, coach: club.coach },
     league: { id: leagueId, name: career.competitions.get(leagueId) || career.save.league || null },
     stats,

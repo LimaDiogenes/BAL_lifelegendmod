@@ -34,6 +34,61 @@ function savePrivacy({ store, privacy }) {
   return state;
 }
 
+function saveClubAlias({ store, clubRef, name }) {
+  const state = store.activeCareer();
+  if (!state) throw new Error('Synchronise ta sauvegarde une première fois.');
+  const clean = String(name || '').trim().slice(0, 80);
+  state.clubAliases ||= {};
+  const key = String(clubRef);
+  if (clean) state.clubAliases[key] = clean;
+  else delete state.clubAliases[key];
+  store.saveCareer(state);
+  return state;
+}
+
+function saveLifeEvents({ store, events }) {
+  const state = store.activeCareer();
+  if (!state) throw new Error('Synchronise ta sauvegarde une première fois.');
+  const prevMap = new Map((state.lifeEvents || []).map((e) => [e.id, e]));
+  const clean = [];
+  for (const e of Array.isArray(events) ? events : []) {
+    if (clean.length >= 20) break;
+    const date = String(e?.date || '').trim();
+    const title = String(e?.title || '').trim().slice(0, 140);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !title) continue;
+    const id = e?.id || newId();
+    const old = prevMap.get(id);
+    clean.push({ id, date, title, ...(old?.usedOn && old.date === date ? { usedOn: old.usedOn } : {}) });
+  }
+  state.lifeEvents = clean.sort((a, b) => a.date.localeCompare(b.date));
+  store.saveCareer(state);
+  return state;
+}
+
+function noteKeyMemory(state, line, gameDate = '') {
+  const text = String(line || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  if (!text) return;
+  state.keyMemory ||= [];
+  const entry = gameDate ? `${gameDate}: ${text}` : text;
+  if (state.keyMemory.includes(entry)) return;
+  state.keyMemory = [...state.keyMemory, entry].slice(-10);
+}
+
+function dueLifeEvents(state, prevDate, curDate) {
+  if (!curDate || !Array.isArray(state.lifeEvents) || !state.lifeEvents.length) return [];
+  const floor = prevDate && prevDate <= curDate ? prevDate : daysBefore(curDate, 7);
+  const due = [];
+  for (const ev of state.lifeEvents) {
+    if (ev.usedOn) continue;
+    if (ev.date >= floor && ev.date <= curDate) {
+      ev.usedOn = curDate;
+      due.push({ date: ev.date, event: ev.title });
+      noteKeyMemory(state, ev.title, ev.date);
+    }
+  }
+  return due;
+}
+
 const aiAuditLog = [];
 function recordAiAudit(req, map) {
   aiAuditLog.unshift({
@@ -638,6 +693,7 @@ function memoryFor(state) {
     // rename : le journal doit être rebaptisé selon la règle du journal des supporters.
     local_paper: state.localPaper ? { name: state.localPaper.name, city: state.localPaper.city, ...(state.localPaper.renameDue ? { rename: true } : {}) } : null,
     my_life: state.myLife,
+    ...(state.keyMemory?.length ? { key_memory: state.keyMemory.slice(-10) } : {}),
     storylines: state.storylines,
     previous_headlines: state.editions.slice(-2).flatMap((e) => [...e.national, ...e.local].map((a) => a.headline)),
     // Objets des derniers mails reçus : les nouveaux ne les reprennent pas (Mails ne doit pas radoter).
@@ -1685,6 +1741,9 @@ async function syncInner({ store, settings, log, t }) {
   state.tone = toneContext({ snapshot, state });
   for (const p of settled) {
     log(`Promesse « ${p.label} » : ${{ kept: 'tenue ✅', broken: 'non tenue ❌', void: 'annulée (il n’a pas joué)', expired: 'expirée' }[p.status]}.`);
+    if (p.status === 'kept' || p.status === 'broken') {
+      noteKeyMemory(state, `Promise (${p.status}): ${p.label}`, snapshot.gameDate);
+    }
     const post = p.postId && state.feed.find((x) => x.id === p.postId);
     const market = 0.6 + toneOf(state).market / 100;
     if (p.status === 'kept') {
@@ -1887,8 +1946,11 @@ async function syncInner({ store, settings, log, t }) {
   const chant = chantDue(state, snapshot, changes, { won_vote: Boolean(vote?.won), derby: facts.derby || null });
   // L'interview exclusive (src/world/interview.js) : la demande et ses quatre questions, écrites par l'édition.
   const interview = changes.firstSync ? null : interviewDue(state, snapshot);
+  const lifeEvents = dueLifeEvents(state, prev?.gameDate, snapshot.gameDate);
+  if (lifeEvents.length) log(`Vie perso : ${lifeEvents.map((e) => e.event).join(', ')}.`);
   if (chant) chapterEvents.push({ kind: 'fan_chant', why: chant.why });
   const aiChanges = { ...changes, newOffers: undefined, contractSigned: undefined, contract_signed: signed || undefined,
+    ...(lifeEvents.length ? { life_events: lifeEvents } : {}),
     season_review: seasonReview || undefined,
     skillLearned: changes.skillLearned ? { skill: skillForAi(changes.skillLearned.code) || UNKNOWN_SKILL } : undefined,
     plannedMove: changes.plannedMove ? { club: changes.plannedMove.club, contract_until: changes.plannedMove.contractUntil, effective_from: changes.plannedMove.effective, during_window: changes.plannedMove.immediate || undefined } : undefined, newResults: changes.newResults.map(strip), ntResults: changes.ntResults.map(strip), milestones: seasonNews.milestones, new_trophies: seasonNews.trophies, new_transfers: transfers.slice(0, 15),
@@ -1947,7 +2009,7 @@ async function syncInner({ store, settings, log, t }) {
   // Le championnat de chaque club du monde (scores du jeu) : les nouveaux comptes prennent les prénoms de son pays.
   let clubLeague = null;
   try { clubLeague = clubLeagues(scoresNow()); } catch { /* sans scores : les prénoms du championnat du joueur */ }
-  const plan = tribunePlan({ state, snapshot, changes, handle: state.profile.handle, world: kopWorld, clubLeague, rival: rivalInNews(state.rival, state.editions.length, 3) ? state.rival : null, derby: facts.derby || null, reunion: facts.reunion || null }).map((p) => ({ ...p, style: styleIn(p.style, settings.language) }));
+  const plan = tribunePlan({ state, snapshot, changes: { ...changes, life_events: aiChanges.life_events }, handle: state.profile.handle, world: kopWorld, clubLeague, rival: rivalInNews(state.rival, state.editions.length, 3) ? state.rival : null, derby: facts.derby || null, reunion: facts.reunion || null }).map((p) => ({ ...p, style: styleIn(p.style, settings.language) }));
   // Rumeur mercato (src/world/rumors.js) : un créneau de plus, tenu par l'insider de son niveau de fiabilité.
   const rumorHandle = rumor && INSIDERS[rumor.tier].handle.toLowerCase();
   if (rumor) plan.push(rumorSlot(rumor, { known: Object.keys(state.accounts || {}).some((h) => h.toLowerCase() === rumorHandle), language: settings.language }));
@@ -3114,4 +3176,4 @@ function loadScores({ store }) {
   return state ? store.loadAux(state.careerId, 'scores') : null;
 }
 
-module.exports = { savePrivacy, privacyMapFor, previewMasked, getAiAuditLog, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };
+module.exports = { savePrivacy, saveClubAlias, saveLifeEvents, noteKeyMemory, privacyMapFor, previewMasked, getAiAuditLog, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };

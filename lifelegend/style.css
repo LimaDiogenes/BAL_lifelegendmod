@@ -4209,3 +4209,10 @@ html, body { height: 100%; overflow: hidden; background: var(--sh-back); }
 .priv-person-del { padding: 6px 10px; border: 1px solid var(--line-2); border-radius: var(--r-s); background: var(--surface-2); color: var(--ink-2); font-size: 13px; font-weight: 600; cursor: pointer; }
 .priv-audit-entry { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 .priv-audit-pre { margin: 4px 0 0; padding: 8px; border-radius: var(--r-s); background: var(--surface-2); color: var(--ink-2); font-size: 12px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; max-height: 180px; overflow: auto; }
+.life-ev-wrap { display: grid; gap: 8px; }
+.life-ev-list { display: grid; gap: 8px; }
+.life-ev-row { display: grid; grid-template-columns: 150px minmax(180px, 1fr) auto; gap: 6px; align-items: center; }
+.life-ev-row input { width: 100%; padding: 7px 9px; border: 1px solid var(--line-2); border-radius: var(--r-s); background: var(--surface); color: var(--ink); font-size: 13px; font-weight: 400; }
+.pt-alias-btn { margin-left: 6px; padding: 2px 8px; font-size: 12px; }
+.pt-alias-edit { display: inline-flex; gap: 6px; align-items: center; }
+.pt-alias-in { width: 160px; padding: 4px 8px; border: 1px solid var(--line-2); border-radius: var(--r-s); background: var(--surface); color: var(--ink); font-size: 13px; }
