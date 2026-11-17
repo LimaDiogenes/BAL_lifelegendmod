@@ -53,6 +53,24 @@ test('sauvegarde agrandie : pas d’écriture, et un message clair si la fiche d
   assert.throws(() => saveLayout(d, { playerName: 'Quelqu’un d’autre' }), (e) => e.code === 'SAVE_LAYOUT');
 });
 
+test('created BAL player high-bit IDs (0x80000000+) accepted in standard & modded layouts', () => {
+  const d = moddedSave();
+  const createdId = 0x800000BA;
+  d.writeUInt32LE(createdId, AT.player);
+  d.writeUInt32LE(createdId, AT.careerStart + 0x1C);
+  const L = saveLayout(d, { playerName: 'Iker Bravo' });
+  assert.strictEqual(L.player, AT.player);
+  assert.strictEqual(L.careerStart, AT.careerStart);
+
+  const std = Buffer.alloc(STANDARD.careerStart + 0x40);
+  std.writeUInt32LE(0, STANDARD.coach - 8);
+  std.write('Liga 1\0', STANDARD.comp);
+  date(std, STANDARD.match, 2026, 9, 1);
+  std.writeUInt32LE(createdId, STANDARD.player);
+  std.write('Created Hero\0', STANDARD.player + 8);
+  assert.strictEqual(standardFits(std, 'Created Hero'), true);
+});
+
 test('sauvegarde du jeu sans modules : places connues, et la détection retombe dessus', { skip: !(fs.existsSync(SAVE) && fs.existsSync(KEY)) && 'fichiers de référence absents' }, () => {
   const { setSaveKeys, decryptSave } = require(path.join(ROOT, 'src/save/pesCrypt.js'));
   const { peekSave } = require(path.join(ROOT, 'src/save/blReader.js'));
