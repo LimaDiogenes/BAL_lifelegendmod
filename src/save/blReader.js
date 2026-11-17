@@ -300,6 +300,57 @@ function readPlayerHistory(d, teams, comps, PC = PLAYER_CLUB) {
   return history;
 }
 
+const CLUB_REC_OFFSET = 0x3AC;
+const CLUB_REC_STRIDE = 0x30;
+const CLUB_REC_MAX = 16;
+const NT_REC_OFFSET = 0xEEC;
+
+function decodeRecordStats(d, o) {
+  const w2 = d.readUInt32LE(o + 8);
+  const w3 = d.readUInt32LE(o + 12);
+  const w4 = d.readUInt32LE(o + 16);
+  const apps = w2 & 0xFFF;
+  const goals = (w2 >>> 12) & 0xFFF;
+  const assists = (w4 >>> 12) & 0xFFF;
+  const avgRating = apps > 0 && w3 > 0 ? Math.round(w3 / apps) / 10 : null;
+  return { apps, goals, assists, ratingSumX10: w3, avgRating };
+}
+
+function readCareerRecords(d, teams, P) {
+  if (P + NT_REC_OFFSET + 0x20 > d.length) return null;
+  const clubs = [];
+  for (let i = 0; i < CLUB_REC_MAX; i++) {
+    const o = P + CLUB_REC_OFFSET + i * CLUB_REC_STRIDE;
+    if (o + CLUB_REC_STRIDE > d.length) break;
+    const clubRef = d.readUInt32LE(o);
+    if (clubRef === 0xFFFFFFFF || clubRef === 0) break;
+    const stats = decodeRecordStats(d, o);
+    const startYearRaw = d.readUInt16LE(o + 20) & 0x7FF;
+    const startYear = startYearRaw >= 2000 && startYearRaw <= 2100 ? startYearRaw : null;
+    const startMonth = d[o + 0x2C] >= 1 && d[o + 0x2C] <= 12 ? d[o + 0x2C] : null;
+    const endMonth = d[o + 0x2D] >= 1 && d[o + 0x2D] <= 12 ? d[o + 0x2D] : null;
+    const clubName = teams.get(clubRef)?.name || null;
+    clubs.push({ clubRef, name: clubName, startYear, startMonth, endMonth, ...stats });
+  }
+  let international = null;
+  const ntRef = d.readUInt32LE(P + NT_REC_OFFSET);
+  if (ntRef !== 0xFFFFFFFF && ntRef !== 0) {
+    international = {
+      teamRef: ntRef,
+      name: teams.get(ntRef)?.name || null,
+      ...decodeRecordStats(d, P + NT_REC_OFFSET),
+    };
+  }
+  const sumGroup = (list) => {
+    let apps = 0, goals = 0, assists = 0, ratingSumX10 = 0;
+    for (const r of list) { apps += r.apps; goals += r.goals; assists += r.assists; ratingSumX10 += r.ratingSumX10 || 0; }
+    return { apps, goals, assists, avgRating: apps > 0 && ratingSumX10 > 0 ? Math.round(ratingSumX10 / apps) / 10 : null };
+  };
+  const clubTotals = sumGroup(clubs);
+  const combinedTotals = sumGroup(international ? [...clubs, international] : clubs);
+  return { clubs, international, clubTotals, combinedTotals };
+}
+
 // Offres de contrat reçues par le joueur. La table n'a pas d'adresse fixe (vers 0x1217D8D en vanilla, 0x1282C02 en
 // Football Life) : elle suit OFFER_MARKER, premier enregistrement à marqueur + 0x10.
 // Enregistrements de 0x30 octets : u16 numéro à +0 (0xFFFF = emplacement libre : le jeu ignore ou efface l'offre),
@@ -499,6 +550,7 @@ function readCareer(savePath) {
       profile: readPlayerProfile(d, P),
       training: readTraining(d, P - 48),
       careerStart: L.careerStart != null && d.readUInt32LE(L.careerStart + 0x1C) === d.readUInt32LE(P) ? readDate(d, L.careerStart + 4) : null,
+      careerRecords: readCareerRecords(d, teams, P),
     },
     club: teams.get(clubRef) || { ref: clubRef, name: null },
     // Sélection : son effectif est le groupe convoqué en cours (le jeu le met à jour à chaque rassemblement).

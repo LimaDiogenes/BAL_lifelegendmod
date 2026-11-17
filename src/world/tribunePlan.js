@@ -369,8 +369,16 @@ function tribunePlan({ state, snapshot: s, changes, handle: me, world = null, cl
   }
   // 11. Les cotes avant son match (une seule fois, chiffres de FACTS).
   if (next && !res && s.next?.odds) add(brand('betting'), `the odds of ${matchLabel(next)} from FACTS.next_match.odds only; play responsibly`);
-  // 12. Libre : le mercato pendant le mercato, sinon au choix (un vrai joueur ou coach peut parler, règle 29).
-  add(fresh('fan', club), changes.window || /^(01|07|08)/.test(String(s.gameDate).slice(5)) ? "the transfer window for his club: only the moves in FACTS.mercato, no invented rumour" : 'free: any topic of the moment');
+  // 12. Libre : événement personnel (CHANGES.life_events), mercato, potin hors terrain (une fois sur trois), ou libre.
+  let slot12 = 'free: any topic of the moment';
+  if (changes.life_events?.length) {
+    slot12 = `off-pitch life & fan buzz: react to CHANGES.life_events (and FACTS.biography / MEMORY.key_memory if relevant): gossip, congratulations, or banter around his life outside football. Tag him (@${me}).`;
+  } else if (changes.window || /^(01|07|08)/.test(String(s.gameDate).slice(5))) {
+    slot12 = 'the transfer window for his club: only the moves in FACTS.mercato, no invented rumour';
+  } else if ((state.bio?.text || state.keyMemory?.length) && (state.editions?.length || 0) % 3 === 1) {
+    slot12 = `off-pitch life & fan/tabloid gossip: talk about his personal background, hometown roots, lifestyle, or people around him from FACTS.biography / MEMORY.key_memory — playful gossip or curiosity, without inventing fake scandals. Tag him (@${me}).`;
+  }
+  add(fresh('fan', club), slot12);
   return slots;
 }
 

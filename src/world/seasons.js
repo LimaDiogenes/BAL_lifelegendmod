@@ -81,17 +81,37 @@ function archiveSeason(state, snapshot) {
   return news;
 }
 
+function resolveCareerRecords(state) {
+  const rec = state?.snapshot?.player?.careerRecords;
+  if (!rec) return null;
+  const aliases = state?.clubAliases || {};
+  const clubs = (rec.clubs || []).map((c) => ({
+    ...c,
+    name: c.name || aliases[String(c.clubRef)] || null,
+  }));
+  return { ...rec, clubs };
+}
+
 // Pour les rédacteurs : le parcours avant le suivi, chaque saison archivée et les totaux.
 function careerFacts(state) {
   const seasons = Object.values(state.seasons || {})
     .sort((a, b) => String(a.season).localeCompare(String(b.season)))
     .map(({ byCompetition, log, ...s }) => s);
+  const rec = resolveCareerRecords(state);
   return {
     before_tracking: state.snapshot?.player?.history || null,
     seasons,
     totals: totals(seasons),
     totals_cover_whole_career: trackedFromStart(state),
+    ...(rec ? {
+      save_career_records: {
+        clubs: rec.clubs.map((c) => ({ club: c.name || 'Unknown club', apps: c.apps, goals: c.goals, assists: c.assists, avg_rating: c.avgRating })),
+        international: rec.international ? { team: rec.international.name, apps: rec.international.apps, goals: rec.international.goals, assists: rec.international.assists, avg_rating: rec.international.avgRating } : null,
+        club_totals: rec.clubTotals,
+        combined_totals: rec.combinedTotals,
+      },
+    } : {}),
   };
 }
 
-module.exports = { archiveSeason, careerFacts, totals, trackedFromStart, matchLog };
+module.exports = { archiveSeason, careerFacts, resolveCareerRecords, totals, trackedFromStart, matchLog };
