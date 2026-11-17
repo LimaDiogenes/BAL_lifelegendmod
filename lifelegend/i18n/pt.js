@@ -1875,4 +1875,6 @@ window.LL_I18N.pt = {
   "Ajoute des dates importantes hors football (anniversaire, événement caritatif, déménagement…). Quand le jeu atteint cette date, la presse, les supporters et le vestiaire peuvent réagir.": "Adicione datas importantes fora do futebol (aniversário, evento beneficente, mudança…). Quando o jogo chegar nessa data, imprensa, torcida e vestiário podem reagir.",
   "Événement (ex. Anniversaire, gala de charité…)": "Evento (ex. Aniversário, evento beneficente…)",
   "Ajouter une date": "Adicionar data",
+  "cette saison": "nesta temporada",
+  "Premier match en sélection": "Estreia pela seleção",
 };

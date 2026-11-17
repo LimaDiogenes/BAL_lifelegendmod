@@ -1875,4 +1875,6 @@ window.LL_I18N.es = {
   "Ajoute des dates importantes hors football (anniversaire, événement caritatif, déménagement…). Quand le jeu atteint cette date, la presse, les supporters et le vestiaire peuvent réagir.": "Añade fechas importantes fuera del fútbol (cumpleaños, gala benéfica, mudanza…). Cuando el juego alcance esa fecha, prensa, afición y vestuario podrán reaccionar.",
   "Événement (ex. Anniversaire, gala de charité…)": "Evento (ej. Cumpleaños, gala benéfica…)",
   "Ajouter une date": "Añadir fecha",
+  "cette saison": "esta temporada",
+  "Premier match en sélection": "Debut con la selección",
 };
