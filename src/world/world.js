@@ -1657,6 +1657,7 @@ async function syncInner({ store, settings, log, t }) {
   // Nom affiché resté identique au nom du jeu (ex. ancien « M. DEPAY ») : on suit la nouvelle mise en forme.
   if (state.profile.displayName.toUpperCase() === snapshot.player.name.toUpperCase()) state.profile.displayName = snapshot.player.name;
 
+  const prevGameDate = state.snapshot?.gameDate || null;
   const changes = diffSnapshots(state.snapshot, snapshot);
   // Mise à l'écart écrite par LifeLegend (src/world/conduct.js) : ces jours d'indisponibilité ne sont pas une blessure.
   if (sanctionActive(state, snapshot.gameDate) || endedRecently(state, snapshot.gameDate)) { changes.injury = null; changes.recovered = false; }
@@ -1946,7 +1947,7 @@ async function syncInner({ store, settings, log, t }) {
   const chant = chantDue(state, snapshot, changes, { won_vote: Boolean(vote?.won), derby: facts.derby || null });
   // L'interview exclusive (src/world/interview.js) : la demande et ses quatre questions, écrites par l'édition.
   const interview = changes.firstSync ? null : interviewDue(state, snapshot);
-  const lifeEvents = dueLifeEvents(state, prev?.gameDate, snapshot.gameDate);
+  const lifeEvents = dueLifeEvents(state, prevGameDate, snapshot.gameDate);
   if (lifeEvents.length) log(`Vie perso : ${lifeEvents.map((e) => e.event).join(', ')}.`);
   if (chant) chapterEvents.push({ kind: 'fan_chant', why: chant.why });
   const aiChanges = { ...changes, newOffers: undefined, contractSigned: undefined, contract_signed: signed || undefined,
