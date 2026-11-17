@@ -202,8 +202,24 @@ describe('Phase 1 defaults & Phase 2 Privacy Shield', () => {
     assert.equal(masked.toLowerCase().includes('diogenes'), false);
     assert.equal(masked.toLowerCase().includes('lima'), false);
     assert.equal(masked.toLowerCase().includes('diogolima'), false);
+    const raw = 'Great goal by Diogenes Lima (@diogolima)! Also Lima worked hard.';
+    assert.equal(maskText(raw, map), maskText(raw, map));
     const restored = unmaskText(masked, map);
-    assert.equal(restored, 'Great goal by Diogenes Lima (@diogolima)! Also Lima worked hard.');
+    assert.equal(restored, raw);
+  });
+
+  it('matches any casing to/from API while preserving user casing', () => {
+    const map = buildPrivacyMap(
+      { enabled: true, fields: { hometown: 'Manaus', custom: 'bakery' }, overrides: {} },
+      { careerId: 'case-1', playerName: 'Diogenes Lima' },
+    );
+    const mixed = 'diogenes, Diogenes, DIOGENES, Bakery and bakery in manaus / MANAUS.';
+    const masked = maskText(mixed, map);
+    assert.equal(masked.toLowerCase().includes('diogenes'), false);
+    assert.equal(masked.toLowerCase().includes('bakery'), false);
+    assert.equal(masked.toLowerCase().includes('manaus'), false);
+    const restored = unmaskText(masked, map);
+    assert.equal(restored, mixed);
   });
 
   it('returns original text unchanged when privacy shield is disabled', () => {

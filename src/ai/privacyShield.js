@@ -287,8 +287,17 @@ function buildPrivacyMap(privacy, { careerId = '', playerName = '', handle = '' 
 }
 
 function matchCase(matched, replacement) {
-  if (matched.length >= 2 && matched === matched.toUpperCase() && matched !== matched.toLowerCase()) {
+  if (!matched || !replacement) return replacement;
+  const hasCase = matched !== matched.toLowerCase() || matched !== matched.toUpperCase();
+  if (!hasCase) return replacement;
+  if (matched.length >= 2 && matched === matched.toUpperCase()) {
     return replacement.toUpperCase();
+  }
+  if (matched === matched.toLowerCase()) {
+    return replacement.toLowerCase();
+  }
+  if (matched[0] === matched[0].toUpperCase() && matched[0] !== matched[0].toLowerCase() && replacement === replacement.toLowerCase()) {
+    return replacement.replace(/(^|\s)(\p{L})/gu, (_, sp, ch) => `${sp}${ch.toUpperCase()}`);
   }
   return replacement;
 }
