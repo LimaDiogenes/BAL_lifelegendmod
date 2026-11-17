@@ -21,7 +21,7 @@ const COACH_STRIDE = 0x258, COMP_STRIDE = 0x314, MATCH_STRIDE = 0x254;
 
 const isDate = (d, o) => { if (o < 0 || o + 4 > d.length) return false; const y = d.readUInt16LE(o); return y >= 1990 && y <= 2100 && d[o + 2] >= 1 && d[o + 2] <= 12 && d[o + 3] >= 1 && d[o + 3] <= 31; };
 const printable = (d, o) => o >= 0 && o < d.length && d[o] >= 0x21 && d[o] < 0xF8;
-const plausibleId = (id) => id >= 1000 && id < 4000000;
+const plausibleId = (id) => (id >= 1 && id < 4000000) || (id >= 0x80000000 && id < 0x80400000);
 const cstr = (d, o, n) => { let e = o; while (e < o + n && e < d.length && d[e]) e++; return d.toString('utf8', o, e); };
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
