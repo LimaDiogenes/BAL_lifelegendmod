@@ -18,6 +18,20 @@ function formerClubs(state, s) {
     if (e.lastGameDate && (!m.last || e.lastGameDate > m.last)) m.last = e.lastGameDate;
     map.set(e.club, m);
   }
+  const aliases = state?.clubAliases || {};
+  for (const c of s?.player?.careerRecords?.clubs || []) {
+    const cname = c.name || aliases[String(c.clubRef)] || null;
+    if (!cname || cname === cur) continue;
+    const m = map.get(cname);
+    if (!m) {
+      map.set(cname, { club: cname, ref: c.clubRef ?? null, seasons: c.startYear ? [String(c.startYear)] : [], matches: c.apps || 0, goals: c.goals || 0, assists: c.assists || 0, last: null });
+    } else {
+      m.matches = Math.max(m.matches, c.apps || 0);
+      m.goals = Math.max(m.goals, c.goals || 0);
+      m.assists = Math.max(m.assists, c.assists || 0);
+      if (!m.ref && c.clubRef != null) m.ref = c.clubRef;
+    }
+  }
   const before = s?.player?.history?.previousClub;
   if (before && before !== cur && !map.has(before)) map.set(before, { club: before, ref: null, seasons: [], matches: 0, goals: 0, assists: 0, last: null, before_career: true });
   return [...map.values()];
