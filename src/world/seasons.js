@@ -3,9 +3,9 @@
 // résumé de chaque saison (et de chaque club, en cas de transfert) à chaque synchro.
 
 const PALIERS = {
-  apps: [50, 100, 150, 200, 250, 300, 400, 500],
-  goals: [10, 25, 50, 75, 100, 150, 200, 250, 300],
-  assists: [10, 25, 50, 75, 100, 150],
+  apps: [50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 800],
+  goals: [10, 25, 50, 75, 100, 150, 200, 250, 300, 400, 500, 600, 700, 800, 900, 1000],
+  assists: [10, 25, 50, 75, 100, 150, 200, 250, 300, 400, 500],
 };
 const LIBELLES = { apps: 'match', goals: 'but', assists: 'passe décisive' };
 
@@ -71,7 +71,19 @@ function archiveSeason(state, snapshot) {
   const news = { milestones: [], trophies: [] };
   const known = new Set((previous?.trophies || []).map((t) => t.competition));
   news.trophies = current.trophies.filter((t) => !known.has(t.competition));
-  if (trackedFromStart(state)) {
+  const combined = snapshot?.player?.careerRecords?.combinedTotals;
+  if (combined) {
+    if (state.prevCareerCombined) {
+      for (const [k, steps] of Object.entries(PALIERS)) {
+        for (const n of steps) {
+          if ((state.prevCareerCombined[k] || 0) < n && (combined[k] || 0) >= n) {
+            news.milestones.push(`${n}e ${LIBELLES[k]} en carrière`);
+          }
+        }
+      }
+    }
+    state.prevCareerCombined = { apps: combined.apps || 0, goals: combined.goals || 0, assists: combined.assists || 0 };
+  } else if (trackedFromStart(state)) {
     for (const [k, steps] of Object.entries(PALIERS)) {
       for (const n of steps) {
         if (before[k] < n && after[k] >= n) news.milestones.push(`${n}e ${LIBELLES[k]} en carrière`);
@@ -79,6 +91,25 @@ function archiveSeason(state, snapshot) {
     }
   }
   return news;
+}
+
+function resolveHistory(state) {
+  const h = state?.snapshot?.player?.history;
+  if (!h) return null;
+  const aliases = state?.clubAliases || {};
+  const clubs = state?.snapshot?.player?.careerRecords?.clubs || [];
+  const firstRecName = clubs[0] ? aliases[String(clubs[0].clubRef)] || clubs[0].name : null;
+  const prevClubEntry = clubs.length >= 2 ? clubs[clubs.length - 2] : null;
+  const prevRecName = prevClubEntry ? aliases[String(prevClubEntry.clubRef)] || prevClubEntry.name : null;
+  return {
+    ...h,
+    firstClub: h.firstClub || firstRecName || null,
+    previousClub: h.previousClub || prevRecName || null,
+    debuts: (h.debuts || []).map((d) => ({
+      ...d,
+      team: d.team || (d.kind === 'club' ? (h.firstClub || firstRecName) : state?.snapshot?.nationalTeam?.name) || null,
+    })),
+  };
 }
 
 function resolveCareerRecords(state) {
@@ -98,15 +129,19 @@ function careerFacts(state) {
     .sort((a, b) => String(a.season).localeCompare(String(b.season)))
     .map(({ byCompetition, log, ...s }) => s);
   const rec = resolveCareerRecords(state);
+  const seasonTotals = totals(seasons);
+  const fullTotals = rec?.combinedTotals
+    ? { ...seasonTotals, apps: rec.combinedTotals.apps, goals: rec.combinedTotals.goals, assists: rec.combinedTotals.assists, avgRating: rec.combinedTotals.avgRating }
+    : seasonTotals;
   return {
-    before_tracking: state.snapshot?.player?.history || null,
+    before_tracking: resolveHistory(state),
     seasons,
-    totals: totals(seasons),
-    totals_cover_whole_career: trackedFromStart(state),
+    totals: fullTotals,
+    totals_cover_whole_career: Boolean(rec?.combinedTotals) || trackedFromStart(state),
     ...(rec ? {
       save_career_records: {
         clubs: rec.clubs.map((c) => ({ club: c.name || 'Unknown club', apps: c.apps, goals: c.goals, assists: c.assists, avg_rating: c.avgRating })),
-        international: rec.international ? { team: rec.international.name, apps: rec.international.apps, goals: rec.international.goals, assists: rec.international.assists, avg_rating: rec.international.avgRating } : null,
+        international: rec.international ? { team: rec.international.name || state?.snapshot?.nationalTeam?.name || state?.snapshot?.player?.nationality || null, apps: rec.international.apps, goals: rec.international.goals, assists: rec.international.assists, avg_rating: rec.international.avgRating } : null,
         club_totals: rec.clubTotals,
         combined_totals: rec.combinedTotals,
       },
@@ -114,4 +149,4 @@ function careerFacts(state) {
   };
 }
 
-module.exports = { archiveSeason, careerFacts, resolveCareerRecords, totals, trackedFromStart, matchLog };
+module.exports = { archiveSeason, careerFacts, resolveCareerRecords, resolveHistory, totals, trackedFromStart, matchLog };

@@ -38,8 +38,11 @@ function pantheonEvents({ state, before, snapshot, changes, seasonNews = {}, sea
   const club = snapshot.club.name;
   const was = clubTotals(before)[club] || { apps: 0, goals: 0 };
   const now = clubTotals(Object.values(state.seasons || {}))[club] || { apps: 0, goals: 0 };
-  if (!was.apps && now.apps) events.push({ kind: 'first_match', club });
-  if (!was.goals && now.goals) events.push({ kind: 'first_goal', club });
+  const recClub = (snapshot?.player?.careerRecords?.clubs || []).find((c) => (snapshot.club?.ref != null && c.clubRef === snapshot.club.ref) || c.name === club);
+  const alreadyPlayedAtClub = Boolean(recClub && was.apps === 0 && recClub.apps > (now.apps || 0));
+  const alreadyScoredAtClub = Boolean(recClub && was.goals === 0 && recClub.goals > (now.goals || 0));
+  if (!was.apps && now.apps && !alreadyPlayedAtClub) events.push({ kind: 'first_match', club });
+  if (!was.goals && now.goals && !alreadyScoredAtClub) events.push({ kind: 'first_goal', club });
   if (changes.transfer) events.push({ kind: 'transfer', from: changes.transfer.from, to: changes.transfer.to });
   if (changes.contractSigned) events.push({ kind: 'contract_extension', club: changes.contractSigned.club, until: changes.contractSigned.until });
   if (changes.callUp?.first) events.push({ kind: 'first_call_up', team: changes.callUp.team });

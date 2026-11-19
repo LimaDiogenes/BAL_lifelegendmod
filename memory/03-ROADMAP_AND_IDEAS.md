@@ -28,15 +28,14 @@
    - Zero personal identifiers leave the PC; verified by `tests/privacy.test.js` (`pass 10/10`) and full `npm test` (`pass 206, fail 0, skipped 23`).
 6. **Expanded AI Model & Free/Open-Source API Support:**
    - Add presets in `src/ai/providers.js` for local zero-key endpoints (Ollama, LM Studio) and additional free-tier/open-weight OpenAI-compatible providers (Mistral, Cerebras, SambaNova, GitHub Models, DeepSeek, etc.) + easy model refresh.
-7. **Multi-Season Career History Reading (Beyond Current Season):**
-   - `blReader.js` currently reads current-season matches + `readPlayerHistory` (first club, previous club, debuts) + `POTY_TABLE`.
-   - Goal: research a real multi-season `BL00000000` save binary to locate PES/FL27's stored past-seasons stats & trophy history offsets so existing multi-year saves populate Panthéon/Scoreline completely on first sync.
+7. **Multi-Season Career History Reading (Beyond Current Season) — *Implemented & Verified*:**
+   - **Verified & implemented** in `src/save/blReader.js` (`readCareerRecords`: Club Records at `L.player + 0x3AC` stride `0x30`, International Record at `L.player + 0xEEC`, plus high-bit created-player IDs `0x80000000+` in `layout.js`), `seasons.js`, `pantheon.js`, `reunion.js`, `snapshot.js`, and Panthéon/Scoreline/Mails UI (including inline club naming via `clubAliases` and `playerOfYear` honours).
 8. **Game Image Imports & Optional Free Image Illustration:**
    - Extract stadium thumbnails (`common/render/thumbnail/stadium/...`) and additional game textures via `cpk.js` / `dds.js` to illustrate articles/posts, or optionally integrate free/local image generation.
 9. **Richer Teammate & Squad Reading:**
    - Expand `gameDb.js` (`Player.bin` stride 312) to read overall rating, age, nationality, playing style, and merge with save roster/shirt numbers (`+0x2EA`) so unused bench teammates, position rivals, and captains are known to Vestiaire, tactical articles, and Influence.
-10. **Custom Dates / Out-of-Football Life Events:**
-    - Let the user schedule custom life events on specific in-game dates; inject them into `CHANGES` when `snapshot.gameDate` reaches those dates so press, fans, and teammates react.
+10. **Custom Dates / Out-of-Football Life Events — *Implemented & Verified*:**
+    - Added `state.lifeEvents` (up to 20 `(YYYY-MM-DD, title)` dates in *Settings › Your Player*), `dueLifeEvents` injection into `CHANGES.life_events` (`world.js`), `keyMemory` (max 10 one-liners), and Kop/Vestiaire/paper off-pitch hooks (`tribunePlan.js`, `prompts.js`).
 11. **Seamless Auto-Read / Auto-Sync Flow:**
     - Enhance existing `setupAutoSync()` (optionally default-on, smoother non-blocking UX/notifications when the game writes `BL0000000*`).
 12. **Auto-Load Latest Modified Save (Optional Toggle):**
@@ -50,3 +49,18 @@
   - Package LifeLegend portable build inside a Mod Studio subfolder (or downloadable module) using `tools/build-portable.js`.
   - Add a Mod Studio launcher action that pre-populates `%APPDATA%\LiveTweet\data\settings.json` (and copies/registers `FL_key.bin` into `%APPDATA%\LiveTweet\data\keys/` if missing) with the game path, language, and active save path, then starts `LifeLegend.exe`.
   - `update:check` URL in `main.js` now points to `LimaDiogenes/BAL_lifelegendmod` (updated in Phase 1).
+
+---
+
+## 4. Approved Interactive RPG & Career Sim Roadmap (Phases A–D)
+
+Per owner customization rule: always offer rich curated presets + custom user-editable options wherever feasible.
+
+- **Phase A — Full-App Consistency Sweep & Map (*Current Milestone*):**
+  - Sync `careerRecords`, `clubAliases`, mid-career milestone tracking (`prevCareerCombined`), `pantheonEvents` guards, `reunion.js` former-club stats, Mails › Career File, Scoreline `careerCard`, `prompts.js` off-pitch cues, and write `memory/04-APP_MAP.md`.
+- **Phase B — Onboarding Questionnaire & Personality Presets (Auto-Linked to Privacy Shield):**
+  - 6+ editable Personality Presets (*Humble Grinder*, *Showman*, *Fiery Leader*, *Hometown Kid*, *Mercenary*, *Maverick*) + custom trait/flavor fields (Media Style, Lifestyle, Ambition, Dressing Room Role, Idol, Signature Celebration, Hobby, Dream) + auto-syncing Roots/Inner Circle directly into Privacy Shield; ultra-compact `FACTS.persona` (~40 tokens).
+- **Phase C — "My Life" Hub Tab & Active Between-Match RPG Sim:**
+  - New **My Life** tab: Bank Balance (wages + sponsor income + bonuses), Lifestyle/Career Purchases (homes, cars, personal chef/physio, PR, charity), Relationship Meters (Manager Trust, Top Teammates, Fans, Sponsors, Media Persona), Interactive Days-Off Actions, Dilemma Decision Cards (zero extra AI calls), and Scaling Editable Multi-Slot Sponsors (1 → 3 → 5 slots by Kop followers, custom editable brand names, scheduled obligation dates).
+- **Phase D — Full Calendar Mode (Spoiler-Safe Catch-Up Queue) + Optional Save Effects:**
+  - Switchable `Basic` vs. `Full Calendar` mode (`state.simDate` + hidden `pendingMatches` queue so multi-match PES sessions play out day-by-day chronologically with both `"Next Day"` and `"Next Event / Match"` controls) + optional gated write effects (`playerProfile.js`: `+327` formArrow, `+318` affection, `+328` unavailableDays) when FL27 is closed on standard layouts.

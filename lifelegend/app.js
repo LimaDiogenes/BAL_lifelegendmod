@@ -5149,16 +5149,24 @@ function dossierPage() {
   </section>`;
   const seasons = Object.values(state.seasons || {}).sort((x, y) => String(y.season).localeCompare(String(x.season))).slice(0, 4);
   const h = s.player.history;
-  const debut = (kind, label) => { const d = h?.debuts?.find((x) => x.kind === kind); return d ? `<p class="ds-debut"><b>${tr(label)}</b> ${esc(monthYear(d.date))} · ${esc(d.team)} – ${esc(d.opponent)}${d.competition ? ` (${esc(d.competition)})` : ''}</p>` : ''; };
+  const rec = s.player.careerRecords;
+  const aliases = state.clubAliases || {};
+  const clubLabel = (c) => c.name || aliases[String(c.clubRef)] || tr('Club inconnu');
+  const debut = (kind, label) => { const d = h?.debuts?.find((x) => x.kind === kind); return d ? `<p class="ds-debut"><b>${tr(label)}</b> ${esc(monthYear(d.date))} · ${esc(d.team || tr('Inconnu'))} – ${esc(d.opponent || tr('Inconnu'))}${d.competition ? ` (${esc(d.competition)})` : ''}</p>` : ''; };
   const logged = seasons.find((x) => x.log?.length);
   const games = (logged?.log || []).slice(-5).map((g) => {
-    const opponent = g.home === logged.club ? g.away : g.home;
+    const opponent = (g.home === logged.club ? g.away : g.home) || tr('Inconnu');
     return `<span class="ds-game" title="${esc(`${opponent} · ${fmtDate(g.date, { day: 'numeric', month: 'short', year: 'numeric' })}`)}">${crestHtml(opponent, ' ds-crest')}${ratingChip(g.rating)}<small>${g.goals ? `${g.goals} ${tr('B')}` : ''}</small></span>`;
   }).join('');
+  const pathRows = rec?.clubs?.length
+    ? [...rec.clubs.map((c) => ({ name: clubLabel(c), sub: `${c.startYear || ''}${c.clubRef === s.club.ref ? ` <span class="pill">${tr('EN COURS')}</span>` : ''}`, apps: c.apps, goals: c.goals, assists: c.assists, rating: c.avgRating })),
+      ...(rec.international ? [{ name: rec.international.name || s.nationalTeam?.name || s.player.nationality || tr('Sélection nationale'), sub: tr('Sélection nationale'), apps: rec.international.apps, goals: rec.international.goals, assists: rec.international.assists, rating: rec.international.avgRating }] : []),
+      ...(rec.combinedTotals ? [{ name: tr('Total combiné (Club + Sélection)'), sub: '', apps: rec.combinedTotals.apps, goals: rec.combinedTotals.goals, assists: rec.combinedTotals.assists, rating: rec.combinedTotals.avgRating }] : [])]
+    : seasons.map((x) => ({ name: x.club, sub: `${esc(x.season)}${x.position ? ` · ${ordinal(x.position)}` : ''}${x.league ? ` · ${esc(x.league)}` : ''}${!x.complete && x.club === club ? ` <span class="pill">${tr('EN COURS')}</span>` : ''}`, apps: x.stats.apps, goals: x.stats.goals, assists: x.stats.assists, rating: x.stats.avgRating }));
   const path = `<section class="ds-path">
     <span class="ib-eyebrow">${tr('Ton parcours')}</span>
-    ${seasons.map((x) => `<div class="ds-season">${crestHtml(x.club, ' ds-crest')}<div><b>${esc(x.club)}</b><span>${esc(x.season)}${x.position ? ` · ${ordinal(x.position)}` : ''}${x.league ? ` · ${esc(x.league)}` : ''}${!x.complete && x.club === club ? ` <span class="pill">${tr('EN COURS')}</span>` : ''}</span></div>
-      <dl>${[['MJ', x.stats.apps], ['B', x.stats.goals], ['PD', x.stats.assists]].map(([k, n]) => `<div><dt>${tr(k)}</dt><dd>${n}</dd></div>`).join('')}<div><dt>${tr('Note')}</dt><dd>${ratingChip(x.stats.avgRating)}</dd></div></dl></div>`).join('')}
+    ${pathRows.map((x) => `<div class="ds-season">${crestHtml(x.name, ' ds-crest')}<div><b>${esc(x.name)}</b><span>${x.sub}</span></div>
+      <dl>${[['MJ', x.apps], ['B', x.goals], ['PD', x.assists]].map(([k, n]) => `<div><dt>${tr(k)}</dt><dd>${n}</dd></div>`).join('')}<div><dt>${tr('Note')}</dt><dd>${ratingChip(x.rating)}</dd></div></dl></div>`).join('')}
     ${games ? `<div class="ds-form"><small>${tr('Tes derniers matchs')}</small><div>${games}</div></div>` : ''}
     ${debut('club', 'Débuts en club')}${debut('national_team', 'Débuts en sélection')}
   </section>`;
@@ -5169,6 +5177,9 @@ function dossierPage() {
   const clubRow = (prefix, c, extra = {}) => dcRow({ key: `${prefix}:${c.team || c.club}`, media: crestHtml(c.team || c.club), name: c.team || c.club, sub: c.league || '', go: 'dc-transfer', dsclub: c.team || c.club, ...extra });
   const spOne = state.sponsor?.deal || state.sponsor?.offer;
   const spMedia = spOne && bootFile(spOne.photo) ? `<img class="dc-boot" src="${esc(bootFile(spOne.photo))}" alt="">` : esc(String(spOne?.brand || '?')[0]);
+  const sidePath = rec?.clubs?.length
+    ? rec.clubs.map((c, idx) => dcRow({ key: `rec:${c.clubRef || idx}`, media: crestHtml(clubLabel(c)), name: clubLabel(c), sub: c.startYear ? String(c.startYear) : '', go: 'dc-path' }))
+    : seasons.map((x) => dcRow({ key: `season:${x.season}`, media: crestHtml(x.club), name: x.club, sub: x.season, go: 'dc-path' }));
   const side = `<aside class="dc-side"><p class="dc-eyebrow">${tr('Ta carrière')}</p><div class="dc-club">${crestHtml(club)}<b>${esc(club)}</b></div>
       <label class="dc-search">${hi('search')}<input type="search" id="dc-q" placeholder="${tr('Chercher')}" aria-label="${tr('Chercher')}" autocomplete="off"></label>
       ${dcGroup(tr('Ton contrat'), [dcRow({ key: 'me', media: myFaceIn(fbInitials(s.player.name)), name: s.player.name, sub: months !== null ? trn(months, '{n} mois restant', '{n} mois restants') : '', go: 'dc-over' }), dcRow({ key: 'ext', media: hi('contract'), name: tr('Prolongation'), end: v.extension !== null && v.extension !== undefined ? pct(v.extension) : '', go: 'dc-contract' })])}
@@ -5179,7 +5190,7 @@ function dossierPage() {
       ${dcGroup(tr('Objectifs'), [dcRow({ key: 'goals', media: hi('flag'), name: tr('Tes objectifs'), sub: [state.objectives?.season, state.objectives?.comeback].filter(Boolean).length ? tr(OBJ_TITLE[(state.objectives.comeback || state.objectives.season).kind]) : tr('Aucun pour l’instant'), go: 'dc-goals' })])}
       ${dcGroup(tr('Relation avec le club'), [dcRow({ key: 'rel', media: hi('user'), name: tr('Ton entraîneur et tes coéquipiers'), sub: tr(REL_LABEL[dsRelationState().coach]), go: 'dc-relation' })])}
       ${dcGroup(tr('Agent'), [dcRow({ key: 'agent', media: fbInitials(a.name), name: a.name, sub: a.agency || '', go: 'dc-agent' })])}
-      ${dcGroup(tr('Ton parcours'), seasons.map((x) => dcRow({ key: `season:${x.season}`, media: crestHtml(x.club), name: x.club, sub: x.season, go: 'dc-path' })))}
+      ${dcGroup(tr('Ton parcours'), sidePath)}
       <p class="dc-none" id="dc-none">${tr('Rien ne correspond.')}</p>
       <div class="dc-side-foot"><button class="dc-back" data-smback>${hi('back')}Mails</button></div></aside>`;
   const tabs = [['dc-over', tr('Aperçu')], ['dc-contract', tr('Contrat')], ['dc-transfer', tr('Transfert')], ['dc-sponsor', tr('Équipementier')], ['dc-goals', tr('Objectifs')], ['dc-relation', tr('Relation')], ['dc-agent', tr('Agent')], ['dc-path', tr('Parcours')]];
@@ -6275,21 +6286,29 @@ const monthYear = (ym) => { if (!ym) return '—'; const [y, m] = ym.split('-').
 // Parcours (lu dans la sauvegarde) et saisons archivées par LifeLegend.
 function careerCard(s) {
   const h = s.player.history;
+  const rec = s.player.careerRecords;
+  const aliases = state.clubAliases || {};
   const seasons = Object.values(state.seasons || {}).sort((a, b) => String(a.season).localeCompare(String(b.season)));
   const debut = (kind) => h?.debuts?.find((d) => d.kind === kind);
-  const debutLine = (d) => (d ? `${esc(monthYear(d.date))} · ${esc(d.team)} – ${esc(d.opponent)} (${esc(d.competition || '')})` : '—');
+  const debutLine = (d) => (d ? `${esc(monthYear(d.date))} · ${esc(d.team || tr('Inconnu'))} – ${esc(d.opponent || tr('Inconnu'))} (${esc(d.competition || '')})` : '—');
+  const fullRecTable = rec && (rec.clubs?.length || rec.international) ? `<table class="data"><thead><tr>${['Équipe', 'MJ', 'B', 'PD', 'Note'].map((x) => `<th>${tr(x)}</th>`).join('')}</tr></thead><tbody>
+    ${(rec.clubs || []).map((c) => `<tr><td>${esc(c.name || aliases[String(c.clubRef)] || tr('Club inconnu'))}${c.startYear ? ` (${esc(c.startYear)})` : ''}</td><td class="num">${c.apps}</td><td class="num">${c.goals}</td><td class="num">${c.assists}</td><td class="num">${ratingChip(c.avgRating)}</td></tr>`).join('')}
+    ${rec.international ? `<tr><td>${esc(rec.international.name || s.nationalTeam?.name || s.player.nationality || tr('Sélection nationale'))}</td><td class="num">${rec.international.apps}</td><td class="num">${rec.international.goals}</td><td class="num">${rec.international.assists}</td><td class="num">${ratingChip(rec.international.avgRating)}</td></tr>` : ''}
+    ${rec.combinedTotals ? `<tr class="sum"><td><b>${esc(tr('Total combiné (Club + Sélection)'))}</b></td><td class="num"><b>${rec.combinedTotals.apps}</b></td><td class="num"><b>${rec.combinedTotals.goals}</b></td><td class="num"><b>${rec.combinedTotals.assists}</b></td><td class="num">${ratingChip(rec.combinedTotals.avgRating)}</td></tr>` : ''}
+  </tbody></table>` : '';
   return `<section class="card"><h3>${tr('Carrière')}</h3>
     ${h ? `<div class="career-path">
-      <div class="row"><span>${tr('Premier club')}</span><b>${esc(h.firstClub || '—')}</b></div>
+      <div class="row"><span>${tr('Premier club')}</span><b>${esc(h.firstClub || (rec?.clubs?.[0] ? (rec.clubs[0].name || aliases[String(rec.clubs[0].clubRef)]) : null) || '—')}</b></div>
       ${h.previousClub ? `<div class="row"><span>${tr('Club précédent')}</span><b>${esc(h.previousClub)}</b></div>` : ''}
       <div class="row"><span>${esc(tr('Arrivée à {club}', { club: s.club.name }))}</span><b>${h.joinedClub ? esc(fmtDate(h.joinedClub, { day: 'numeric', month: 'long', year: 'numeric' })) : '—'}</b></div>
       <div class="row"><span>${tr('Débuts en club')}</span><b>${debutLine(debut('club'))}</b></div>
       <div class="row"><span>${tr('Débuts en sélection')}</span><b>${debutLine(debut('national_team'))}</b></div>
     </div>` : ''}
+    ${fullRecTable}
     ${seasons.length ? `<table class="data"><thead><tr>${['Saison', 'Club', 'Clas.', 'MJ', 'B', 'PD', 'Note', 'Trophées'].map((x) => `<th>${tr(x)}</th>`).join('')}</tr></thead><tbody>
       ${seasons.map((x) => `<tr><td>${esc(x.season)}${!x.complete && x.club === s.club.name ? ` <span class="pill">${tr('EN COURS')}</span>` : ''}</td><td>${esc(x.club)}</td><td class="num">${ordinal(x.position)}</td><td class="num">${x.stats.apps}</td><td class="num">${x.stats.goals}</td><td class="num">${x.stats.assists}</td><td class="num">${ratingChip(x.stats.avgRating)}</td><td>${x.trophies.map((t) => `🏆 ${esc(t.competition)}`).join('<br>') || '—'}</td></tr>`).join('')}
     </tbody></table>` : ''}
-    <p class="fineprint">${tr('Les saisons sont archivées par LifeLegend à chaque synchro, à partir de ta première synchro (la sauvegarde ne garde que la saison en cours).')}</p>
+    ${rec?.clubs?.length ? '' : `<p class="fineprint">${tr('Les saisons sont archivées par LifeLegend à chaque synchro, à partir de ta première synchro (la sauvegarde ne garde que la saison en cours).')}</p>`}
   </section>`;
 }
 

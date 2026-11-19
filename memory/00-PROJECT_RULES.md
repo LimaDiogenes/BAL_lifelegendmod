@@ -6,6 +6,7 @@
 - **Evidence Discipline:** Never guess binary offsets, save formats, or behavior. Label findings as **verified** (read/tested in code or files), **cited**, or **belief**.
 - **Commit Attribution:** **Never** include AI attribution or `Co-Authored-By` trailers in git commits.
 - **Bitdefender Warning:** Bitdefender Advanced Threat Control has previously quarantined Football Life executables and saves during memory/save research. Always keep save backups before any save-writing test.
+- **Player-First Customization Rule:** Always preserve user choice — provide rich curated presets and default options alongside custom editable fields wherever feasible (traits, flavor details, sponsor names, personalities, life events, etc.), especially when those choices feed AI prompts (and ensure any personal words route cleanly through Privacy Shield).
 
 ## 2. Git & GitHub Workflow Rule (Mandatory)
 - **Repository:** `https://github.com/LimaDiogenes/BAL_lifelegendmod`
