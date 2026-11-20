@@ -376,6 +376,16 @@ app.whenReady().then(() => {
   });
   handle('privacy:save', (privacy) => world.savePrivacy({ store, privacy }));
   handle('persona:save', (persona) => world.savePersona({ store, persona }));
+  handle('lifeHub:calibrate', (payload) => world.calibrateCareerLifeHub({ store, payload }));
+  handle('lifeHub:buyAsset', (payload) => world.buyLifeAsset({ store, payload }));
+  handle('lifeHub:sellAsset', (assetId) => world.sellLifeAsset({ store, assetId }));
+  handle('lifeHub:addSponsor', (payload) => world.addLifeSponsor({ store, payload }));
+  handle('lifeHub:updateSponsor', (payload) => world.updateLifeSponsor({ store, payload }));
+  handle('lifeHub:removeSponsor', (id) => world.removeLifeSponsor({ store, id }));
+  handle('lifeHub:answerOffer', ({ offerId, choice }) => world.answerLifeSponsorOffer({ store, offerId, choice }));
+  handle('lifeHub:completeObligation', ({ obligationId, skip }) => world.completeLifeObligation({ store, obligationId, skip }));
+  handle('lifeHub:action', (payload) => world.doLifeAction({ store, payload }));
+  handle('lifeHub:dilemma', ({ dilemmaId, choiceId }) => world.answerLifeDilemma({ store, dilemmaId, choiceId }));
   handle('career:aliasClub', ({ clubRef, name }) => world.saveClubAlias({ store, clubRef, name }));
   handle('lifeEvents:save', (events) => world.saveLifeEvents({ store, events }));
   handle('privacy:preview', ({ text, privacy, player, handle: h, persona } = {}) => {

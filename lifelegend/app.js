@@ -85,6 +85,7 @@ const SITES = [
   { id: 'huddle', label: () => 'Vestiaire' },
   { id: 'stats', label: () => 'Scoreline' },
   { id: 'pantheon', label: () => 'Panthéon' },
+  { id: 'mylife', label: () => tr('Ma vie') },
   { id: 'settings', hidden: true, label: () => tr('Réglages') },
 ];
 
@@ -1250,7 +1251,7 @@ function llEnter(page) {
 }
 
 // Le cadre de LifeLegend : le rail des sites et son encoche, l'onglet du site ouvert, les outils et le profil.
-const SITE_ICON = { national: 'newspaper', local: 'pencil', tribune: 'hashtag', mail: 'envelope', huddle: 'chat', stats: 'poll', pantheon: 'trophy' };
+const SITE_ICON = { national: 'newspaper', local: 'pencil', tribune: 'hashtag', mail: 'envelope', huddle: 'chat', stats: 'poll', pantheon: 'trophy', mylife: 'sparkles' };
 // La page défile dans la feuille du cadre, plus dans la fenêtre.
 const llView = () => document.getElementById('ll-view');
 const viewScrollTo = (top, smooth = false) => llView()?.scrollTo({ top, behavior: smooth ? 'smooth' : 'auto' });
@@ -1303,7 +1304,7 @@ function paintShell() {
   bell.onclick = () => shellGo('tribune', '[data-twnav="mentions"]');
   const me = s ? state.profile?.displayName || s.player.name : '';
   const initials = me ? fbInitials(me) : hi('user');
-  const items = [[tr('Ton profil'), 'tribune', '[data-twnav="mine"]'], [tr('Dossier de carrière'), 'mail', '[data-smdossier]'], [tr('Influence'), 'mail', '[data-sminfluence]'], ['Panthéon', 'pantheon', null], [tr('Réglages'), 'settings', null]];
+  const items = [[tr('Ton profil'), 'tribune', '[data-twnav="mine"]'], [tr('Dossier de carrière'), 'mail', '[data-smdossier]'], [tr('Influence'), 'mail', '[data-sminfluence]'], ['Panthéon', 'pantheon', null], [tr('Ma vie'), 'mylife', null], [tr('Réglages'), 'settings', null]];
   const box2 = $('#ll-me');
   box2.innerHTML = `<button class="ll-me-btn" id="ll-me-btn" aria-haspopup="true" aria-expanded="${shellMenu}"${s ? '' : ' disabled'}>${me ? `<span class="ll-me-name">${esc(me)}</span><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 9.5h12L12 16z"/></svg>` : ''}<span class="ll-me-face">${s ? myFaceIn(initials) : initials}</span></button>
     ${shellMenu && s ? `<div class="ll-menu" role="menu"><small>LifeLegend</small>${items.map(([label], k) => `<button role="menuitem" data-llmenu="${k}">${esc(label)}</button>`).join('')}</div>` : ''}`;
@@ -1322,16 +1323,20 @@ function render() {
   facesFollowCareer();
   const tabs = $('#tabs');
   const unread = state?.mail?.filter((m) => m.unread).length || 0;
+  const mlHub = state?.lifeHub;
+  const mlPending = mlHub?.calibrated
+    ? ((mlHub.pendingDilemma ? 1 : 0) + (mlHub.offers?.length || 0) + (mlHub.obligations || []).filter((o) => o.status === 'pending').length)
+    : (state?.snapshot ? 1 : 0);
   tabs.innerHTML = SITES.filter((s) => !s.hidden).map((s) => `
     <button class="tab${s.id === current ? ' active' : ''}" data-site="${s.id}" aria-label="${esc(s.label())}"${s.id === current ? ' aria-current="page"' : ''}>
-      ${hi(SITE_ICON[s.id])}<span class="tab-label">${esc(s.label())}</span>${s.id === 'mail' && unread ? `<span class="count">${unread}</span>` : ''}${s.id === 'huddle' && hdUnread() ? `<span class="count">${hdUnread()}</span>` : ''}${s.id === 'tribune' && current !== 'tribune' && heldPosts().length ? `<span class="tab-dot" title="${tr('Nouveaux posts sur Kop')}"></span>` : ''}
+      ${hi(SITE_ICON[s.id])}<span class="tab-label">${esc(s.label())}</span>${s.id === 'mail' && unread ? `<span class="count">${unread}</span>` : ''}${s.id === 'huddle' && hdUnread() ? `<span class="count">${hdUnread()}</span>` : ''}${s.id === 'mylife' && mlPending ? `<span class="count">${mlPending}</span>` : ''}${s.id === 'tribune' && current !== 'tribune' && heldPosts().length ? `<span class="tab-dot" title="${tr('Nouveaux posts sur Kop')}"></span>` : ''}
     </button>`).join('');
   tabs.querySelectorAll('.tab').forEach((b) => { b.onclick = () => go(b.dataset.site); });
   paintTabs(tabs);
   const page = $('#page');
   page.className = `site site-${current}`;
   if (setupActive() && current !== 'settings') { renderSetup(page); paintShell(); return; }
-  const renderers = { national: renderNational, local: renderLocal, tribune: renderTribune, mail: renderMail, huddle: renderHuddle, stats: renderStats, pantheon: renderPantheon, settings: renderSettings };
+  const renderers = { national: renderNational, local: renderLocal, tribune: renderTribune, mail: renderMail, huddle: renderHuddle, stats: renderStats, pantheon: renderPantheon, mylife: renderMyLife, settings: renderSettings };
   renderers[current](page);
   llEnter(page);
   paintShell();
@@ -3256,6 +3261,7 @@ const HI = {
   minus: 'M5 12h14',
   plus: 'M12 4.5v15m7.5-7.5h-15',
   language: 'm10.5 21 5.25-11.25L21 21m-9-3h7.5M3 5.621a48.474 48.474 0 0 1 6-.371m0 0c1.12 0 2.233.038 3.334.114M9 5.25V3m3.334 2.364C11.176 10.658 7.69 15.08 3 17.502m9.334-12.138c.896.061 1.785.147 2.666.257m-4.589 8.495a18.023 18.023 0 0 1-3.827-5.802',
+  sparkles: 'M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z',
 };
 const hi = (k) => `<svg class="hi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="${HI[k]}"/></svg>`;
 
@@ -8107,6 +8113,672 @@ function ptScrollSpy(ev) {
   document.getElementById('pt-up')?.classList.toggle('on', (llView()?.scrollTop || 0) > 420);
 }
 addEventListener('scroll', ptScrollSpy, { passive: true, capture: true });
+
+// ---------- Ma vie (Phase C : finances, patrimoine, jauges, sponsors multi-slots, journées libres & dilemmes) ----------
+
+const ML_STAGE_LABELS = {
+  rookie: () => tr('Espoir / Recrue'),
+  rising: () => tr('Joueur confirmé'),
+  established: () => tr('Titulaire majeur'),
+  superstar: () => tr('Superstar mondiale'),
+};
+
+const ML_METER_LABELS = {
+  manager: () => tr('Confiance du coach'),
+  squad: () => tr('Vestiaire'),
+  fans: () => tr('Supporters'),
+  sponsors: () => tr('Sponsors'),
+  media: () => tr('Image médias'),
+};
+
+const ML_SPONSOR_CAT_LABELS = {
+  boots: () => tr('Crampons'),
+  apparel: () => tr('Mode & Équipement'),
+  lifestyle: () => tr('Lifestyle & Luxe'),
+  tech: () => tr('Tech & Gaming'),
+  global: () => tr('Partenaire mondial'),
+};
+
+const ML_SPONSOR_PRESETS_UI = [
+  { category: 'boots', brand: 'Nike Football', fee: 180000, bonus: 3500 },
+  { category: 'apparel', brand: 'Adidas Originals', fee: 240000, bonus: 4000 },
+  { category: 'lifestyle', brand: 'Gatorade Fuel', fee: 140000, bonus: 2500 },
+  { category: 'lifestyle', brand: 'TAG Heuer Chrono', fee: 420000, bonus: 6000 },
+  { category: 'tech', brand: 'HyperStrike Gaming', fee: 160000, bonus: 3000 },
+  { category: 'global', brand: 'Emirates Fly', fee: 650000, bonus: 9000 },
+];
+
+const ML_OBLIGATION_LABELS = {
+  boot_launch: () => tr('Tournage et lancement de crampons'),
+  kit_shoot: () => tr('Séance photo collection officielle'),
+  vip_event: () => tr('Apparition soirée VIP de la marque'),
+  stream_promo: () => tr('Événement promo / live partenaire'),
+  brand_gala: () => tr('Gala annuel du partenaire'),
+  brand_appearance: () => tr('Obligation promotionnelle sponsor'),
+};
+
+const ML_ASSET_CAT_LABELS = {
+  all: () => tr('Tout'),
+  home: () => tr('Logement'),
+  car: () => tr('Véhicules'),
+  staff: () => tr('Staff privé'),
+  investment: () => tr('Investissements'),
+  charity: () => tr('Œuvres & Dons'),
+};
+
+const ML_ASSET_CATALOG_UI = [
+  { id: 'rented_studio', category: 'home', price: 0, monthlyCost: 1800, passiveReturn: 0, label: () => tr('Studio loué'), desc: () => tr('Un pied-à-terre simple près du centre d’entraînement.') },
+  { id: 'city_apartment', category: 'home', price: 240000, monthlyCost: 1400, passiveReturn: 0, label: () => tr('Appartement en ville'), desc: () => tr('Appartement moderne et calme en centre-ville.') },
+  { id: 'penthouse', category: 'home', price: 950000, monthlyCost: 3500, passiveReturn: 0, label: () => tr('Penthouse panoramique'), desc: () => tr('Terrasse privée, vue sur la ville, prestige immédiat.') },
+  { id: 'luxury_villa', category: 'home', price: 2800000, monthlyCost: 8500, passiveReturn: 0, label: () => tr('Villa de standing'), desc: () => tr('Propriété avec salle de sport, piscine et sécurité.') },
+  { id: 'sport_coupe', category: 'car', price: 65000, monthlyCost: 650, passiveReturn: 0, label: () => tr('Coupé sport'), desc: () => tr('Rapide, élégant et discret au parking du club.') },
+  { id: 'luxury_gt', category: 'car', price: 185000, monthlyCost: 1500, passiveReturn: 0, label: () => tr('GT de luxe'), desc: () => tr('Grand tourisme remarquée par les supporters et marques.') },
+  { id: 'exotic_supercar', category: 'car', price: 460000, monthlyCost: 3200, passiveReturn: 0, label: () => tr('Supercar exclusive'), desc: () => tr('Fait tourner toutes les têtes à la sortie du stade.') },
+  { id: 'personal_chef', category: 'staff', price: 12000, monthlyCost: 4200, passiveReturn: 0, label: () => tr('Chef nutritionniste privé'), desc: () => tr('Repas sur mesure pour tenir le rythme toute la saison.') },
+  { id: 'personal_physio', category: 'staff', price: 18000, monthlyCost: 5800, passiveReturn: 0, label: () => tr('Kiné / Préparateur privé'), desc: () => tr('Soins quotidiens et récupération accélérée à domicile.') },
+  { id: 'pr_manager', category: 'staff', price: 25000, monthlyCost: 7500, passiveReturn: 0, label: () => tr('Conseiller image & RP'), desc: () => tr('Protège ton image publique et attire de plus gros sponsors.') },
+  { id: 'social_team', category: 'staff', price: 32000, monthlyCost: 8500, passiveReturn: 0, label: () => tr('Équipe réseaux sociaux'), desc: () => tr('Gère ta présence sur Kop et accélère ta croissance.') },
+  { id: 'youth_academy_fund', category: 'investment', price: 180000, monthlyCost: 0, passiveReturn: 2400, label: () => tr('Fonds jeunes & terrains'), desc: () => tr('Financement local rentable et très apprécié des supporters.') },
+  { id: 'brand_portfolio', category: 'investment', price: 600000, monthlyCost: 0, passiveReturn: 9500, label: () => tr('Portfolio marques & participations'), desc: () => tr('Revenus passifs réguliers et crédibilité business.') },
+  { id: 'real_estate_fund', category: 'investment', price: 1400000, monthlyCost: 0, passiveReturn: 21000, label: () => tr('Société immobilière'), desc: () => tr('Solide rente mensuelle pour assurer l’après-carrière.') },
+  { id: 'local_clinic_gift', category: 'charity', price: 35000, monthlyCost: 0, passiveReturn: 0, label: () => tr('Don à un hôpital local'), desc: () => tr('Geste fort salué par toute la ville et la presse.') },
+  { id: 'foundation_launch', category: 'charity', price: 220000, monthlyCost: 2000, passiveReturn: 0, label: () => tr('Fondation pour la jeunesse'), desc: () => tr('Impact durable : prestige énorme auprès du public et des marques.') },
+];
+
+const ML_ACTIONS_UI = [
+  { id: 'recovery', cost: 0, label: () => tr('Récupération & cryo'), sub: () => tr('Sommeil, soins et travail invisible'), tags: () => [tr('+4 Coach'), tr('+1 Vestiaire')] },
+  { id: 'extra_training', cost: 0, label: () => tr('Séance supplémentaire'), sub: () => tr('Finition et coups francs après l’entraînement'), tags: () => [tr('+6 Coach'), tr('+2 Vestiaire')] },
+  { id: 'team_dinner', cost: 2500, label: () => tr('Dîner avec le groupe'), sub: () => tr('Soirée soudée loin des caméras'), tags: () => [tr('+6 Vestiaire'), tr('-2 500 €')] },
+  { id: 'inner_circle', cost: 0, label: () => tr('Temps en famille / proches'), sub: () => tr('Se ressourcer avec ton cercle intime'), tags: () => [tr('+3 Vestiaire'), tr('+2 Coach')] },
+  { id: 'sponsor_shoot', cost: 0, label: () => tr('Tournage commercial'), sub: () => tr('Journée studio pour tes partenaires'), tags: () => [tr('+6 Sponsors'), tr('+6 000 €')] },
+  { id: 'charity_visit', cost: 5000, label: () => tr('Visite associative'), sub: () => tr('Rencontre avec des jeunes supporters'), tags: () => [tr('+6 Supporters'), tr('+5 Médias')] },
+  { id: 'media_feature', cost: 0, label: () => tr('Entretien portrait'), sub: () => tr('Grand format lifestyle et buzz Kop'), tags: () => [tr('+6 Médias'), tr('+4 Supporters')] },
+  { id: 'vip_night', cost: 8000, label: () => tr('Soirée VIP'), sub: () => tr('Gala exclusif sous les flashs'), tags: () => [tr('+4 Médias'), tr('-3 Coach')] },
+];
+
+const ML_DILEMMAS_UI = {
+  late_party: {
+    title: () => tr('Soirée après la victoire'),
+    body: () => tr('Plusieurs coéquipiers prolongent la soirée tard en boîte avant un entraînement matinal. Que fais-tu ?'),
+    choices: {
+      a: { label: () => tr('Rentrer tôt avant le couvre-feu'), hint: () => tr('+Coach, -Médias') },
+      b: { label: () => tr('Rester faire la fête avec le groupe'), hint: () => tr('+Vestiaire, +Abonnés, -Coach') },
+      c: { label: () => tr('Organiser un dîner privé calme'), hint: () => tr('+Vestiaire, -2 500 €') },
+    },
+  },
+  tabloid_deal: {
+    title: () => tr('Une de magazine people'),
+    body: () => tr('Un grand magazine lifestyle t’offre un gros cachet pour une séance photo people à domicile.'),
+    choices: {
+      a: { label: () => tr('Accepter la couverture et le cachet'), hint: () => tr('+35 000 €, +Médias, -Coach') },
+      b: { label: () => tr('Refuser pour rester 100 % terrain'), hint: () => tr('+Coach, -Sponsors') },
+      c: { label: () => tr('Accepter seulement un sujet sport'), hint: () => tr('+Sponsors, +Supporters') },
+    },
+  },
+  youth_club_plea: {
+    title: () => tr('Appel de ton club formateur'),
+    body: () => tr('Ton ancien club d’enfance traverse une crise et manque d’équipements pour ses équipes de jeunes.'),
+    choices: {
+      a: { label: () => tr('Financer un terrain neuf (40 000 €)'), hint: () => tr('+8 Supporters, +Médias, -40 000 €') },
+      b: { label: () => tr('Envoyer des maillots signés'), hint: () => tr('+Supporters, +Sponsors') },
+      c: { label: () => tr('Décliner poliment pour l’instant'), hint: () => tr('+Coach, -Supporters') },
+    },
+  },
+  teammate_vent: {
+    title: () => tr('Tension dans le vestiaire'),
+    body: () => tr('Un coéquipier mécontent de son temps de jeu se confie à toi avant la séance d’aujourd’hui.'),
+    choices: {
+      a: { label: () => tr('Le soutenir en privé face au groupe'), hint: () => tr('+Vestiaire, -Coach') },
+      b: { label: () => tr('Lui rappeler l’exigence du coach'), hint: () => tr('+Coach, -Vestiaire') },
+      c: { label: () => tr('Jouer les médiateurs calmes'), hint: () => tr('+Vestiaire, +Coach') },
+    },
+  },
+  edgy_campaign: {
+    title: () => tr('Campagne publicitaire audacieuse'),
+    body: () => tr('Une grande marque propose un spot provocateur qui fera énormément parler sur Kop avant le match.'),
+    choices: {
+      a: { label: () => tr('Tourner le spot sans limite'), hint: () => tr('+65 000 €, +Sponsors, -Coach') },
+      b: { label: () => tr('Négocier un ton plus mesuré'), hint: () => tr('+25 000 €, +Sponsors, +Coach') },
+      c: { label: () => tr('Refuser le tournage'), hint: () => tr('+Coach, -Sponsors') },
+    },
+  },
+  training_gate: {
+    title: () => tr('Foule à la grille du centre'),
+    body: () => tr('Malgré une pluie battante, des dizaines d’enfants attendent des autographes après la séance.'),
+    choices: {
+      a: { label: () => tr('Rester une heure avec les supporters'), hint: () => tr('+Coach, +Supporters') },
+      b: { label: () => tr('Partir vite en soins récupération'), hint: () => tr('+Coach, -Supporters') },
+      c: { label: () => tr('Inviter les jeunes sur la pelouse'), hint: () => tr('+Supporters, +Médias, -3 000 €') },
+    },
+  },
+  agent_leak: {
+    title: () => tr('Bruits de mercato dans la presse'),
+    body: () => tr('Des rumeurs de départ enflent sur Kop à l’approche du week-end. Ton agent attend ton feu vert.'),
+    choices: {
+      a: { label: () => tr('Laisser le feuilleton alimenter le buzz'), hint: () => tr('+Médias, -Coach') },
+      b: { label: () => tr('Éteindre la rumeur et jurer fidélité'), hint: () => tr('+Coach, +Supporters, +Vestiaire') },
+      c: { label: () => tr('Tout bloquer en coulisses'), hint: () => tr('+Coach, +Médias') },
+    },
+  },
+  docu_crew: {
+    title: () => tr('Série documentaire sur ta semaine'),
+    body: () => tr('Une plateforme souhaite filmer les coulisses de ta semaine et de ton cercle proche.'),
+    choices: {
+      a: { label: () => tr('Ouvrir toutes les portes aux caméras'), hint: () => tr('+55 000 €, +Médias, -Coach') },
+      b: { label: () => tr('Faire un court portrait hors club'), hint: () => tr('+20 000 €, +Médias, +Supporters') },
+      c: { label: () => tr('Refuser pour protéger le vestiaire'), hint: () => tr('+Coach, +Vestiaire, -Médias') },
+    },
+  },
+};
+
+function mlSlotCap(followers = 0, stage = 'rookie') {
+  const floor = { rookie: 1, rising: 2, established: 3, superstar: 4 }[stage] || 1;
+  let fCap = 1;
+  if (followers >= 2000000) fCap = 5;
+  else if (followers >= 600000) fCap = 4;
+  else if (followers >= 150000) fCap = 3;
+  else if (followers >= 25000) fCap = 2;
+  return Math.max(floor, fCap);
+}
+
+function mlStageLabel(stage) {
+  return (ML_STAGE_LABELS[stage] || ML_STAGE_LABELS.rookie)();
+}
+
+function mlCalSponsorRowHtml(item = {}, untilDefault = '') {
+  const cats = Object.entries(ML_SPONSOR_CAT_LABELS).map(([k, fn]) => `<option value="${k}"${(item.category || 'lifestyle') === k ? ' selected' : ''}>${esc(fn())}</option>`).join('');
+  return `<div class="ml-cal-sp-row">
+    <input class="ml-csp-brand" value="${esc(item.brand || '')}" placeholder="${esc(tr('Nom du sponsor (éditable)'))}" maxlength="80">
+    <select class="ml-csp-cat">${cats}</select>
+    <input class="ml-csp-fee" type="number" min="0" step="5000" value="${esc(item.fee ?? 150000)}" placeholder="${esc(tr('Montant annuel (€)'))}">
+    <input class="ml-csp-bonus" type="number" min="0" step="500" value="${esc(item.bonus ?? 2500)}" placeholder="${esc(tr('Prime but/passe (€)'))}">
+    <input class="ml-csp-until" type="date" value="${esc(item.until || untilDefault)}">
+    <button type="button" class="per-p-del ml-csp-del" aria-label="${esc(tr('Supprimer'))}">−</button>
+  </div>`;
+}
+
+function renderMyLife(page) {
+  if (!state || !state.snapshot) {
+    page.innerHTML = emptyHtml(tr('Aucune carrière chargée'), tr('Choisis ta sauvegarde et lance une synchro pour débloquer ton hub Ma vie.'), () => openSettings('rg-save'), tr('Ouvrir les réglages'));
+    return;
+  }
+  const s = state.snapshot;
+  const hub = state.lifeHub || { calibrated: false, stage: 'rookie', cash: 15000, ap: 2, maxAp: 2, meters: { manager: 50, squad: 52, fans: 48, sponsors: 40, media: 48 }, assets: [], sponsors: [], offers: [], obligations: [], ledger: [], recentEvents: [], estimate: { stage: 'rookie', apps: s.stats?.total?.apps || 0, goals: s.stats?.total?.goals || 0, followers: state.profile?.followers || 4200, cashBundle: 120000, cashOnly: 180000, cashHumble: 15000, bundleAssetIds: ['rented_studio'], slotCap: 1 } };
+  const est = hub.estimate || { stage: hub.stage || 'rookie', apps: s.stats?.total?.apps || 0, goals: s.stats?.total?.goals || 0, followers: state.profile?.followers || 4200, cashBundle: 120000, cashOnly: 180000, cashHumble: 15000, bundleAssetIds: ['rented_studio'], slotCap: 1 };
+  const slotCap = mlSlotCap(state.profile?.followers || 0, hub.stage || est.stage);
+  const monthlyCost = (hub.assets || []).reduce((sum, a) => sum + (Number(a.monthlyCost) || 0), 0);
+  const assetsWorth = (hub.assets || []).reduce((sum, a) => sum + (a.category === 'staff' || a.category === 'charity' ? 0 : Math.round((a.resaleValue ?? a.price ?? 0) * (a.category === 'investment' ? 1 : 0.75))), 0);
+  const netWorth = Math.round((hub.cash || 0) + assetsWorth);
+
+  if (!hub.calibrated || view.mlCalibrate) {
+    const mode = view.mlCalMode || 'bundle';
+    const defaultCash = mode === 'cash_only' ? est.cashOnly : mode === 'humble' ? est.cashHumble : est.cashBundle;
+    const bundleNames = (est.bundleAssetIds || []).map((id) => ML_ASSET_CATALOG_UI.find((a) => a.id === id)?.label()).filter(Boolean).join(', ');
+    const untilDefault = `${Number(String(s.gameDate || '2026-08-01').slice(0, 4)) + 2}-06-30`;
+    const draftSponsors = Array.isArray(view.mlCalSponsors)
+      ? view.mlCalSponsors
+      : (hub.sponsors || []).filter((x) => !x.linkedBootDeal);
+    view.mlCalSponsors = draftSponsors;
+    const calSlotCap = est.slotCap || slotCap;
+
+    const presetChips = ML_SPONSOR_PRESETS_UI.map((p, idx) => `<button type="button" class="ml-chip" data-calsp-preset="${idx}">+ ${esc(p.brand)}</button>`).join('');
+    page.innerHTML = `<div class="ml">
+      <header class="ml-hero card">
+        <div>
+          <span class="ml-stage-pill">${esc(mlStageLabel(est.stage))}</span>
+          <h1>${esc(s.player?.name || '')} · ${tr('Calibration de carrière')}</h1>
+          <p class="fineprint">${esc(tr('Détecté dans ta sauvegarde : {stage} · {apps} matchs · {goals} buts · jusqu’à {slots} sponsors', { stage: mlStageLabel(est.stage), apps: fmtNum(est.apps || 0), goals: fmtNum(est.goals || 0), slots: calSlotCap }))}</p>
+        </div>
+        ${hub.calibrated ? `<button type="button" class="btn" id="ml-cal-cancel">${tr('Retour au hub')}</button>` : ''}
+      </header>
+
+      <section class="card ml-cal">
+        <h3>${tr('1. Choisis ton point de départ')}</h3>
+        <div class="ml-modes">
+          <button type="button" class="ml-mode${mode === 'bundle' ? ' on' : ''}" data-mlmode="bundle">
+            <b>${tr('Pack adapté à mon statut')}</b>
+            <small>${esc(bundleNames || tr('Studio loué'))} + ${esc(euros(est.cashBundle))}</small>
+          </button>
+          <button type="button" class="ml-mode${mode === 'cash_only' ? ' on' : ''}" data-mlmode="cash_only">
+            <b>${tr('Tout en cash (acheter moi-même)')}</b>
+            <small>${tr('Aucun bien au départ')} · ${esc(euros(est.cashOnly))}</small>
+          </button>
+          <button type="button" class="ml-mode${mode === 'humble' ? ' on' : ''}" data-mlmode="humble">
+            <b>${tr('Départ modeste')}</b>
+            <small>${tr('Repartir de zéro côté finances')} · ${esc(euros(est.cashHumble))}</small>
+          </button>
+        </div>
+
+        <div class="ml-cal-grid">
+          <label class="per-field">
+            <span>${tr('Solde bancaire initial (€)')}</span>
+            <input id="ml-cal-cash" type="number" min="0" step="1000" value="${esc(view.mlCalCash ?? defaultCash)}">
+          </label>
+          <div class="ml-cal-fol">
+            <label class="rg-switch"><input type="checkbox" id="ml-cal-fol-on"${view.mlCalFolOn ? ' checked' : ''}><span class="rg-switch-text"><b>${tr('Ajuster aussi les abonnés Kop')}</b><small>${esc(tr('Actuel : {cur} · Estimé selon la carrière : {est}', { cur: fmtCount(state.profile?.followers || 4200), est: fmtCount(est.followers) }))}</small></span></label>
+            <input id="ml-cal-fol-val" type="number" min="100" step="500" value="${esc(view.mlCalFolVal ?? est.followers)}"${view.mlCalFolOn ? '' : ' hidden'}>
+          </div>
+        </div>
+
+        <h3>${tr('2. Sponsors déjà actifs (optionnel)')}</h3>
+        <p class="fineprint">${esc(tr('Tu peux ajouter jusqu’à {n} sponsor(s) déjà existant(s) et éditer chaque nom, catégorie ou montant.', { n: calSlotCap }))}</p>
+        <div class="ml-chips">${presetChips}</div>
+        <div class="ml-cal-sp-list" id="ml-cal-sp-list">${draftSponsors.map((sp) => mlCalSponsorRowHtml(sp, untilDefault)).join('')}</div>
+        <div class="ml-cal-foot">
+          <button type="button" class="btn" id="ml-cal-sp-add"${draftSponsors.length >= calSlotCap ? ' disabled' : ''}>+ ${tr('Ajouter un sponsor')}</button>
+          <button type="button" class="btn primary big" id="ml-cal-submit">${tr('Valider et ouvrir Ma vie')}</button>
+        </div>
+      </section>
+    </div>`;
+
+    const syncCalRows = () => {
+      const rows = [...page.querySelectorAll('.ml-cal-sp-row')];
+      view.mlCalSponsors = rows.map((r) => ({
+        brand: r.querySelector('.ml-csp-brand')?.value.trim() || '',
+        category: r.querySelector('.ml-csp-cat')?.value || 'lifestyle',
+        fee: Number(r.querySelector('.ml-csp-fee')?.value) || 0,
+        bonus: Number(r.querySelector('.ml-csp-bonus')?.value) || 0,
+        until: r.querySelector('.ml-csp-until')?.value || untilDefault,
+      }));
+      const addBtn = $('#ml-cal-sp-add');
+      if (addBtn) addBtn.disabled = rows.length >= calSlotCap;
+    };
+    const bindCalRow = (row) => {
+      row.querySelectorAll('input, select').forEach((el) => { el.onchange = syncCalRows; });
+      const del = row.querySelector('.ml-csp-del');
+      if (del) del.onclick = () => { row.remove(); syncCalRows(); };
+    };
+    page.querySelectorAll('.ml-cal-sp-row').forEach(bindCalRow);
+
+    page.querySelectorAll('[data-mlmode]').forEach((b) => {
+      b.onclick = () => {
+        view.mlCalMode = b.dataset.mlmode;
+        view.mlCalCash = view.mlCalMode === 'cash_only' ? est.cashOnly : view.mlCalMode === 'humble' ? est.cashHumble : est.cashBundle;
+        renderMyLife(page);
+      };
+    });
+    const folCheck = $('#ml-cal-fol-on');
+    if (folCheck) folCheck.onchange = () => { view.mlCalFolOn = folCheck.checked; $('#ml-cal-fol-val').hidden = !folCheck.checked; };
+    const calCashEl = $('#ml-cal-cash');
+    if (calCashEl) calCashEl.oninput = () => { view.mlCalCash = Number(calCashEl.value) || 0; };
+    const folValEl = $('#ml-cal-fol-val');
+    if (folValEl) folValEl.oninput = () => { view.mlCalFolVal = Number(folValEl.value) || est.followers; };
+
+    const appendCalSponsor = (sp = {}) => {
+      syncCalRows();
+      const list = $('#ml-cal-sp-list');
+      if (!list || list.querySelectorAll('.ml-cal-sp-row').length >= calSlotCap) return;
+      const wrap = document.createElement('div');
+      wrap.innerHTML = mlCalSponsorRowHtml(sp, untilDefault);
+      const row = wrap.firstElementChild;
+      list.appendChild(row);
+      bindCalRow(row);
+      syncCalRows();
+    };
+    $('#ml-cal-sp-add').onclick = () => appendCalSponsor({});
+    page.querySelectorAll('[data-calsp-preset]').forEach((b) => {
+      b.onclick = () => {
+        const p = ML_SPONSOR_PRESETS_UI[Number(b.dataset.calspPreset)];
+        if (p) appendCalSponsor({ ...p, until: untilDefault });
+      };
+    });
+    if ($('#ml-cal-cancel')) $('#ml-cal-cancel').onclick = () => { view.mlCalibrate = false; view.mlCalSponsors = null; renderMyLife(page); };
+    $('#ml-cal-submit').onclick = async () => {
+      syncCalRows();
+      try {
+        state = await live.calibrateLifeHub({
+          startMode: view.mlCalMode || 'bundle',
+          cash: Number($('#ml-cal-cash')?.value ?? defaultCash),
+          applyFollowers: Boolean($('#ml-cal-fol-on')?.checked),
+          followers: Number($('#ml-cal-fol-val')?.value || est.followers),
+          existingSponsors: (view.mlCalSponsors || []).filter((x) => x.brand),
+        });
+        view.mlCalibrate = false;
+        view.mlCalSponsors = null;
+        view.mlCalCash = null;
+        toast(tr('Profil Ma vie activé.'));
+        render();
+      } catch (err) { toast(err.message, true); }
+    };
+    return;
+  }
+
+  const tab = view.mlTab || 'overview';
+  const pendingObs = (hub.obligations || []).filter((o) => o.status === 'pending');
+  const spBadge = (hub.offers?.length || 0) + pendingObs.length;
+  const subTabs = [
+    ['overview', tr('Tableau de bord'), hub.pendingDilemma ? 1 : 0],
+    ['sponsors', tr('Sponsors ({cur}/{max})', { cur: hub.sponsors.length, max: slotCap }), spBadge],
+    ['shop', tr('Lifestyle & Patrimoine'), 0],
+    ['finances', tr('Finances'), 0],
+  ];
+
+  const dilemmaDef = hub.pendingDilemma ? ML_DILEMMAS_UI[hub.pendingDilemma.dilemmaId] : null;
+  const dilemmaHtml = dilemmaDef ? `<section class="card ml-dilemma">
+    <div class="ml-dil-head"><span class="priv-badge on">${tr('Décision attendue')}</span><h3>${esc(dilemmaDef.title())}</h3></div>
+    <p>${esc(dilemmaDef.body())}</p>
+    <div class="ml-dil-choices">${Object.entries(dilemmaDef.choices).map(([cid, ch]) => `<button type="button" class="ml-dil-btn" data-dilemma="${esc(hub.pendingDilemma.id)}" data-choice="${cid}"><b>${esc(ch.label())}</b><small>${esc(ch.hint())}</small></button>`).join('')}</div>
+  </section>` : '';
+
+  const metersHtml = Object.entries(ML_METER_LABELS).map(([k, fn]) => {
+    const val = Math.max(0, Math.min(100, Number(hub.meters?.[k] ?? 50)));
+    return `<div class="ml-meter"><div class="ml-meter-top"><span>${esc(fn())}</span><b>${val} / 100</b></div><div class="ml-bar"><i style="width:${val}%"></i></div></div>`;
+  }).join('');
+
+  const actionsHtml = ML_ACTIONS_UI.map((a) => `<button type="button" class="ml-action" data-mlaction="${a.id}"${(hub.ap || 0) < 1 || (hub.cash || 0) < a.cost ? ' disabled' : ''}>
+    <b>${esc(a.label())}</b>
+    <small>${esc(a.sub())}</small>
+    <span class="ml-tags">${a.tags().map((t) => `<span class="priv-tag">${esc(t)}</span>`).join('')}</span>
+  </button>`).join('');
+
+  const meterOpts = Object.entries(ML_METER_LABELS).map(([k, fn]) => `<option value="${k}">${esc(fn())}</option>`).join('');
+  const recentHtml = (hub.recentEvents || []).length
+    ? hub.recentEvents.slice(0, 12).map((e) => `<li><span class="fineprint">${esc(shortDate(e.date))}</span><span>${esc(e.text)}</span></li>`).join('')
+    : `<p class="fineprint">${tr('Aucune activité récente : choisis une action ou avance dans ta saison.')}</p>`;
+
+  const spCatsOpts = (sel) => Object.entries(ML_SPONSOR_CAT_LABELS).map(([k, fn]) => `<option value="${k}"${sel === k ? ' selected' : ''}>${esc(fn())}</option>`).join('');
+  const spPresetOpts = `<option value="">${esc(tr('Choisir un modèle (ou écrire en dessous)…'))}</option>${ML_SPONSOR_PRESETS_UI.map((p, i) => `<option value="${i}">${esc(p.brand)} (${esc(ML_SPONSOR_CAT_LABELS[p.category]())})</option>`).join('')}`;
+  const offersHtml = (hub.offers || []).length ? `<div class="ml-list">${hub.offers.map((o) => `<div class="card ml-offer">
+    <div class="ml-offer-info"><span class="priv-tag">${esc((ML_SPONSOR_CAT_LABELS[o.category] || ML_SPONSOR_CAT_LABELS.lifestyle)())}</span><h4>${esc(o.brand)}</h4><p class="fineprint">${esc(o.person)} · ${esc(tr('{fee}/an · +{bonus}/but ou passe', { fee: euros(o.fee), bonus: euros(o.bonus) }))}</p></div>
+    <div class="ml-offer-acts">
+      <button type="button" class="btn primary" data-mloff="${esc(o.id)}" data-offact="accept"${hub.sponsors.length >= slotCap ? ' disabled' : ''}>${tr('Signer')}</button>
+      <button type="button" class="btn" data-mloff="${esc(o.id)}" data-offact="negotiate"${o.negotiated ? ' disabled' : ''}>${tr('Négocier')}</button>
+      <button type="button" class="btn" data-mloff="${esc(o.id)}" data-offact="decline">${tr('Refuser')}</button>
+    </div>
+  </div>`).join('')}</div>` : `<p class="fineprint">${tr('Aucune offre en attente pour l’instant. Enchaîne les matchs pour attirer de nouvelles marques.')}</p>`;
+
+  const activeSponsorsHtml = hub.sponsors.length ? hub.sponsors.map((sp) => `<div class="card ml-sp-card" data-spid="${esc(sp.id)}">
+    <div class="ml-sp-head">
+      <span class="priv-tag">${esc((ML_SPONSOR_CAT_LABELS[sp.category] || ML_SPONSOR_CAT_LABELS.lifestyle)())}</span>
+      ${sp.linkedBootDeal ? `<span class="priv-badge on">${tr('Lié aux crampons (Mails)')}</span>` : ''}
+      <span class="fineprint">${esc(sp.until ? tr('Jusqu’au {d}', { d: shortDate(sp.until) }) : '')}</span>
+    </div>
+    <div class="ml-sp-grid">
+      <label class="per-field"><span>${tr('Nom de la marque')}</span><input class="ml-sp-brand" value="${esc(sp.brand)}" maxlength="80"></label>
+      <label class="per-field"><span>${tr('Catégorie')}</span><select class="ml-sp-cat">${spCatsOpts(sp.category)}</select></label>
+      <label class="per-field"><span>${tr('Montant annuel (€)')}</span><input class="ml-sp-fee" type="number" min="0" step="1000" value="${esc(sp.fee || 0)}"></label>
+      <label class="per-field"><span>${tr('Prime but/passe (€)')}</span><input class="ml-sp-bonus" type="number" min="0" step="250" value="${esc(sp.bonus || 0)}"></label>
+      <label class="per-field"><span>${tr('Fin du contrat')}</span><input class="ml-sp-until" type="date" value="${esc(sp.until || '')}"></label>
+      <label class="per-field"><span>${tr('Notes personnelles')}</span><input class="ml-sp-notes" value="${esc(sp.notes || '')}" placeholder="${esc(tr('Clause ou détail libre…'))}" maxlength="140"></label>
+    </div>
+    <div class="ml-sp-acts">
+      <button type="button" class="btn primary ml-sp-save">${tr('Enregistrer')}</button>
+      <button type="button" class="btn ml-sp-del">${tr('Résilier')}</button>
+    </div>
+  </div>`).join('') : `<p class="fineprint">${tr('Aucun sponsor actif pour l’instant.')}</p>`;
+
+  const obligationsHtml = pendingObs.length ? pendingObs.map((ob) => `<div class="card ml-ob">
+    <div><b>${esc(ob.brand)}</b><div class="fineprint">${esc((ML_OBLIGATION_LABELS[ob.kind] || ML_OBLIGATION_LABELS.brand_appearance)())} · ${esc(tr('Avant le {d}', { d: shortDate(ob.dueDate) }))} · +${esc(euros(ob.rewardCash))}</div></div>
+    <div class="ml-offer-acts">
+      <button type="button" class="btn primary" data-mlob="${esc(ob.id)}" data-obskip="0">${tr('Honorer')}</button>
+      <button type="button" class="btn" data-mlob="${esc(ob.id)}" data-obskip="1">${tr('Passer')}</button>
+    </div>
+  </div>`).join('') : `<p class="fineprint">${tr('Aucune obligation en cours.')}</p>`;
+
+  const shopCat = view.mlShopCat || 'all';
+  const shopFilterBtns = Object.entries(ML_ASSET_CAT_LABELS).map(([k, fn]) => `<button type="button" class="ml-chip${shopCat === k ? ' on' : ''}" data-mlshopcat="${k}">${esc(fn())}</button>`).join('');
+  const catalogFiltered = ML_ASSET_CATALOG_UI.filter((a) => shopCat === 'all' || a.category === shopCat);
+  const ownedCustom = (hub.assets || []).filter((a) => a.custom && (shopCat === 'all' || a.category === shopCat));
+
+  const catalogCards = catalogFiltered.map((a) => {
+    const owned = (hub.assets || []).find((x) => x.catalogId === a.id);
+    const metaLines = [
+      a.price > 0 ? tr('Prix : {p}', { p: euros(a.price) }) : tr('Gratuit'),
+      a.monthlyCost > 0 ? tr('Entretien : {p}/mois', { p: euros(a.monthlyCost) }) : '',
+      a.passiveReturn > 0 ? tr('Revenu : +{p}/mois', { p: euros(a.passiveReturn) }) : '',
+    ].filter(Boolean).join(' · ');
+    return `<div class="card ml-shop-card${owned ? ' owned' : ''}">
+      <div class="ml-sp-head"><span class="priv-tag">${esc(ML_ASSET_CAT_LABELS[a.category]())}</span>${owned ? `<span class="priv-badge on">${tr('Possédé')}</span>` : ''}</div>
+      <h4>${esc(a.label())}</h4>
+      <p class="fineprint">${esc(a.desc())}</p>
+      <div class="ml-shop-foot">
+        <span class="fineprint">${esc(metaLines)}</span>
+        ${owned
+          ? (a.id !== 'rented_studio' && a.category !== 'charity'
+            ? `<button type="button" class="btn" data-mlsell="${esc(owned.id)}">${a.category === 'staff' ? tr('Licencier') : tr('Revendre')}</button>`
+            : '')
+          : `<button type="button" class="btn primary" data-mlbuy="${a.id}"${(hub.cash || 0) < a.price ? ' disabled' : ''}>${tr('Acheter')}</button>`}
+      </div>
+    </div>`;
+  }).join('') + ownedCustom.map((a) => `<div class="card ml-shop-card owned">
+    <div class="ml-sp-head"><span class="priv-tag">${esc((ML_ASSET_CAT_LABELS[a.category] || ML_ASSET_CAT_LABELS.investment)())}</span><span class="priv-badge on">${tr('Possédé')}</span></div>
+    <h4>${esc(a.name)}</h4>
+    <div class="ml-shop-foot">
+      <span class="fineprint">${esc(euros(a.price))}${a.monthlyCost ? ` · ${esc(euros(a.monthlyCost))}/m` : ''}</span>
+      ${a.category !== 'charity' ? `<button type="button" class="btn" data-mlsell="${esc(a.id)}">${a.category === 'staff' ? tr('Licencier') : tr('Revendre')}</button>` : ''}
+    </div>
+  </div>`).join('');
+
+  const annualWage = Number(s.player?.salary) || 0;
+  const annualSponsors = (hub.sponsors || []).reduce((sum, sp) => sum + (Number(sp.fee) || 0), 0);
+  const annualPassive = (hub.assets || []).reduce((sum, a) => sum + (Number(a.passiveReturn) || 0) * 12, 0);
+  const ledgerRows = (hub.ledger || []).slice(0, 40).map((r) => `<tr>
+    <td>${esc(shortDate(r.date))}</td>
+    <td>${esc(r.label)}</td>
+    <td class="num ${r.amount >= 0 ? 'pos' : 'neg'}">${r.amount >= 0 ? `+${esc(euros(r.amount))}` : esc(euros(r.amount))}</td>
+  </tr>`).join('');
+
+  page.innerHTML = `<div class="ml">
+    <header class="ml-hero card">
+      <div>
+        <span class="ml-stage-pill">${esc(mlStageLabel(hub.stage || est.stage))}</span>
+        <h1>${esc(s.player?.name || '')} · ${esc(s.club?.name || '')}</h1>
+        <p class="fineprint">${esc(tr('{f} abonnés Kop · {slots} places sponsors', { f: fmtCount(state.profile?.followers || 0), slots: slotCap }))}</p>
+      </div>
+      <button type="button" class="btn" id="ml-recalibrate">${tr('Recalibrer')}</button>
+    </header>
+
+    <div class="ml-kpis">
+      <div class="card ml-kpi"><small>${tr('Compte bancaire')}</small><b>${esc(euros(hub.cash || 0))}</b></div>
+      <div class="card ml-kpi"><small>${tr('Patrimoine net')}</small><b>${esc(euros(netWorth))}</b></div>
+      <div class="card ml-kpi"><small>${tr('Charges mensuelles')}</small><b>-${esc(euros(monthlyCost))}</b></div>
+      <div class="card ml-kpi"><small>${tr('Points d’action')}</small><b>${hub.ap || 0} / ${hub.maxAp || 2}</b></div>
+    </div>
+
+    <nav class="ml-tabs" role="tablist">${subTabs.map(([id, label, badge]) => `<button type="button" class="ml-tab${tab === id ? ' on' : ''}" data-mltab="${id}">${esc(label)}${badge ? ` <span class="priv-badge on">${badge}</span>` : ''}</button>`).join('')}</nav>
+
+    <section class="ml-panel"${tab === 'overview' ? '' : ' hidden'}>
+      ${dilemmaHtml}
+      <div class="card ml-card">
+        <h3>${tr('Relations & Réputation')}</h3>
+        <div class="ml-meters">${metersHtml}</div>
+      </div>
+      <div class="card ml-card">
+        <div class="ml-sec-head"><h3>${tr('Journées libres ({ap} PA restants)', { ap: hub.ap || 0 })}</h3><span class="fineprint">${tr('Se recharge après chaque match ou tous les 4 jours.')}</span></div>
+        <div class="ml-actions">${actionsHtml}</div>
+        <details class="ml-custom-box">
+          <summary>${tr('+ Activité personnalisée (1 PA)')}</summary>
+          <div class="ml-custom-form">
+            <input id="ml-cact-title" placeholder="${esc(tr('ex. Séance vidéo avec le coach, dîner en famille…'))}" maxlength="80">
+            <select id="ml-cact-focus">${meterOpts}</select>
+            <input id="ml-cact-cost" type="number" min="0" step="500" value="0" placeholder="${esc(tr('Coût (€)'))}">
+            <button type="button" class="btn primary" id="ml-cact-go"${(hub.ap || 0) < 1 ? ' disabled' : ''}>${tr('Valider')}</button>
+          </div>
+        </details>
+      </div>
+      <div class="card ml-card">
+        <h3>${tr('Journal hors terrain')}</h3>
+        <ul class="ml-feed">${recentHtml}</ul>
+      </div>
+    </section>
+
+    <section class="ml-panel"${tab === 'sponsors' ? '' : ' hidden'}>
+      <div class="card ml-card">
+        <h3>${tr('Offres entrantes')}</h3>
+        ${offersHtml}
+      </div>
+      <div class="card ml-card">
+        <div class="ml-sec-head"><h3>${tr('Contrats actifs ({cur} / {max})', { cur: hub.sponsors.length, max: slotCap })}</h3><span class="fineprint">${tr('Débloque jusqu’à 5 places selon ta notoriété et tes abonnés Kop.')}</span></div>
+        <div class="ml-sp-list">${activeSponsorsHtml}</div>
+        <details class="ml-custom-box">
+          <summary>${tr('+ Ajouter un sponsor personnalisé')}</summary>
+          <div class="ml-sp-add">
+            <select id="ml-sp-preset">${spPresetOpts}</select>
+            <div class="ml-sp-grid">
+              <input id="ml-newsp-brand" placeholder="${esc(tr('Nom du sponsor (éditable)'))}" maxlength="80">
+              <select id="ml-newsp-cat">${spCatsOpts('lifestyle')}</select>
+              <input id="ml-newsp-fee" type="number" min="0" step="5000" value="150000" placeholder="${esc(tr('Montant annuel (€)'))}">
+              <input id="ml-newsp-bonus" type="number" min="0" step="500" value="2500" placeholder="${esc(tr('Prime but/passe (€)'))}">
+              <input id="ml-newsp-until" type="date" value="${esc(`${Number(String(s.gameDate || '2026-08-01').slice(0, 4)) + 2}-06-30`)}">
+            </div>
+            <button type="button" class="btn primary" id="ml-newsp-go"${hub.sponsors.length >= slotCap ? ' disabled' : ''}>${tr('Ajouter')}</button>
+          </div>
+        </details>
+      </div>
+      <div class="card ml-card">
+        <h3>${tr('Obligations partenaires')}</h3>
+        <div class="ml-list">${obligationsHtml}</div>
+      </div>
+    </section>
+
+    <section class="ml-panel"${tab === 'shop' ? '' : ' hidden'}>
+      <div class="card ml-card">
+        <div class="ml-sec-head"><h3>${tr('Patrimoine, staff & style de vie')}</h3><div class="ml-chips">${shopFilterBtns}</div></div>
+        <div class="ml-shop-grid">${catalogCards}</div>
+        <details class="ml-custom-box">
+          <summary>${tr('+ Achat ou investissement personnalisé')}</summary>
+          <div class="ml-custom-form">
+            <input id="ml-casset-name" placeholder="${esc(tr('ex. Maison au Brésil, yacht, académie locale…'))}" maxlength="80">
+            <select id="ml-casset-cat">${Object.entries(ML_ASSET_CAT_LABELS).filter(([k]) => k !== 'all').map(([k, fn]) => `<option value="${k}">${esc(fn())}</option>`).join('')}</select>
+            <input id="ml-casset-price" type="number" min="0" step="1000" value="50000" placeholder="${esc(tr('Prix (€)'))}">
+            <input id="ml-casset-mcost" type="number" min="0" step="100" value="0" placeholder="${esc(tr('Coût mensuel (€)'))}">
+            <button type="button" class="btn primary" id="ml-casset-go">${tr('Acheter')}</button>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section class="ml-panel"${tab === 'finances' ? '' : ' hidden'}>
+      <div class="ml-kpis">
+        <div class="card ml-kpi"><small>${tr('Salaire club brut / an')}</small><b>${esc(annualWage ? euros(annualWage) : tr('Inconnu'))}</b></div>
+        <div class="card ml-kpi"><small>${tr('Sponsors / an')}</small><b>${esc(euros(annualSponsors))}</b></div>
+        <div class="card ml-kpi"><small>${tr('Revenus passifs / an')}</small><b>${esc(euros(annualPassive))}</b></div>
+        <div class="card ml-kpi"><small>${tr('Charges / an')}</small><b>-${esc(euros(monthlyCost * 12))}</b></div>
+      </div>
+      <div class="card ml-card">
+        <h3>${tr('Grand livre des opérations')}</h3>
+        ${ledgerRows ? `<table class="ml-ledger"><tbody>${ledgerRows}</tbody></table>` : `<p class="fineprint">${tr('Aucune opération enregistrée pour l’instant.')}</p>`}
+      </div>
+    </section>
+  </div>`;
+
+  page.querySelectorAll('[data-mltab]').forEach((b) => { b.onclick = () => { view.mlTab = b.dataset.mltab; renderMyLife(page); }; });
+  page.querySelectorAll('[data-mlshopcat]').forEach((b) => { b.onclick = () => { view.mlShopCat = b.dataset.mlshopcat; renderMyLife(page); }; });
+  if ($('#ml-recalibrate')) $('#ml-recalibrate').onclick = () => { view.mlCalibrate = true; view.mlCalSponsors = null; renderMyLife(page); };
+
+  page.querySelectorAll('[data-dilemma]').forEach((b) => {
+    b.onclick = async () => {
+      try { state = await live.answerLifeDilemma(b.dataset.dilemma, b.dataset.choice); render(); } catch (err) { toast(err.message, true); }
+    };
+  });
+  page.querySelectorAll('[data-mlaction]').forEach((b) => {
+    b.onclick = async () => {
+      try { state = await live.doLifeAction({ actionId: b.dataset.mlaction }); toast(tr('Activité effectuée.')); render(); } catch (err) { toast(err.message, true); }
+    };
+  });
+  if ($('#ml-cact-go')) {
+    $('#ml-cact-go').onclick = async () => {
+      try {
+        state = await live.doLifeAction({ custom: true, title: $('#ml-cact-title').value, focus: $('#ml-cact-focus').value, cost: Number($('#ml-cact-cost').value) || 0 });
+        toast(tr('Activité effectuée.'));
+        render();
+      } catch (err) { toast(err.message, true); }
+    };
+  }
+  page.querySelectorAll('[data-mloff]').forEach((b) => {
+    b.onclick = async () => {
+      try { state = await live.answerLifeSponsorOffer(b.dataset.mloff, b.dataset.offact); render(); } catch (err) { toast(err.message, true); }
+    };
+  });
+  page.querySelectorAll('.ml-sp-card').forEach((card) => {
+    const id = card.dataset.spid;
+    const saveBtn = card.querySelector('.ml-sp-save');
+    const delBtn = card.querySelector('.ml-sp-del');
+    if (saveBtn) {
+      saveBtn.onclick = async () => {
+        try {
+          state = await live.updateLifeSponsor({
+            id,
+            brand: card.querySelector('.ml-sp-brand').value,
+            category: card.querySelector('.ml-sp-cat').value,
+            fee: Number(card.querySelector('.ml-sp-fee').value) || 0,
+            bonus: Number(card.querySelector('.ml-sp-bonus').value) || 0,
+            until: card.querySelector('.ml-sp-until').value,
+            notes: card.querySelector('.ml-sp-notes').value,
+          });
+          toast(tr('Sponsor mis à jour.'));
+          render();
+        } catch (err) { toast(err.message, true); }
+      };
+    }
+    if (delBtn) {
+      delBtn.onclick = async () => {
+        const brand = card.querySelector('.ml-sp-brand').value.trim();
+        const ok = await kConfirm({ title: tr('Résilier ce sponsor ?'), body: tr('Mettre fin au contrat avec « {brand} » ?', { brand }), ok: tr('Résilier'), cancel: tr('Annuler') });
+        if (!ok) return;
+        try { state = await live.removeLifeSponsor(id); render(); } catch (err) { toast(err.message, true); }
+      };
+    }
+  });
+  const spPresetSel = $('#ml-sp-preset');
+  if (spPresetSel) {
+    spPresetSel.onchange = () => {
+      const p = ML_SPONSOR_PRESETS_UI[Number(spPresetSel.value)];
+      if (!p) return;
+      $('#ml-newsp-brand').value = p.brand;
+      $('#ml-newsp-cat').value = p.category;
+      $('#ml-newsp-fee').value = p.fee;
+      $('#ml-newsp-bonus').value = p.bonus;
+    };
+  }
+  if ($('#ml-newsp-go')) {
+    $('#ml-newsp-go').onclick = async () => {
+      try {
+        state = await live.addLifeSponsor({
+          brand: $('#ml-newsp-brand').value,
+          category: $('#ml-newsp-cat').value,
+          fee: Number($('#ml-newsp-fee').value) || 0,
+          bonus: Number($('#ml-newsp-bonus').value) || 0,
+          until: $('#ml-newsp-until').value,
+        });
+        toast(tr('Sponsor ajouté.'));
+        render();
+      } catch (err) { toast(err.message, true); }
+    };
+  }
+  page.querySelectorAll('[data-mlob]').forEach((b) => {
+    b.onclick = async () => {
+      try { state = await live.completeLifeObligation(b.dataset.mlob, b.dataset.obskip === '1'); render(); } catch (err) { toast(err.message, true); }
+    };
+  });
+  page.querySelectorAll('[data-mlbuy]').forEach((b) => {
+    b.onclick = async () => {
+      try { state = await live.buyLifeAsset({ catalogId: b.dataset.mlbuy }); toast(tr('Achat confirmé.')); render(); } catch (err) { toast(err.message, true); }
+    };
+  });
+  page.querySelectorAll('[data-mlsell]').forEach((b) => {
+    b.onclick = async () => {
+      const ok = await kConfirm({ title: tr('Confirmer l’opération ?'), body: tr('Confirmer la revente ou la fin de ce contrat ?'), ok: tr('Confirmer'), cancel: tr('Annuler') });
+      if (!ok) return;
+      try { state = await live.sellLifeAsset(b.dataset.mlsell); render(); } catch (err) { toast(err.message, true); }
+    };
+  });
+  if ($('#ml-casset-go')) {
+    $('#ml-casset-go').onclick = async () => {
+      try {
+        state = await live.buyLifeAsset({
+          custom: true,
+          name: $('#ml-casset-name').value,
+          category: $('#ml-casset-cat').value,
+          price: Number($('#ml-casset-price').value) || 0,
+          monthlyCost: Number($('#ml-casset-mcost').value) || 0,
+        });
+        toast(tr('Achat confirmé.'));
+        render();
+      } catch (err) { toast(err.message, true); }
+    };
+  }
+}
 
 // ---------- réglages ----------
 
