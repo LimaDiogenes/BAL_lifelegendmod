@@ -104,10 +104,44 @@ function maskFixturesAndNext(fixtures = [], simDate, pendingIds) {
   return { masked, played, last, next };
 }
 
+function nextUnplayedMatch(snap, afterOrOnIso = null) {
+  const candidates = [
+    ...(snap?.fixtures || []),
+    ...(snap?.nationalTeam?.fixtures || []),
+    snap?.next,
+    snap?.nationalTeam?.next,
+  ].filter((f) => f && !f.played && isIsoDate(f.date) && (!afterOrOnIso || f.date >= afterOrOnIso));
+  candidates.sort((a, b) => a.date.localeCompare(b.date));
+  return candidates[0] || null;
+}
+
+function calendarBounds(state) {
+  const cal = ensureCalendar(state, state.snapshot);
+  const simDate = cal.simDate || state.snapshot?.gameDate || null;
+  const saveDate = cal.saveDate || state.saveSnapshot?.gameDate || state.snapshot?.gameDate || simDate;
+  const fullSnap = state.saveSnapshot || state.snapshot;
+  const pendingCount = cal.pendingMatches?.length || 0;
+
+  if (isIsoDate(simDate) && isIsoDate(saveDate) && (simDate < saveDate || pendingCount > 0)) {
+    return { mode: 'catchup', simDate, saveDate, maxDate: saveDate, canAdvance: true, nextMatch: null, pendingCount };
+  }
+  const nextMatch = isIsoDate(simDate) ? nextUnplayedMatch(fullSnap, simDate) : null;
+  if (nextMatch && nextMatch.date > simDate) {
+    return { mode: 'prematch', simDate, saveDate, maxDate: nextMatch.date, canAdvance: true, nextMatch, pendingCount: 0 };
+  }
+  if (nextMatch && nextMatch.date === simDate) {
+    return { mode: 'matchday', simDate, saveDate, maxDate: simDate, canAdvance: false, nextMatch, pendingCount: 0 };
+  }
+  return { mode: 'synced', simDate, saveDate, maxDate: saveDate, canAdvance: false, nextMatch: null, pendingCount: 0 };
+}
+
 // Renvoie un instantané garanti sans spoilers jusqu'à `simDate`.
 function buildVisibleSnapshot(realSnapshot, simDate, pendingMatches = []) {
   if (!realSnapshot || !isIsoDate(simDate)) return realSnapshot;
-  if (!realSnapshot.gameDate || simDate >= realSnapshot.gameDate) return realSnapshot;
+  if (!realSnapshot.gameDate || simDate === realSnapshot.gameDate) return realSnapshot;
+  if (simDate > realSnapshot.gameDate) {
+    return { ...realSnapshot, gameDate: simDate };
+  }
 
   const pendingIds = new Set(pendingMatches.map((m) => String(m.id)));
   const club = maskFixturesAndNext(realSnapshot.fixtures || [], simDate, pendingIds);
@@ -148,7 +182,7 @@ function extractQueueItems(realSnapshot, simDate, alreadyRevealedIds) {
     for (const f of list || []) {
       if (!f?.played || !f.date) continue;
       const id = String(f.id ?? `${f.date}|${f.home}|${f.away}`);
-      if (f.date > simDate && f.date <= realSnapshot.gameDate && !revealed.has(id)) {
+      if (f.date >= simDate && f.date <= realSnapshot.gameDate && !revealed.has(id)) {
         items.push({ id, date: f.date, home: f.home, away: f.away, competition: f.competition || '', kind });
       }
     }
@@ -161,9 +195,19 @@ function extractQueueItems(realSnapshot, simDate, alreadyRevealedIds) {
 
 function ingestSyncCalendar(state, realSnapshot, { calendarMode = 'basic' } = {}) {
   const cal = ensureCalendar(state, realSnapshot);
+  const prevSaveDate = cal.saveDate;
   cal.saveDate = realSnapshot.gameDate;
 
   const isFirst = !state.snapshot;
+  // Si l'utilisateur a avancé en pré-match avant de jouer mais resynchronise sans que le jeu ait avancé, ne pas reculer simDate.
+  if (!isFirst && calendarMode === 'full' && cal.simDate && realSnapshot.gameDate && cal.simDate > realSnapshot.gameDate && prevSaveDate === realSnapshot.gameDate) {
+    state.saveSnapshot = realSnapshot;
+    cal.pendingMatches = [];
+    const visible = buildVisibleSnapshot(realSnapshot, cal.simDate, []);
+    state.snapshot = visible;
+    return { deferred: true, queuedCount: 0, visibleSnapshot: visible };
+  }
+
   if (isFirst || calendarMode !== 'full' || !cal.simDate || cal.simDate >= realSnapshot.gameDate) {
     cal.simDate = realSnapshot.gameDate;
     cal.pendingMatches = [];
@@ -183,10 +227,10 @@ function ingestSyncCalendar(state, realSnapshot, { calendarMode = 'basic' } = {}
   return { deferred: true, queuedCount: cal.pendingMatches.length, visibleSnapshot: visible };
 }
 
-function collectEventDates(state, simDate, saveDate) {
+function collectEventDates(state, simDate, maxDate) {
   const dates = new Set();
   const add = (d) => {
-    if (isIsoDate(d) && d > simDate && d <= saveDate) dates.add(d);
+    if (isIsoDate(d) && d > simDate && d <= maxDate) dates.add(d);
   };
   const cal = state.calendar;
   const fullSnap = state.saveSnapshot || state.snapshot;
@@ -207,23 +251,26 @@ function collectEventDates(state, simDate, saveDate) {
 
 function advanceCalendar(state, { mode = 'day', targetDate = null } = {}) {
   const cal = ensureCalendar(state, state.snapshot);
-  if (!cal.simDate || !cal.saveDate || cal.simDate >= cal.saveDate) {
+  const bounds = calendarBounds(state);
+  if (!bounds.canAdvance) {
     throw new Error('Tu es déjà à jour avec ta sauvegarde : joue dans le jeu puis synchronise.');
   }
+  if (!state.saveSnapshot && state.snapshot) state.saveSnapshot = state.snapshot;
 
   const prevDate = cal.simDate;
+  const maxDate = bounds.maxDate || cal.saveDate;
   let nextDate;
   if (mode === 'catch_up') {
-    nextDate = cal.saveDate;
+    nextDate = maxDate;
   } else if (mode === 'target' && isIsoDate(targetDate)) {
     nextDate = targetDate <= prevDate ? addDaysIso(prevDate, 1) : targetDate;
-    if (nextDate > cal.saveDate) nextDate = cal.saveDate;
+    if (nextDate > maxDate) nextDate = maxDate;
   } else if (mode === 'next_event') {
-    const upcoming = collectEventDates(state, prevDate, cal.saveDate);
-    nextDate = upcoming[0] || cal.saveDate;
+    const upcoming = collectEventDates(state, prevDate, maxDate);
+    nextDate = upcoming[0] || maxDate;
   } else {
     nextDate = addDaysIso(prevDate, 1);
-    if (nextDate > cal.saveDate) nextDate = cal.saveDate;
+    if (nextDate > maxDate) nextDate = maxDate;
   }
 
   const popped = [];
@@ -253,7 +300,7 @@ function advanceCalendar(state, { mode = 'day', targetDate = null } = {}) {
   const visible = buildVisibleSnapshot(fullSnap, nextDate, cal.pendingMatches);
   state.snapshot = visible;
 
-  const reachedSaveDate = nextDate >= cal.saveDate && cal.pendingMatches.length === 0;
+  const reachedSaveDate = Boolean(cal.saveDate && nextDate === cal.saveDate && cal.pendingMatches.length === 0);
   if (reachedSaveDate) state.saveSnapshot = null;
 
   const rhythm = dayRhythm(state, nextDate);
@@ -377,6 +424,7 @@ function calendarAgenda(state, monthIso = null) {
 module.exports = {
   CALENDAR_EVENT_CATEGORIES,
   ensureCalendar,
+  calendarBounds,
   buildVisibleSnapshot,
   ingestSyncCalendar,
   advanceCalendar,
