@@ -2414,4 +2414,7 @@ window.LL_I18N.it = {
   "DeepSeek": "DeepSeek",
   "Ollama — local (gratuit, sans clé)": "Ollama — locale (gratis, senza chiave)",
   "LM Studio — local (gratuit, sans clé)": "LM Studio — locale (gratis, senza chiave)",
+  "Cap.": "Cap.",
+  "Pen.": "Rig.",
+  "c’est le capitaine du club": "è il capitano del club",
 };

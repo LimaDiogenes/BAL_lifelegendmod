@@ -148,6 +148,7 @@ function assess(kind, params, { state, s, aux }) {
       reasons.push(imp);
       difficulty += imp === 'key_player' ? 35 : imp === 'regular' ? 15 : -10;
     }
+    if (p.captain) { difficulty += 15; reasons.push('club_captain'); }
     if (dest.full) blocked = 'dest_full';
     if (pending('sale')) blocked ||= 'pending';
     const refused = inf.requests.filter((r) => r.kind === 'sale' && r.params.playerId === p.id && !r.accepted).at(-1);
@@ -162,6 +163,7 @@ function assess(kind, params, { state, s, aux }) {
       reasons.push(imp);
       difficulty += imp === 'key_player' ? -10 : imp === 'regular' ? 0 : 15;
     }
+    if (p.captain) { difficulty -= 10; reasons.push('club_captain'); }
     if (inf.keeps.some((k) => k.playerId === p.id)) blocked = 'already_kept';
     else if (inf.keeps.length >= 3) blocked = 'too_many_keeps';
   } else if (kind === 'future') {
@@ -314,8 +316,17 @@ function buildAux(career, s, { nameOf, clubs, prestige, formations, positions })
   const post = (ref, id) => { const p = posts.get(`${ref}|${id}`); return p ? Number(Object.entries(p).sort((a, b) => b[1] - a[1])[0][0]) : null; };
   const mine = career.teams.get(s.club.ref);
   const roleOf = (id) => positions?.get(id) ?? null;
-  const squad = (mine?.roster || []).filter((id) => id !== career.player.id).map((id) => ({ id, name: nameOf(id), share: share(s.club.ref, id), starts: starts.get(`${s.club.ref}|${id}`) || 0, pos: post(s.club.ref, id), role: roleOf(id) }))
-    .filter((p) => p.name).sort((a, b) => b.share - a.share);
+  const squad = (mine?.roster || []).filter((id) => id !== career.player.id).map((id) => ({
+    id,
+    name: nameOf(id),
+    share: share(s.club.ref, id),
+    starts: starts.get(`${s.club.ref}|${id}`) || 0,
+    pos: post(s.club.ref, id),
+    role: roleOf(id),
+    shirt: mine?.shirts?.[id] || null,
+    captain: Boolean(mine?.captainId && id === mine.captainId),
+    unused: (minutes.get(`${s.club.ref}|${id}`) || 0) === 0,
+  })).filter((p) => p.name).sort((a, b) => b.share - a.share);
   const clubsOut = {};
   for (const [ref, c] of prestige) clubsOut[ref] = { name: c.team, league: c.league, prestige: Math.round(c.prestige * 1000) / 1000, games: games.get(ref) || 0 };
   const myPrestige = prestige.get(s.club.ref)?.prestige ?? 0.5;
@@ -355,6 +366,7 @@ const REASONS_EN = {
   in_form: 'the player is in good form', out_of_form: 'the player is out of form', average_form: 'the player\'s form is average',
   thin_position: 'we are short of players in that position', deep_position: 'we already have plenty of players in that position',
   long_contract: 'his contract still runs for more than three years', contract_ending: 'his contract ends soon', low_influence: 'the player does not carry enough weight in the club yet',
+  club_captain: 'he is the club captain',
 };
 const ROLE_EN = ['goalkeeper', 'centre-back', 'left-back', 'right-back', 'defensive midfielder', 'central midfielder', 'left midfielder', 'right midfielder', 'attacking midfielder', 'left winger', 'right winger', 'second striker', 'centre-forward'];
 function requestFacts(state, s, request, effect, message) {

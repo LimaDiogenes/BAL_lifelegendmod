@@ -70,4 +70,4 @@ function readPlayerProfile(d, playerIdOffset) {
 const abilityLabel = (key) => ABILITIES.find(([k]) => k === key)?.[1] || key;
 const isGoalkeeper = (profile) => profile?.position === 'GB';
 
-module.exports = { readPlayerProfile, ABILITIES, abilityLabel, isGoalkeeper, FORM_ARROWS };
+module.exports = { readPlayerProfile, ABILITIES, abilityLabel, isGoalkeeper, FORM_ARROWS, POSITIONS };

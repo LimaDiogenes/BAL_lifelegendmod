@@ -5068,7 +5068,7 @@ function hdListHtml(group, onDay) {
   return `<header class="hd-list-head"><h2>${tr('Effectif')}</h2><p>${tr('Clique sur un nom pour le mentionner.')}</p></header>
     <div class="hd-list-label">${tr('Joueurs')} · ${group.players.length}</div>
     <div class="hd-rows">${players.map((p) => `<button class="hd-row" data-hdmention="${esc(p.name)}" title="${esc(tr('Mentionner {name}', { name: p.name }))}">${hdFace(p.name, onDay.has(p.name))}
-      <span class="hd-row-main"><span class="hd-row-top"><b>${esc(p.name)}</b>${p.said ? `<time>${esc(shortDate(p.said.gameDate))}</time>` : ''}</span>
+      <span class="hd-row-main"><span class="hd-row-top"><b>${esc(p.name)}</b>${p.st?.shirt ? ` <small>#${p.st.shirt}</small>` : ''}${p.st?.pos ? ` <small>${esc(posLabel(p.st.pos))}</small>` : ''}${p.st?.captain ? ` <small>· ${tr('Cap.')}</small>` : ''}${p.said ? `<time>${esc(shortDate(p.said.gameDate))}</time>` : ''}</span>
         <span class="hd-row-sub"><small>${p.said ? esc(snippet(p.said.text)) : esc(statLine(p.st))}</small></span></span></button>`).join('')}
       <p class="hd-none hidden" id="hd-none">${tr('Aucun membre ne correspond.')}</p></div>`;
 }
@@ -5851,6 +5851,7 @@ const INF_REASON = {
   squad_big: 'l’effectif est déjà chargé', in_form: 'tu es en forme', out_of_form: 'ta forme n’est pas bonne', average_form: 'ta forme est moyenne', long_contract: 'ton contrat court encore plus de trois ans',
   thin_position: 'ton club manque de joueurs à ce poste', deep_position: 'ton club a déjà du monde à ce poste',
   contract_ending: 'ton contrat se termine bientôt', low_influence: 'tu n’as pas encore assez de poids dans le vestiaire',
+  club_captain: 'c’est le capitaine du club',
 };
 // Formation : le nom affiché par le jeu d'abord (celui du plan de jeu), le nom courant ensuite s'il diffère.
 const fmName = (f) => (!f ? '—' : f.name && f.name !== f.gameName ? `${f.gameName} (≈ ${f.name})` : f.gameName);
@@ -6176,7 +6177,7 @@ function infPanelBody(d, kind) {
   if (kind === 'sale' && !d.saleTargets.length) return `${mercato}<p class="fineprint">${tr('Aucun club intéressé pour l’instant.')}</p>`;
   return `${kind === 'sale' ? mercato : `<p class="fineprint">${tr('Si le jeu le vend pendant le mercato, le club refusera la vente : LifeLegend te proposera de la défaire dans ta sauvegarde.')}${d.keeps.length ? ` ${esc(tr('Protégés : {list}.', { list: d.keeps.map((k) => tr('{name} (jusqu’au {d})', { name: k.name, d: infDay(k.until) })).join(', ') }))}` : ''}</p>`}
     <div class="ib-people">${d.squad.map((x) => `<button type="button" class="ib-person${view.infPick === x.id ? ' on' : ''}" data-infpick="${x.id}"${x[kind]?.blocked ? ' disabled' : ''}>
-      ${ibFace(x.name)}<span class="ib-who"><b>${esc(x.name)}</b><span>${x.pos !== null && x.pos !== undefined ? `${esc(skPos(x.pos))} · ` : ''}${esc(tr('temps de jeu {p}', { p: pct(x.share) }))}</span></span>${ibOdds(x[kind])}</button>`).join('')}</div>
+      ${ibFace(x.name)}<span class="ib-who"><b>${x.shirt ? `#${x.shirt} ` : ''}${esc(x.name)}${x.captain ? ` · ${tr('Cap.')}` : ''}</b><span>${x.pos != null ? `${esc(skPos(x.pos))} · ` : x.role != null && POS_CODES[x.role] ? `${esc(posLabel(POS_CODES[x.role]))} · ` : ''}${x.unused ? esc(tr('Pas encore joué')) : esc(tr('temps de jeu {p}', { p: pct(x.share) }))}</span></span>${ibOdds(x[kind])}</button>`).join('')}</div>
     ${kind === 'sale' ? `<label class="ib-field"><span class="ib-eyebrow">${tr('Club intéressé')}</span><select class="ib-input" id="inf-sale-to">${d.saleTargets.map((c) => `<option value="${c.ref}">${esc(c.name)}${c.league ? ` · ${esc(c.league)}` : ''}</option>`).join('')}</select></label>` : ''}
     <p class="fineprint" id="inf-pick-why">${view.infPick === null ? tr('Choisis un coéquipier dans la liste.') : infWhy(d.squad.find((x) => x.id === view.infPick)?.[kind])}</p>
     <div class="ib-send">${arg}${go(view.infPick !== null)}</div>`;
@@ -7875,8 +7876,8 @@ function scTeam(d) {
     body = scCard('', `${up.length ? `<div class="sc-gh"><span>${tr('Prochains matchs')}</span></div>${rows(up)}` : ''}${last.length ? `<div class="sc-gh"><span>${tr('Derniers résultats')}</span></div>${rows(last)}` : ''}${!up.length && !last.length ? scEmpty(tr('Aucun match cette saison')) : ''}`);
   } else if (tab === 'squad') {
     if (ref === d.clubRef && state.snapshot.squad?.length) {
-      body = scCard('', `<table class="sc-t"><thead><tr><th>${tr('Joueur')}</th>${['MJ', 'Min', 'B', 'PD', 'Note'].map((x) => `<th class="n">${tr(x)}</th>`).join('')}</tr></thead><tbody>
-        ${state.snapshot.squad.map((x) => `<tr class="${x.me ? 'us' : ''}"><td${x.name ? '' : ' class="sc-mut"'}><span class="sc-td-p">${x.name ? scFace(x.name, null, 28) : ''}<span>${esc(x.name || tr('Joueur inconnu'))}</span></span></td><td class="n">${x.apps}</td><td class="n">${x.minutes}</td><td class="n">${x.goals}</td><td class="n">${x.assists}</td><td class="n">${ratingChip(x.avgRating)}</td></tr>`).join('')}</tbody></table><p class="sc-fine">${tr('Ton club : statistiques complètes de la saison.')}</p>`);
+      body = scCard('', `<table class="sc-t"><thead><tr><th class="n">#</th><th>${tr('Joueur')}</th><th>${tr('Poste')}</th>${['MJ', 'Min', 'B', 'PD', 'Note'].map((x) => `<th class="n">${tr(x)}</th>`).join('')}</tr></thead><tbody>
+        ${state.snapshot.squad.map((x) => `<tr class="${x.me ? 'us' : ''}"><td class="n sc-mut">${x.shirt ? esc(x.shirt) : '—'}</td><td${x.name ? '' : ' class="sc-mut"'}><span class="sc-td-p">${x.name ? scFace(x.name, null, 28) : ''}<span>${esc(x.name || tr('Joueur inconnu'))}${x.captain ? ` <small class="sc-mut">(${esc(tr('Cap.'))})</small>` : ''}${x.penaltyTaker ? ` <small class="sc-mut">(${esc(tr('Pen.'))})</small>` : ''}</span></span></td><td class="sc-mut">${x.pos ? esc(posLabel(x.pos)) : '—'}</td><td class="n">${x.apps}</td><td class="n">${x.minutes}</td><td class="n">${x.goals}</td><td class="n">${x.assists}</td><td class="n">${ratingChip(x.avgRating)}</td></tr>`).join('')}</tbody></table><p class="sc-fine">${tr('Ton club : statistiques complètes de la saison.')}</p>`);
     } else {
       const g = new Map();
       for (const i of done) {

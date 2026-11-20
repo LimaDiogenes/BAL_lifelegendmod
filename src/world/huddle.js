@@ -221,7 +221,7 @@ function addGroupMessages(group, list, gameDate, max = EDITION_MESSAGES) {
 // en jeu, puis ceux qui n'ont rien dit depuis longtemps), chacun dans son style ; un sujet de vie de vestiaire qui
 // tourne ; le coach seulement après une défaite ou s'il n'a pas écrit la fois d'avant.
 // last : le dernier match s'il vient d'être joué ; elsewhere : le football mondial est dans les faits de l'édition.
-function huddleToday(group, { last = null, elsewhere = false, edition = 0, date = '', rival = null, derby = null, reunion = null } = {}) {
+function huddleToday(group, { last = null, elsewhere = false, edition = 0, date = '', rival = null, derby = null, reunion = null, squadIntel = null } = {}) {
   const rand = seeded(`${group.clubRef}|${date}|${edition}`);
   const said = new Map();
   group.messages.forEach((m, i) => { if (m.who === 'them' && m.from) said.set(m.from, i); });
@@ -239,6 +239,21 @@ function huddleToday(group, { last = null, elsewhere = false, edition = 0, date 
   }
   const sub = lineup.find((p) => p.starter === false && p.minutes);
   if (sub && voices.length < 3) add(sub.name, 'came on in the last match');
+  const [h, a] = last?.score || [];
+  const lost = Boolean(last?.played) && (last.venue === 'domicile' ? h < a : h > a);
+  if (squadIntel?.captain?.name && !squadIntel.captain.me) {
+    const existingCap = voices.find((v) => same(v.name, squadIntel.captain.name));
+    if (existingCap) existingCap.why = `${existingCap.why}; the club captain`;
+    else if (lost || derby || voices.length < 3) add(squadIntel.captain.name, 'the club captain');
+  }
+  const rivalsList = squadIntel?.positionRivals || [];
+  for (const v of voices) {
+    const rv = rivalsList.find((r) => same(r.name, v.name));
+    if (rv) v.why = `${v.why}; competes with him for the ${rv.pos} spot`;
+  }
+  for (const rv of rivalsList) {
+    if (voices.length < 4) add(rv.name, `competes with him for the ${rv.pos} spot`);
+  }
   // Ceux qui n'ont pas parlé dans les derniers messages d'abord (tirés parmi les huit plus silencieux), les autres ensuite.
   const talked = new Set(group.messages.slice(-CONTEXT).filter((m) => m.who === 'them').map((m) => m.from));
   const others = group.players.filter((n) => !voices.some((v) => v.name === n)).sort((a, b) => (said.get(a) ?? -1) - (said.get(b) ?? -1));
@@ -249,8 +264,6 @@ function huddleToday(group, { last = null, elsewhere = false, edition = 0, date 
   const before = group.messages.filter((m) => m.who === 'them' && m.role !== 'manager' && m.gameDate < date);
   const prevDay = before.at(-1)?.gameDate;
   const coachSpoke = Boolean(prevDay) && before.some((m) => m.gameDate === prevDay && m.role === 'coach');
-  const [h, a] = last?.score || [];
-  const lost = Boolean(last?.played) && (last.venue === 'domicile' ? h < a : h > a);
   const topics = elsewhere ? [...SIDE_TOPICS, ELSEWHERE_TOPIC] : SIDE_TOPICS;
   return {
     voices_today: voices,
@@ -264,13 +277,16 @@ function huddleToday(group, { last = null, elsewhere = false, edition = 0, date 
 }
 
 // Ce que l'IA sait du groupe : ses membres et les derniers messages.
-function huddleContext(group) {
+function huddleContext(group, snapshot = null) {
+  const intel = snapshot?.squadIntel;
   return {
     group: group.club,
     kind: isNational(group) ? 'national team' : 'club',
     coach: group.coach || null,
     staff: group.staff.map((p) => ({ name: p.name, job: ROLE_FOR_AI[p.role] })),
     players: group.players,
+    ...(intel?.captain ? { captain: intel.captain.name } : {}),
+    ...(intel?.positionRivals?.length ? { position_rivals: intel.positionRivals.map((r) => `${r.name} (${r.pos})`) } : {}),
     recent: group.messages.filter((m) => m.who !== 'system').slice(-CONTEXT).map((m) => ({ from: m.who === 'me' ? 'THE PLAYER' : m.from, date: m.gameDate, text: m.text })),
     // Comment écrivent les joueurs qui parlent en ce moment : chacun garde sa façon d'écrire.
     styles: Object.fromEntries([...new Set(group.messages.slice(-CONTEXT).filter((m) => m.who === 'them' && !m.role).map((m) => m.from))]

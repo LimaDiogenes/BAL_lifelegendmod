@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { readCareer, competitionMatches } = require('../save/blReader');
-const { detectGameFolders, loadGameDb, matchRate } = require('../save/gameDb');
+const { detectGameFolders, loadGameDb, loadEditPlayers, mergeEditPlayers, matchRate } = require('../save/gameDb');
 const { buildSnapshot, diffSnapshots, hasNews, sameMatch } = require('./snapshot');
 const { complete: completeRaw, transcribe, parseJson, isDailyQuota } = require('../ai/providers');
 const { normalizePrivacy, buildPrivacyMap, maskText, unmaskText, previewMasked } = require('../ai/privacyShield');
@@ -416,7 +416,33 @@ function factsFor(s, profile = {}, state = null) {
     discipline: state ? conductFacts(state, s.gameDate) : undefined,
     objectives: state ? objectivesFacts(state, s) : undefined,
     equipment_deal: state ? sponsorFacts(state) : undefined,
-    club_squad: (s.squad || []).filter((p) => p.name && !p.me).slice(0, 16).map(({ me, ...p }) => p),
+    club_squad: (s.squad || []).filter((p) => p.name && !p.me).slice(0, 22).map((p) => ({
+      name: p.name,
+      apps: p.apps,
+      starts: p.starts,
+      minutes: p.minutes,
+      goals: p.goals,
+      assists: p.assists,
+      ...(p.avgRating != null ? { avgRating: p.avgRating } : {}),
+      ...(p.shirt ? { shirt: p.shirt } : {}),
+      ...(p.pos ? { pos: p.pos } : {}),
+      ...(p.nationality ? { nationality: p.nationality } : {}),
+      ...(p.captain ? { captain: true } : {}),
+      ...(p.penaltyTaker ? { penalty_taker: true } : {}),
+      ...(p.status ? { status: p.status } : {}),
+    })),
+    ...(s.squadIntel && (s.squadIntel.captain || s.squadIntel.penaltyTaker || s.squadIntel.freeKickTaker || s.squadIntel.positionRivals?.length || s.squadIntel.unusedBench?.length)
+      ? {
+        squad_roles: {
+          ...(s.squadIntel.captain ? { captain: s.squadIntel.captain } : {}),
+          ...(s.squadIntel.penaltyTaker ? { penalty_taker: s.squadIntel.penaltyTaker } : {}),
+          ...(s.squadIntel.freeKickTaker ? { free_kick_taker: s.squadIntel.freeKickTaker } : {}),
+          ...(s.squadIntel.positionRivals?.length ? { position_rivals: s.squadIntel.positionRivals } : {}),
+          ...(s.squadIntel.unusedBench?.length ? { unused_bench: s.squadIntel.unusedBench } : {}),
+          squad_size: s.squadIntel.squadSize,
+        },
+      }
+      : {}),
     league_table: s.table.map((r) => ({ pos: r.pos, team: r.team, p: r.p, w: r.w, d: r.d, l: r.l, gd: r.gf - r.ga, pts: r.pts, form: r.form.join('') })),
     last_match: s.last && strip(s.last),
     next_match: s.next && { ...strip(s.next), kickoff: kickoffLabel(s.next, s.gameDate) },
@@ -1655,26 +1681,28 @@ function gameDirFor(career, settings) {
   return gameDirCache.get(key);
 }
 
-function playerNames(career, settings, log) {
+function playerDb(career, settings, log) {
+  const edits = settings?.savePath ? loadEditPlayers(settings.savePath) : [];
   const gameDir = gameDirFor(career, settings);
   if (!gameDir) {
     log('Noms des joueurs : dossier du jeu introuvable (à indiquer dans les réglages). Les autres joueurs restent anonymes.');
-    return null;
+    return edits.length ? mergeEditPlayers(null, edits) : null;
   }
   let db = null;
-  try { db = loadGameDb(gameDir); } catch (err) { log(`Noms des joueurs : base du jeu illisible (${err.message}).`); return null; }
+  try { db = loadGameDb(gameDir); } catch (err) { log(`Noms des joueurs : base du jeu illisible (${err.message}).`); return edits.length ? mergeEditPlayers(null, edits) : null; }
   if (!db) {
     log('Noms des joueurs : aucune base de joueurs trouvée dans le dossier du jeu.');
-    return null;
+    return edits.length ? mergeEditPlayers(null, edits) : null;
   }
   const rate = matchRate(career, db);
   if (rate < MIN_MATCH_RATE) {
     log(`Noms des joueurs : la base du jeu (${db.source}) ne correspond pas à cette sauvegarde (${Math.round(rate * 100)} % des joueurs reconnus). Installe le patch de cette carrière (ex. Football Life) pour avoir les noms ; en attendant, les autres joueurs restent anonymes.`);
-    return null;
+    return edits.length ? mergeEditPlayers(null, edits) : null;
   }
   log(`Noms des joueurs : ${db.names.size.toLocaleString('fr-FR')} joueurs (${path.basename(gameDir)} · ${db.source}), ${Math.round(rate * 100)} % des joueurs de la sauvegarde reconnus.`);
-  return db.names;
+  return edits.length ? mergeEditPlayers(db, edits) : db;
 }
+const playerNames = (career, settings, log) => playerDb(career, settings, log)?.names || null;
 
 async function sync({ store, settings, log, progress }) {
   const steps = [['Lecture de la sauvegarde', 0], ['Rédaction de l’édition', 16000]];
@@ -1734,8 +1762,9 @@ async function syncInner({ store, settings, log, t }) {
   log('Lecture et déchiffrement de la sauvegarde…');
   const career = readSave(settings.savePath);
   logSaveLayout(career.layout, log);
-  const names = playerNames(career, settings, log);
-  const snapshot = buildSnapshot(career, names);
+  const db = playerDb(career, settings, log);
+  const names = db?.names || null;
+  const snapshot = buildSnapshot(career, db || names);
   const nameOf = (id) => (id === career.player.id ? career.player.name : (names?.has(id) ? prettyName(names.get(id)) : null));
   log(`${snapshot.player.name} · ${snapshot.club.name} · ${snapshot.league.name || '?'} · ${snapshot.gameDate}`);
 
@@ -1963,7 +1992,7 @@ async function syncInner({ store, settings, log, t }) {
     try {
       const gameDir = gameDirFor(career, settings);
       const formations = gameDir ? formationOptions(loadTemplates(gameDir)) : [];
-      const positions = names && gameDir ? loadGameDb(gameDir)?.positions || null : null;
+      const positions = db?.positions || (names && gameDir ? loadGameDb(gameDir)?.positions || null : null);
       store.saveAux(careerId, 'influence', buildAux(career, snapshot, { nameOf, clubs, prestige: clubPrestige(career, snapshot.league.id), formations, positions }));
     } catch (err) { log(`Influence : données de la page impossibles à préparer (${err.message}).`); }
     // Scores de tout le monde du jeu pour Scoreline : fichier à part, refait à chaque synchro.
@@ -2118,7 +2147,7 @@ async function syncInner({ store, settings, log, t }) {
   memory.transversale_today = outline.plan.map(({ author, kind: genre, subject }) => ({ author, kind: genre, subject }));
   if (chapterEvents.length) memory.pantheon = chapterTitles(state);
   // Le groupe du jour (qui parle, le sujet de vestiaire, le coach) : décidé par le code, dans la même requête.
-  if (huddle) memory.huddle = { ...huddleContext(huddle), ...huddleToday(huddle, { last: changes.newResults.at(-1) || null, elsewhere: Boolean(facts.football_elsewhere), edition: state.editions.length, date: snapshot.gameDate, rival: state.rival, derby: facts.derby || null, reunion: facts.reunion || null }) };
+  if (huddle) memory.huddle = { ...huddleContext(huddle, snapshot), ...huddleToday(huddle, { last: changes.newResults.at(-1) || null, elsewhere: Boolean(facts.football_elsewhere), edition: state.editions.length, date: snapshot.gameDate, rival: state.rival, derby: facts.derby || null, reunion: facts.reunion || null, squadIntel: snapshot.squadIntel || null }) };
   // Le groupe de la sélection ne parle que quand sa sélection fait l'actualité.
   const ntHuddle = changes.callUp || changes.ntResults.length || changes.ntMatchday ? nationalHuddle(state, snapshot) : null;
   if (ntHuddle) memory.huddle_national = huddleContext(ntHuddle);
