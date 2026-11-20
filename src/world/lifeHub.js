@@ -44,22 +44,22 @@ const ASSET_CATALOG = [
 ];
 
 const OFF_PITCH_ACTIONS = [
-  { id: 'recovery', ap: 1, cost: 0, effects: { manager: 4, squad: 1 }, memory: 'extra recovery & sleep discipline' },
-  { id: 'extra_training', ap: 1, cost: 0, effects: { manager: 6, squad: 2 }, memory: 'extra hours after training' },
+  { id: 'recovery', ap: 1, cost: 0, effects: { manager: 4, squad: 1 }, saveEffects: { formArrowDelta: 1 }, memory: 'extra recovery & sleep discipline' },
+  { id: 'extra_training', ap: 1, cost: 0, effects: { manager: 6, squad: 2 }, saveEffects: { affectionDelta: 2 }, memory: 'extra hours after training' },
   { id: 'team_dinner', ap: 1, cost: 2500, effects: { squad: 6, fans: 1 }, memory: 'hosted a squad dinner' },
   { id: 'inner_circle', ap: 1, cost: 0, effects: { manager: 2, squad: 3, media: 1 }, memory: 'quiet family & inner-circle time' },
   { id: 'sponsor_shoot', ap: 1, cost: 0, effects: { sponsors: 6, media: 3 }, bonusCash: 6000, memory: 'filmed a commercial campaign' },
   { id: 'charity_visit', ap: 1, cost: 5000, effects: { fans: 6, media: 5, sponsors: 2 }, memory: 'visited young patients & local kids' },
   { id: 'media_feature', ap: 1, cost: 0, effects: { media: 6, fans: 4, manager: -1 }, followerDelta: 0.015, memory: 'gave a long-form lifestyle feature' },
-  { id: 'vip_night', ap: 1, cost: 8000, effects: { media: 4, fans: 2, manager: -3 }, memory: 'spotted at an exclusive VIP gala' },
+  { id: 'vip_night', ap: 1, cost: 8000, effects: { media: 4, fans: 2, manager: -3 }, saveEffects: { affectionDelta: -2, formArrowDelta: -1 }, memory: 'spotted at an exclusive VIP gala' },
 ];
 
 const DILEMMA_POOL = [
   {
     id: 'late_party',
     choices: [
-      { id: 'a', effects: { manager: 5, fans: 1, media: -2 }, memory: 'left the afterparty early before curfew' },
-      { id: 'b', effects: { squad: 5, media: 4, manager: -6 }, followerDelta: 0.015, memory: 'celebrated late with teammates after hours' },
+      { id: 'a', effects: { manager: 5, fans: 1, media: -2 }, saveEffects: { affectionDelta: 2 }, memory: 'left the afterparty early before curfew' },
+      { id: 'b', effects: { squad: 5, media: 4, manager: -6 }, saveEffects: { affectionDelta: -3, formArrowDelta: -1 }, followerDelta: 0.015, memory: 'celebrated late with teammates after hours' },
       { id: 'c', effects: { squad: 3, fans: 2, manager: 1 }, cost: 2500, memory: 'moved the celebration to a quiet private dinner' },
     ],
   },
@@ -98,16 +98,16 @@ const DILEMMA_POOL = [
   {
     id: 'training_gate',
     choices: [
-      { id: 'a', effects: { manager: 7, fans: 4 }, memory: 'stayed an extra hour signing autographs in the rain' },
-      { id: 'b', effects: { manager: 4, squad: 2, fans: -2 }, memory: 'went straight to ice bath recovery after training' },
+      { id: 'a', effects: { manager: 7, fans: 4 }, saveEffects: { affectionDelta: 3 }, memory: 'stayed an extra hour signing autographs in the rain' },
+      { id: 'b', effects: { manager: 4, squad: 2, fans: -2 }, saveEffects: { formArrowDelta: 1 }, memory: 'went straight to ice bath recovery after training' },
       { id: 'c', effects: { fans: 6, media: 4, sponsors: 3 }, cost: 3000, memory: 'invited academy kids onto the grass after session' },
     ],
   },
   {
     id: 'agent_leak',
     choices: [
-      { id: 'a', effects: { manager: -5, media: 5, sponsors: 2 }, memory: 'let transfer gossip swirl without comment' },
-      { id: 'b', effects: { manager: 6, fans: 5, squad: 3 }, memory: 'shut down transfer whispers publicly to steady the dressing room' },
+      { id: 'a', effects: { manager: -5, media: 5, sponsors: 2 }, saveEffects: { affectionDelta: -2 }, memory: 'let transfer gossip swirl without comment' },
+      { id: 'b', effects: { manager: 6, fans: 5, squad: 3 }, saveEffects: { affectionDelta: 3 }, memory: 'shut down transfer whispers publicly to steady the dressing room' },
       { id: 'c', effects: { manager: 2, media: 3 }, memory: 'told his agent to keep negotiations strictly behind closed doors' },
     ],
   },
@@ -320,6 +320,8 @@ function ensureLifeHub(state, snapshot = state?.snapshot) {
       offerCooldownUntil: null,
       lastTickDate: snapshot?.gameDate || null,
       matchCountedIds: [],
+      pendingSaveEffects: { affectionDelta: 0, formArrowDelta: 0, reasons: [] },
+      lastSaveEffectApplied: null,
     };
   }
   const hub = state.lifeHub;
@@ -331,6 +333,8 @@ function ensureLifeHub(state, snapshot = state?.snapshot) {
   hub.ledger ||= [];
   hub.recentEvents ||= [];
   hub.matchCountedIds ||= [];
+  hub.pendingSaveEffects ||= { affectionDelta: 0, formArrowDelta: 0, reasons: [] };
+  hub.pendingSaveEffects.reasons ||= [];
   hub.maxAp = 2;
   if (!Number.isFinite(hub.ap)) hub.ap = 2;
   if (snapshot) {
@@ -849,6 +853,24 @@ function pickCompanionName(state, snapshot, actionId) {
   return '';
 }
 
+function queueSaveEffects(hub, saveEffects, reason = '') {
+  if (!saveEffects) return;
+  const p = (hub.pendingSaveEffects ||= { affectionDelta: 0, formArrowDelta: 0, reasons: [] });
+  if (saveEffects.affectionDelta) p.affectionDelta = clamp((p.affectionDelta || 0) + saveEffects.affectionDelta, -8, 8);
+  if (saveEffects.formArrowDelta) p.formArrowDelta = clamp((p.formArrowDelta || 0) + saveEffects.formArrowDelta, -1, 1);
+  const cleanReason = cleanText(reason, 80);
+  if (cleanReason && !p.reasons.includes(cleanReason)) {
+    p.reasons = [...p.reasons, cleanReason].slice(-5);
+  }
+}
+
+function clearPendingSaveEffects(state, applied = null) {
+  const hub = ensureLifeHub(state, state.snapshot);
+  if (applied) hub.lastSaveEffectApplied = applied;
+  hub.pendingSaveEffects = { affectionDelta: 0, formArrowDelta: 0, reasons: [] };
+  return hub;
+}
+
 function performAction(state, snapshot, payload = {}, newId = () => `id_${Date.now()}`) {
   const hub = ensureLifeHub(state, snapshot);
   const today = snapshot?.gameDate || hub.lastTickDate || '';
@@ -873,6 +895,7 @@ function performAction(state, snapshot, payload = {}, newId = () => `id_${Date.n
     hub.ap -= act.ap || 1;
     const companion = cleanText(payload.companion, 60) || pickCompanionName(state, snapshot, act.id);
     applyEffects(state, hub, act.effects, { cost, bonusCash: act.bonusCash || 0, followerDelta: act.followerDelta || 0 }, today, act.id);
+    queueSaveEffects(hub, act.saveEffects, act.id);
     memoryLine = companion ? `${act.memory} (${companion})` : act.memory;
     pushRecent(hub, { date: today, kind: 'action', text: memoryLine });
   }
@@ -890,6 +913,7 @@ function answerDilemma(state, dilemmaId, choiceId, gameDate = '') {
   if (hub.cash < cost) throw new Error('Fonds insuffisants.');
 
   applyEffects(state, hub, ch.effects, { cost, bonusCash: ch.bonusCash || 0, followerDelta: ch.followerDelta || 0 }, gameDate, cur.dilemmaId);
+  queueSaveEffects(hub, ch.saveEffects, cur.dilemmaId);
   hub.pendingDilemma = null;
   pushRecent(hub, { date: gameDate, kind: 'dilemma', text: ch.memory });
   return { hub, memoryLine: ch.memory };
@@ -936,4 +960,5 @@ module.exports = {
   ownedMonthlyCost,
   assetNetWorth,
   lifeHubFacts,
+  clearPendingSaveEffects,
 };

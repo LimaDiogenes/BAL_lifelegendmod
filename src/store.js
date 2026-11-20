@@ -14,6 +14,8 @@ const DEFAULT_SETTINGS = {
   replays: true,     // publier les ralentis sauvegardés dans le jeu
   offerRedirect: false, // réorienter une vraie offre vers un autre club en modifiant la sauvegarde (expérimental)
   influenceWrites: false, // écrire dans la sauvegarde les décisions obtenues par l'influence : formation, transferts (expérimental)
+  lifeSaveEffects: false, // écrire les effets Ma vie (forme, confiance coach) dans la sauvegarde (expérimental)
+  calendarMode: 'basic', // 'basic' (synchro directe) ou 'full' (calendrier jour par jour sans spoiler)
   clipsDir: '',      // dossier des vidéos enregistrées (vide = Vidéos\Captures, captures du jeu seulement)
   provider: 'google',
   model: 'gemini-3.6-flash',
