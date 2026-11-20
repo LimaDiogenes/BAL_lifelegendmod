@@ -1324,8 +1324,10 @@ function render() {
   const tabs = $('#tabs');
   const unread = state?.mail?.filter((m) => m.unread).length || 0;
   const mlHub = state?.lifeHub;
+  const mlCalPending = settings?.calendarMode === 'full' ? (state?.calendar?.pendingMatches?.length || 0) : 0;
+  const mlSfxPending = (settings?.lifeSaveEffects && ((mlHub?.pendingSaveEffects?.affectionDelta || 0) !== 0 || (mlHub?.pendingSaveEffects?.formArrowDelta || 0) !== 0)) ? 1 : 0;
   const mlPending = mlHub?.calibrated
-    ? ((mlHub.pendingDilemma ? 1 : 0) + (mlHub.offers?.length || 0) + (mlHub.obligations || []).filter((o) => o.status === 'pending').length)
+    ? ((mlHub.pendingDilemma ? 1 : 0) + (mlHub.offers?.length || 0) + (mlHub.obligations || []).filter((o) => o.status === 'pending').length + mlCalPending + mlSfxPending)
     : (state?.snapshot ? 1 : 0);
   tabs.innerHTML = SITES.filter((s) => !s.hidden).map((s) => `
     <button class="tab${s.id === current ? ' active' : ''}" data-site="${s.id}" aria-label="${esc(s.label())}"${s.id === current ? ' aria-current="page"' : ''}>
@@ -8297,6 +8299,118 @@ function mlCalSponsorRowHtml(item = {}, untilDefault = '') {
   </div>`;
 }
 
+const ML_CAL_CAT_LABELS = {
+  family: () => tr('Famille'),
+  sponsor: () => tr('Sponsor'),
+  training: () => tr('Entraînement'),
+  media: () => tr('Médias'),
+  charity: () => tr('Solidarité'),
+  personal: () => tr('Personnel'),
+};
+
+const ML_RHYTHM_LABELS = {
+  matchday: () => tr('Jour de match'),
+  international: () => tr('Sélection nationale'),
+  recovery: () => tr('Récupération'),
+  match_prep: () => tr('Mise au vert'),
+  day_off: () => tr('Jour libre'),
+  training: () => tr('Entraînement'),
+};
+
+function mlAddDays(iso, n) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return '2026-08-01';
+  const d = new Date(`${iso}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+function mlDaysBetween(aIso, bIso) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(aIso || '') || !/^\d{4}-\d{2}-\d{2}$/.test(bIso || '')) return 0;
+  return Math.round((Date.parse(`${bIso}T12:00:00Z`) - Date.parse(`${aIso}T12:00:00Z`)) / 864e5);
+}
+
+function mlMonthShift(ym, delta) {
+  const [y, m] = String(ym || '2026-08').split('-').map(Number);
+  const d = new Date(Date.UTC(y || 2026, (m || 8) - 1 + delta, 1));
+  return d.toISOString().slice(0, 7);
+}
+
+function mlDayRhythm(s, cal, iso) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return 'training';
+  const dates = [...(s?.fixtures || []), ...(cal?.pendingMatches || [])].map((f) => f.date).filter(Boolean);
+  if (dates.includes(iso)) return 'matchday';
+  if (s?.nationalTeam?.fixtures?.some((f) => f.date === iso)) return 'international';
+  if (dates.includes(mlAddDays(iso, -1))) return 'recovery';
+  if (dates.includes(mlAddDays(iso, 1))) return 'match_prep';
+  const dow = new Date(`${iso}T12:00:00Z`).getUTCDay();
+  return (dow === 0 || dow === 1) ? 'day_off' : 'training';
+}
+
+function mlMonthCells(monthIso) {
+  const [y, m] = String(monthIso || '2026-08').split('-').map(Number);
+  const firstDow = (new Date(Date.UTC(y, m - 1, 1)).getUTCDay() + 6) % 7;
+  const totalDays = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= totalDays; d++) {
+    cells.push(`${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+  }
+  return cells;
+}
+
+function mlAgendaItems(s, hub, cal, monthIso) {
+  const ref = /^\d{4}-\d{2}$/.test(monthIso || '') ? monthIso : String(cal?.simDate || s?.gameDate || '2026-08-01').slice(0, 7);
+  const simDate = cal?.simDate || s?.gameDate || '';
+  const queuedIds = new Set((cal?.pendingMatches || []).map((m) => String(m.id)));
+  const items = [];
+  const inMonth = (d) => String(d || '').startsWith(ref);
+
+  for (const f of s?.fixtures || []) {
+    if (!inMonth(f.date)) continue;
+    const id = String(f.id ?? `${f.date}|${f.home}|${f.away}`);
+    const queued = queuedIds.has(id) || (simDate && f.date > simDate);
+    items.push({
+      date: f.date,
+      kind: 'match',
+      title: `${f.home} – ${f.away}`,
+      detail: f.played && !queued && Array.isArray(f.score) ? `${f.score[0]}-${f.score[1]}` : (f.competition || ''),
+      spoilerHidden: queued || !f.played,
+    });
+  }
+  for (const m of cal?.pendingMatches || []) {
+    if (!inMonth(m.date)) continue;
+    if (items.some((x) => x.kind === 'match' && x.date === m.date && x.title === `${m.home} – ${m.away}`)) continue;
+    items.push({
+      date: m.date,
+      kind: 'match',
+      title: `${m.home} – ${m.away}`,
+      detail: m.competition || '',
+      spoilerHidden: true,
+    });
+  }
+  for (const ob of hub?.obligations || []) {
+    if (!inMonth(ob.dueDate)) continue;
+    items.push({
+      date: ob.dueDate,
+      kind: 'sponsor',
+      title: ob.brand || tr('Sponsor'),
+      detail: ob.status === 'done' ? tr('Effectué') : ob.status === 'missed' ? tr('Manqué') : tr('À faire'),
+    });
+  }
+  for (const ev of state?.lifeEvents || []) {
+    if (inMonth(ev.date)) items.push({ date: ev.date, kind: 'life', title: ev.title, detail: '' });
+  }
+  for (const ev of cal?.customEvents || []) {
+    if (inMonth(ev.date)) items.push({ id: ev.id, date: ev.date, kind: 'custom', category: ev.category, title: ev.title, detail: '' });
+  }
+  for (const w of s?.windows || []) {
+    if (inMonth(w.open)) items.push({ date: w.open, kind: 'window', title: w.kind || tr('Mercato'), detail: tr('Ouverture') });
+    if (inMonth(w.close)) items.push({ date: w.close, kind: 'window', title: w.kind || tr('Mercato'), detail: tr('Fermeture') });
+  }
+  items.sort((a, b) => a.date.localeCompare(b.date));
+  return { month: ref, items };
+}
+
 function renderMyLife(page) {
   if (!state || !state.snapshot) {
     page.innerHTML = emptyHtml(tr('Aucune carrière chargée'), tr('Choisis ta sauvegarde et lance une synchro pour débloquer ton hub Ma vie.'), () => openSettings('rg-save'), tr('Ouvrir les réglages'));
@@ -8444,10 +8558,48 @@ function renderMyLife(page) {
   }
 
   const tab = view.mlTab || 'overview';
+  const cal = state.calendar || { simDate: s.gameDate || '', saveDate: state.saveSnapshot?.gameDate || s.gameDate || '', pendingMatches: [], customEvents: [], history: [] };
+  const calModeFull = settings?.calendarMode === 'full';
+  const simDate = cal.simDate || s.gameDate || '';
+  const saveDate = cal.saveDate || state.saveSnapshot?.gameDate || simDate;
+  const pendingCalCount = calModeFull ? (cal.pendingMatches?.length || 0) : 0;
+  const behindDays = Math.max(0, mlDaysBetween(simDate, saveDate));
+  const canAdvance = calModeFull && (behindDays > 0 || pendingCalCount > 0);
+  if (view.mlCalCareer !== state.careerId) {
+    view.mlCalCareer = state.careerId;
+    view.mlCalMonth = (simDate || '2026-08-01').slice(0, 7);
+    view.mlCalDay = simDate || '2026-08-01';
+  }
+  const calMonth = view.mlCalMonth || (simDate || '2026-08-01').slice(0, 7);
+  const calDay = view.mlCalDay || simDate || `${calMonth}-01`;
+
+  const pSfx = hub.pendingSaveEffects || { affectionDelta: 0, formArrowDelta: 0, reasons: [] };
+  const hasPendingSfx = (Number(pSfx.affectionDelta) || 0) !== 0 || (Number(pSfx.formArrowDelta) || 0) !== 0;
+  const sfxEnabled = Boolean(settings?.lifeSaveEffects);
+  const sfxParts = [];
+  if (pSfx.formArrowDelta) sfxParts.push(tr('Forme {d}', { d: `${pSfx.formArrowDelta > 0 ? '+' : ''}${pSfx.formArrowDelta}` }));
+  if (pSfx.affectionDelta) sfxParts.push(tr('Affection coach {d}', { d: `${pSfx.affectionDelta > 0 ? '+' : ''}${pSfx.affectionDelta}` }));
+  const saveEffectsHtml = hasPendingSfx ? `<section class="card ml-sfx">
+    <div class="ml-sfx-head">
+      <div>
+        <span class="priv-badge${sfxEnabled ? ' on' : ''}">${esc(sfxEnabled ? tr('Effets en jeu prêts') : tr('Effets en jeu (désactivés)'))}</span>
+        <h3>${tr('Répercussions sur la sauvegarde')}</h3>
+        <p class="fineprint">${esc(sfxParts.join(' · '))}</p>
+      </div>
+      <div class="ml-sfx-acts">
+        ${sfxEnabled
+          ? `<button type="button" class="btn primary" id="ml-sfx-apply">${tr('Écrire dans la sauvegarde')}</button><button type="button" class="btn" id="ml-sfx-dismiss">${tr('Ignorer')}</button>`
+          : `<button type="button" class="btn" id="ml-sfx-settings">${tr('Activer dans les réglages')}</button><button type="button" class="btn" id="ml-sfx-dismiss">${tr('Ignorer')}</button>`}
+      </div>
+    </div>
+    ${!sfxEnabled ? `<p class="fineprint">${tr('Option désactivée par défaut : active « Ma vie : effets réels dans la sauvegarde » dans Réglages › Sauvegarde pour appliquer forme et affection coach jeu fermé.')}</p>` : ''}
+  </section>` : '';
+
   const pendingObs = (hub.obligations || []).filter((o) => o.status === 'pending');
   const spBadge = (hub.offers?.length || 0) + pendingObs.length;
   const subTabs = [
-    ['overview', tr('Tableau de bord'), hub.pendingDilemma ? 1 : 0],
+    ['overview', tr('Tableau de bord'), (hub.pendingDilemma ? 1 : 0) + (sfxEnabled && hasPendingSfx ? 1 : 0)],
+    ['calendar', tr('Calendrier'), pendingCalCount],
     ['sponsors', tr('Sponsors ({cur}/{max})', { cur: hub.sponsors.length, max: slotCap }), spBadge],
     ['shop', tr('Lifestyle & Patrimoine'), 0],
     ['finances', tr('Finances'), 0],
@@ -8558,10 +8710,71 @@ function renderMyLife(page) {
     <td class="num ${r.amount >= 0 ? 'pos' : 'neg'}">${r.amount >= 0 ? `+${esc(euros(r.amount))}` : esc(euros(r.amount))}</td>
   </tr>`).join('');
 
+  const agenda = mlAgendaItems(s, hub, cal, calMonth);
+  const byDay = new Map();
+  for (const it of agenda.items) {
+    if (!byDay.has(it.date)) byDay.set(it.date, []);
+    byDay.get(it.date).push(it);
+  }
+  const dowHeaders = Array.from({ length: 7 }, (_, i) => {
+    const label = new Date(2025, 0, 6 + i).toLocaleDateString(locale(), { weekday: 'short' });
+    return `<span>${esc(label.replace(/\.$/, ''))}</span>`;
+  }).join('');
+  const monthLabel = fmtDate(`${calMonth}-01`, { month: 'long', year: 'numeric' });
+  const calCellsHtml = mlMonthCells(calMonth).map((iso) => {
+    if (!iso) return '<span class="ml-cal-blank"></span>';
+    const dayItems = byDay.get(iso) || [];
+    const cls = [
+      'ml-cal-cell',
+      iso === simDate ? 'is-sim' : '',
+      iso === calDay ? 'is-selected' : '',
+      calModeFull && saveDate && iso > simDate && iso <= saveDate ? 'is-ahead' : '',
+      dayItems.some((x) => x.kind === 'match') ? 'has-match' : '',
+    ].filter(Boolean).join(' ');
+    const dots = dayItems.slice(0, 3).map((x) => `<i class="ml-dot ml-dot--${esc(x.kind)}"></i>`).join('');
+    return `<button type="button" class="${cls}" data-calday="${iso}"><span class="ml-cal-num">${Number(iso.slice(8))}</span>${dots ? `<span class="ml-cal-dots">${dots}</span>` : ''}</button>`;
+  }).join('');
+  const selRhythmKey = mlDayRhythm(s, cal, calDay);
+  const simRhythmKey = mlDayRhythm(s, cal, simDate);
+  const selItems = byDay.get(calDay) || [];
+  const calKindLabel = (it) => {
+    if (it.kind === 'match') return tr('Match');
+    if (it.kind === 'sponsor') return tr('Sponsor');
+    if (it.kind === 'window') return tr('Mercato');
+    if (it.kind === 'life') return tr('Événement');
+    return (ML_CAL_CAT_LABELS[it.category] || ML_CAL_CAT_LABELS.personal)();
+  };
+  const selItemsHtml = selItems.length
+    ? `<ul class="ml-cal-items">${selItems.map((it) => `<li class="ml-cal-item ml-cal-item--${esc(it.kind)}">
+        <div>
+          <span class="ml-tag">${esc(calKindLabel(it))}</span>
+          <b>${esc(it.title)}</b>
+          ${it.spoilerHidden ? `<small class="ml-spoiler-note">${esc(it.detail ? `${it.detail} · ` : '')}${tr('Résultat masqué')}</small>` : (it.detail ? `<small>${esc(it.detail)}</small>` : '')}
+        </div>
+        ${it.kind === 'custom' && it.id ? `<button type="button" class="per-p-del" data-caldel="${esc(it.id)}" aria-label="${esc(tr('Supprimer'))}">−</button>` : ''}
+      </li>`).join('')}</ul>`
+    : `<p class="fineprint">${tr('Journée calme : tu peux ajouter un événement personnel ou avancer dans le calendrier.')}</p>`;
+  const calCatOpts = Object.entries(ML_CAL_CAT_LABELS).map(([k, fn]) => `<option value="${k}">${esc(fn())}</option>`).join('');
+  const calHistHtml = (cal.history || []).slice(0, 6).map((h) => {
+    const rLabel = (ML_RHYTHM_LABELS[h.rhythm] || ML_RHYTHM_LABELS.training)();
+    const detail = h.matches ? `${rLabel} · ${tr('{n} match(s) révélé(s).', { n: h.matches })}` : rLabel;
+    return `<li><small>${esc(shortDate(h.date))}</small><span>${esc(detail)}</span></li>`;
+  }).join('');
+  const calStatusText = !calModeFull
+    ? tr('Synchro directe active')
+    : pendingCalCount > 0
+      ? tr('{n} match(s) en attente sans spoiler', { n: pendingCalCount })
+      : behindDays > 0
+        ? tr('{n} jour(s) à rattraper', { n: behindDays })
+        : tr('Synchronisé avec la sauvegarde');
+
   page.innerHTML = `<div class="ml">
     <header class="ml-hero card">
       <div>
-        <span class="ml-stage-pill">${esc(mlStageLabel(hub.stage || est.stage))}</span>
+        <div class="ml-hero-pills">
+          <span class="ml-stage-pill">${esc(mlStageLabel(hub.stage || est.stage))}</span>
+          <button type="button" class="ml-mode-pill${calModeFull ? ' on' : ''}" id="ml-cal-mode-toggle" title="${esc(tr('Basculer entre synchro directe et calendrier complet anti-spoilers'))}">${esc(calModeFull ? tr('Calendrier : Complet') : tr('Calendrier : Basique'))}${calModeFull && pendingCalCount ? ` (${pendingCalCount})` : ''}</button>
+        </div>
         <h1>${esc(s.player?.name || '')} · ${esc(s.club?.name || '')}</h1>
         <p class="fineprint">${esc(tr('{f} abonnés Kop · {slots} places sponsors', { f: fmtCount(state.profile?.followers || 0), slots: slotCap }))}</p>
       </div>
@@ -8579,6 +8792,7 @@ function renderMyLife(page) {
 
     <section class="ml-panel"${tab === 'overview' ? '' : ' hidden'}>
       ${dilemmaHtml}
+      ${saveEffectsHtml}
       <div class="card ml-card">
         <h3>${tr('Relations & Réputation')}</h3>
         <div class="ml-meters">${metersHtml}</div>
@@ -8658,6 +8872,67 @@ function renderMyLife(page) {
       <div class="card ml-card">
         <h3>${tr('Grand livre des opérations')}</h3>
         ${ledgerRows ? `<table class="ml-ledger"><tbody>${ledgerRows}</tbody></table>` : `<p class="fineprint">${tr('Aucune opération enregistrée pour l’instant.')}</p>`}
+      </div>
+    </section>
+
+    <section class="ml-panel"${tab === 'calendar' ? '' : ' hidden'}>
+      <div class="card ml-cal-banner">
+        <div class="ml-cal-banner-info">
+          <div class="ml-cal-dates">
+            <div><small>${tr('Date simulée')}</small><b>${esc(fmtDate(simDate))}</b></div>
+            ${calModeFull && saveDate ? `<div><small>${tr('Sauvegarde du jeu')}</small><b>${esc(fmtDate(saveDate))}</b></div>` : ''}
+            <div><small>${tr('Rythme du jour')}</small><b>${esc((ML_RHYTHM_LABELS[simRhythmKey] || ML_RHYTHM_LABELS.training)())}</b></div>
+          </div>
+          <p class="fineprint">${esc(calStatusText)}${!calModeFull ? ` — ${tr('Passe en mode Complet pour avancer jour par jour même si tu joues plusieurs matchs d’affilée dans le jeu.')}` : ''}</p>
+        </div>
+        <div class="ml-cal-banner-acts">
+          ${calModeFull
+            ? `<button type="button" class="btn" data-caladv="day"${canAdvance ? '' : ' disabled'}>${tr('Jour suivant (+1 j)')}</button>
+               <button type="button" class="btn primary" data-caladv="next_event"${canAdvance ? '' : ' disabled'}>${tr('Prochain événement')}</button>
+               <button type="button" class="btn" data-caladv="catch_up"${canAdvance ? '' : ' disabled'}>${tr('Rattraper tout')}</button>`
+            : `<button type="button" class="btn primary" id="ml-cal-enable-full">${tr('Activer le mode Complet')}</button>`}
+        </div>
+      </div>
+
+      <div class="ml-cal-layout">
+        <div class="card ml-cal-grid-card">
+          <div class="ml-cal-nav">
+            <button type="button" class="btn" id="ml-cal-prev" aria-label="${esc(tr('Mois précédent'))}">‹</button>
+            <b>${esc(monthLabel)}</b>
+            <div class="ml-cal-nav-r">
+              <button type="button" class="btn" id="ml-cal-today">${tr('Aujourd’hui')}</button>
+              <button type="button" class="btn" id="ml-cal-next" aria-label="${esc(tr('Mois suivant'))}">›</button>
+            </div>
+          </div>
+          <div class="ml-cal-dow">${dowHeaders}</div>
+          <div class="ml-cal-cells">${calCellsHtml}</div>
+          <div class="ml-cal-legend">
+            <span><i class="ml-dot ml-dot--match"></i>${tr('Match')}</span>
+            <span><i class="ml-dot ml-dot--sponsor"></i>${tr('Sponsor')}</span>
+            <span><i class="ml-dot ml-dot--custom"></i>${tr('Personnel')}</span>
+            <span><i class="ml-dot ml-dot--window"></i>${tr('Mercato')}</span>
+          </div>
+        </div>
+
+        <div class="card ml-cal-agenda">
+          <div class="ml-sec-head">
+            <div>
+              <span class="ml-tag">${esc((ML_RHYTHM_LABELS[selRhythmKey] || ML_RHYTHM_LABELS.training)())}</span>
+              <h3>${esc(fmtDate(calDay))}</h3>
+            </div>
+          </div>
+          ${selItemsHtml}
+          <details class="ml-custom-box">
+            <summary>${tr('+ Ajouter un événement au calendrier')}</summary>
+            <div class="ml-custom-form">
+              <input id="ml-calev-date" type="date" value="${esc(calDay)}">
+              <input id="ml-calev-title" placeholder="${esc(tr('ex. Dîner famille, séance photo, visite fondation…'))}" maxlength="100">
+              <select id="ml-calev-cat">${calCatOpts}</select>
+              <button type="button" class="btn primary" id="ml-calev-go">${tr('Planifier')}</button>
+            </div>
+          </details>
+          ${calHistHtml ? `<div class="ml-cal-hist"><h4>${tr('Journal du calendrier')}</h4><ul class="ml-feed">${calHistHtml}</ul></div>` : ''}
+        </div>
       </div>
     </section>
   </div>`;
@@ -8778,6 +9053,97 @@ function renderMyLife(page) {
       } catch (err) { toast(err.message, true); }
     };
   }
+  const toggleCalMode = async (nextMode) => {
+    if (nextMode === 'basic' && calModeFull && pendingCalCount > 0) {
+      const ok = await kConfirm({
+        title: tr('Passer en mode Basique ?'),
+        body: tr('Les {n} match(s) en file d’attente seront révélés d’un coup et les journées intermédiaires rattrapées.', { n: pendingCalCount }),
+        ok: tr('Passer en Basique'),
+        cancel: tr('Annuler'),
+      });
+      if (!ok) return;
+    }
+    try {
+      const res = await live.setCalendarMode(nextMode);
+      if (res?.settings) settings = res.settings;
+      if (res?.state) state = res.state;
+      const curSim = state?.calendar?.simDate || state?.snapshot?.gameDate;
+      if (curSim) { view.mlCalMonth = curSim.slice(0, 7); view.mlCalDay = curSim; }
+      toast(nextMode === 'full' ? tr('Mode Calendrier Complet activé.') : tr('Mode Calendrier Basique activé.'));
+      render();
+    } catch (err) { toast(err.message, true); }
+  };
+  if ($('#ml-cal-mode-toggle')) $('#ml-cal-mode-toggle').onclick = () => toggleCalMode(calModeFull ? 'basic' : 'full');
+  if ($('#ml-cal-enable-full')) $('#ml-cal-enable-full').onclick = () => toggleCalMode('full');
+  page.querySelectorAll('[data-caladv]').forEach((b) => {
+    b.onclick = async () => {
+      try {
+        const res = await live.advanceCalendar(b.dataset.caladv);
+        if (res?.state) state = res.state;
+        const step = res?.step;
+        if (step?.nextDate) { view.mlCalMonth = step.nextDate.slice(0, 7); view.mlCalDay = step.nextDate; }
+        if (step?.revealedFixtures?.length) toast(tr('{n} match(s) révélé(s).', { n: step.revealedFixtures.length }));
+        else if (step?.days) toast(tr('{n} journée(s) avancée(s).', { n: step.days }));
+        render();
+      } catch (err) { toast(err.message, true); }
+    };
+  });
+  if ($('#ml-cal-prev')) {
+    $('#ml-cal-prev').onclick = () => { view.mlCalMonth = mlMonthShift(calMonth, -1); view.mlCalDay = `${view.mlCalMonth}-01`; renderMyLife(page); };
+  }
+  if ($('#ml-cal-next')) {
+    $('#ml-cal-next').onclick = () => { view.mlCalMonth = mlMonthShift(calMonth, 1); view.mlCalDay = `${view.mlCalMonth}-01`; renderMyLife(page); };
+  }
+  if ($('#ml-cal-today')) {
+    $('#ml-cal-today').onclick = () => {
+      if (simDate) { view.mlCalMonth = simDate.slice(0, 7); view.mlCalDay = simDate; }
+      renderMyLife(page);
+    };
+  }
+  page.querySelectorAll('[data-calday]').forEach((b) => {
+    b.onclick = () => { view.mlCalDay = b.dataset.calday; renderMyLife(page); };
+  });
+  if ($('#ml-calev-go')) {
+    $('#ml-calev-go').onclick = async () => {
+      try {
+        const date = $('#ml-calev-date').value;
+        state = await live.addCalendarEvent({ date, title: $('#ml-calev-title').value, category: $('#ml-calev-cat').value });
+        if (date) { view.mlCalMonth = date.slice(0, 7); view.mlCalDay = date; }
+        toast(tr('Événement ajouté au calendrier.'));
+        render();
+      } catch (err) { toast(err.message, true); }
+    };
+  }
+  page.querySelectorAll('[data-caldel]').forEach((b) => {
+    b.onclick = async () => {
+      const ok = await kConfirm({ title: tr('Supprimer cet événement ?'), body: tr('Retirer cet événement personnalisé du calendrier ?'), ok: tr('Supprimer'), cancel: tr('Annuler') });
+      if (!ok) return;
+      try { state = await live.removeCalendarEvent(b.dataset.caldel); render(); } catch (err) { toast(err.message, true); }
+    };
+  });
+  if ($('#ml-sfx-settings')) $('#ml-sfx-settings').onclick = () => openSettings('rg-save');
+  if ($('#ml-sfx-apply')) {
+    $('#ml-sfx-apply').onclick = async () => {
+      const ok = await kConfirm({
+        title: tr('Écrire dans la sauvegarde ?'),
+        body: tr('LifeLegend va appliquer {fx} dans ta sauvegarde (jeu fermé, copie automatique conservée).', { fx: sfxParts.join(' · ') }),
+        ok: tr('Écrire'),
+        cancel: tr('Annuler'),
+      });
+      if (!ok) return;
+      try {
+        const res = await live.applyLifeSaveEffects();
+        if (res?.state) state = res.state;
+        toast(tr('Effets écrits dans ta sauvegarde.'));
+        render();
+      } catch (err) { toast(err.message, true); }
+    };
+  }
+  if ($('#ml-sfx-dismiss')) {
+    $('#ml-sfx-dismiss').onclick = async () => {
+      try { state = await live.dismissLifeSaveEffects(); render(); } catch (err) { toast(err.message, true); }
+    };
+  }
 }
 
 // ---------- réglages ----------
@@ -8796,7 +9162,7 @@ const RG_TABS = [
   ['about', 'À propos', ''],
 ];
 // L'onglet de chaque section qu'ouvrent les autres pages (« Réglages de l'IA », « Ajouter ma clé… », la bio de Panthéon).
-const RG_SECTION_TAB = { 'rg-save': 'save', 'rg-key': 'save', 'rg-names': 'save', 'rg-ai': 'ai', 'rg-lang': 'look', 'rg-theme': 'look', 'rg-tone': 'world', 'rg-replays': 'world', 'rg-mebio': 'me', 'rg-mepersona': 'me', 'rg-privacy': 'me', 'rg-lifeevents': 'me', 'rg-about': 'about', 'rg-update': 'about' };
+const RG_SECTION_TAB = { 'rg-save': 'save', 'rg-key': 'save', 'rg-names': 'save', 'rg-ai': 'ai', 'rg-lang': 'look', 'rg-theme': 'look', 'rg-tone': 'world', 'rg-calmode': 'world', 'rg-replays': 'world', 'rg-mebio': 'me', 'rg-mepersona': 'me', 'rg-privacy': 'me', 'rg-lifeevents': 'me', 'rg-about': 'about', 'rg-update': 'about' };
 const rgRow = (id, label, control, note = '') => `<div class="rg-row"${id ? ` id="${id}"` : ''}><div class="rg-label"><h3>${label}</h3>${note ? `<p>${note}</p>` : ''}</div><div class="rg-ctl">${control}</div></div>`;
 const rgSwitch = (id, on, label, note = '') => `<label class="rg-switch"><input type="checkbox" id="${id}"${on ? ' checked' : ''}><span class="rg-switch-text"><b>${label}</b>${note ? `<small>${note}</small>` : ''}</span></label>`;
 // Miniature d'un thème : le cadre de LifeLegend (rail, barre, blocs), clair ou sombre ; Automatique est coupé en diagonale.
@@ -8908,7 +9274,8 @@ async function renderSettings(page) {
       <button class="btn" id="browse-game">${tr('Choisir le dossier du jeu…')}</button>
       <p class="fineprint">${tr('La sauvegarde ne contient que les numéros des autres joueurs. Leurs noms (et les écussons) sont lus dans les fichiers du jeu ou du patch, comme Football Life, seulement s’ils correspondent à ta carrière. Avec plusieurs jeux installés, LifeLegend prend pour chaque carrière celui qui lui correspond.')}</p>`),
     rgRow('', tr('Écrire dans la sauvegarde'), rgSwitch('offerredirect', settings.offerRedirect, tr('Réorientation d’offres (expérimental) : autoriser LifeLegend à modifier ma sauvegarde'), tr('Avec l’attitude « Je veux partir », ton agent peut faire passer une vraie offre reçue dans le jeu au nom d’un autre club. LifeLegend écrit alors dans ta sauvegarde, jeu fermé, et en garde une copie. Testé sur peu de carrières : laisse décoché si tu ne veux prendre aucun risque.'))
-      + rgSwitch('influencewrites', settings.influenceWrites, tr('Influence : effets réels dans le jeu : autoriser LifeLegend à écrire dans ma sauvegarde les décisions de mon entraîneur et de mon club'), tr('Une formation acceptée par ton entraîneur, un transfert accepté par ton club pendant un mercato : LifeLegend les écrit dans ta sauvegarde quand tu le lui demandes, jeu fermé, et en garde une copie. La formation est vérifiée dans Football Life 2027 ; le transfert reste expérimental. Sans ces deux options, LifeLegend ne fait que lire ta sauvegarde.'))),
+      + rgSwitch('influencewrites', settings.influenceWrites, tr('Influence : effets réels dans le jeu : autoriser LifeLegend à écrire dans ma sauvegarde les décisions de mon entraîneur et de mon club'), tr('Une formation acceptée par ton entraîneur, un transfert accepté par ton club pendant un mercato : LifeLegend les écrit dans ta sauvegarde quand tu le lui demandes, jeu fermé, et en garde une copie. La formation est vérifiée dans Football Life 2027 ; le transfert reste expérimental. Sans ces deux options, LifeLegend ne fait que lire ta sauvegarde.'))
+      + rgSwitch('lifesaveeffects', settings.lifeSaveEffects, tr('Ma vie : effets réels dans la sauvegarde (forme & affection coach)'), tr('Les actions de tes journées libres et tes dilemmes accumulent des bonus ou malus de forme et d’affection coach. Quand cette option est activée, un bouton dans Ma vie te permet d’écrire ces effets dans ta sauvegarde (jeu fermé, copie automatique conservée). Laisse décoché si tu préfères garder Ma vie purement narratif.'))),
   ])}
     ${panel('ai', [
     rgRow('rg-ai', tr('Fournisseur'), `<select id="provider" aria-label="${tr('Fournisseur')}">${Object.entries(providers).map(([id, p]) => `<option value="${id}"${id === settings.provider ? ' selected' : ''}>${esc(tr(p.label))}</option>`).join('')}</select>`),
@@ -8930,6 +9297,7 @@ async function renderSettings(page) {
   ])}
     ${panel('world', [
     rgRow('rg-tone', tr('Le ton du monde'), `<p class="fineprint">${tr('Pas de réglage de ton : la pression médiatique suit la taille de ton club et de son championnat (et l’Europe, la sélection, ta notoriété), et le drame suit l’enjeu du moment (titre, maintien, coupe, fin de mercato, crise).')}</p>`),
+    rgRow('rg-calmode', tr('Calendrier'), rgSwitch('calendarmode', settings.calendarMode === 'full', tr('Mode Calendrier Complet (jour par jour, anti-spoilers)'), tr('Si tu joues plusieurs matchs d’affilée dans le jeu avant de synchroniser, LifeLegend met les matchs en file d’attente et te laisse avancer jour par jour ou événement par événement sans te spoiler les résultats. Décoche pour revenir à la synchro directe classique.'))),
     rgRow('', tr('Supporters'), rgSwitch('fanvulgarity', settings.fanVulgarity !== false, tr('Supporters vulgaires après de très mauvais résultats'), tr('Le ton des supporters suit tes résultats, comme en vrai : après une soirée catastrophe, certains peuvent t’insulter et réclamer ta vente. Décoche pour qu’ils restent durs mais sans vulgarité.'))),
     rgRow('rg-replays', tr('Ralentis et vidéos'), rgSwitch('replays', settings.replays !== false, tr('Publier sur Kop les ralentis que je sauvegarde dans le jeu'), tr('La minute et le buteur du ralenti sont aussi donnés aux journalistes. Le ralenti du jeu n’est pas une vidéo : pour avoir les images, enregistre l’écran pendant que le jeu le montre avec la Xbox Game Bar ({keys} pour démarrer et arrêter). LifeLegend trouve la vidéo toute seule et l’ajoute au post du ralenti.', { keys: '<b>Win + Alt + R</b>' }))
       + `<p class="fineprint">${tr('Dossier des vidéos')}${colon()} <code id="clips-dir">${esc(settings.clipsDir || tr('Vidéos\\Captures (par défaut, captures du jeu seulement)'))}</code></p>
@@ -9094,6 +9462,8 @@ let pendingGameDir = null;
 let pendingClipsDir = null;
 
 async function saveSettings() {
+  const prevCalMode = settings?.calendarMode || 'basic';
+  const nextCalMode = $('#calendarmode').checked ? 'full' : 'basic';
   const update = {
     savePath: pendingSave || settings.savePath,
     gameDir: pendingGameDir || settings.gameDir,
@@ -9103,6 +9473,8 @@ async function saveSettings() {
     autoSync: $('#autosync').checked,
     offerRedirect: $('#offerredirect').checked,
     influenceWrites: $('#influencewrites').checked,
+    lifeSaveEffects: $('#lifesaveeffects').checked,
+    calendarMode: nextCalMode,
     factCheck: $('#factcheck').checked,
     tribuneThreads: $('#tribunethreads').checked,
     replays: $('#replays').checked,
@@ -9116,6 +9488,11 @@ async function saveSettings() {
   if (key) update.apiKey = key;
   try {
     settings = await live.saveSettings(update);
+    if (state && nextCalMode !== prevCalMode) {
+      const r = await live.setCalendarMode(nextCalMode);
+      if (r?.settings) settings = r.settings;
+      if (r?.state) state = r.state;
+    }
     // Le nom, le pseudo et le poste se changent sur Kop (Éditer le profil) : ici, « Ton histoire ». Elle contient déjà les
     // anciennes lignes de « Ma vie » : une fois l'histoire enregistrée, on les vide (pas de doublon).
     if (state && $('#bio')) {

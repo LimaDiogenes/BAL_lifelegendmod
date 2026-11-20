@@ -10,7 +10,9 @@ const { buildSnapshot, diffSnapshots, hasNews, sameMatch } = require('./snapshot
 const { complete: completeRaw, transcribe, parseJson, isDailyQuota } = require('../ai/providers');
 const { normalizePrivacy, buildPrivacyMap, maskText, unmaskText, previewMasked } = require('../ai/privacyShield');
 const { normalizePersona, personaFacts } = require('./persona');
-const { estimateStartProfile, ensureLifeHub, calibrateLifeHub: applyCalibration, lifeHubTick, buyAsset, sellAsset, addSponsor, updateSponsor, removeSponsor, answerSponsorOffer, completeObligation, performAction, answerDilemma, lifeHubFacts } = require('./lifeHub');
+const { estimateStartProfile, ensureLifeHub, calibrateLifeHub: applyCalibration, lifeHubTick, buyAsset, sellAsset, addSponsor, updateSponsor, removeSponsor, answerSponsorOffer, completeObligation, performAction, answerDilemma, lifeHubFacts, clearPendingSaveEffects } = require('./lifeHub');
+const { ensureCalendar, ingestSyncCalendar, advanceCalendar, flushCalendarToSave, addCustomCalendarEvent, removeCustomCalendarEvent } = require('./calendar');
+const { applyLifeEffects } = require('../save/lifeEffectsWrite');
 const { updateRival, rivalFacts, rivalInNews } = require('./rival');
 const { derbyFacts } = require('./derby');
 const { reunionFacts, formerClubs } = require('./reunion');
@@ -734,7 +736,10 @@ function loadState(store) {
   if (a || b || c || d || e || g) store.saveCareer(state);
   // Carrière pas encore resynchronisée : la vue de l'agent n'a pas encore les chiffres par attitude.
   if (state?.agent?.view && state.agent.market && !state.agent.view.extensionByStance) state.agent.view.extensionByStance = extensionByStance(state.agent.market);
-  if (state?.snapshot) ensureLifeHub(state, state.snapshot);
+  if (state?.snapshot) {
+    ensureLifeHub(state, state.snapshot);
+    ensureCalendar(state, state.snapshot);
+  }
   return state;
 }
 
@@ -1726,6 +1731,14 @@ async function syncInner({ store, settings, log, t }) {
   if (state.profile.displayName.toUpperCase() === snapshot.player.name.toUpperCase()) state.profile.displayName = snapshot.player.name;
 
   const prevGameDate = state.snapshot?.gameDate || null;
+  const calIngest = ingestSyncCalendar(state, snapshot, { calendarMode: settings.calendarMode || 'basic' });
+  if (calIngest.deferred) {
+    ensureLifeHub(state, state.snapshot);
+    state.lastSync = { published: false, deferredCalendar: true, queuedMatches: calIngest.queuedCount, gameDate: calIngest.visibleSnapshot.gameDate, saveDate: snapshot.gameDate };
+    store.saveCareer(state);
+    log(`Calendrier complet : ${calIngest.queuedCount} match(s) en attente jusqu’au ${snapshot.gameDate}. Avance dans Ma vie › Calendrier.`);
+    return state;
+  }
   const changes = diffSnapshots(state.snapshot, snapshot);
   // Mise à l'écart écrite par LifeLegend (src/world/conduct.js) : ces jours d'indisponibilité ne sont pas une blessure.
   if (sanctionActive(state, snapshot.gameDate) || endedRecently(state, snapshot.gameDate)) { changes.injury = null; changes.recovered = false; }
@@ -3179,6 +3192,84 @@ function conductApply({ store, settings }) {
   return { state, result: { days: r.after, changes: r.changes } };
 }
 
+function calendarAdvance({ store, mode = 'day', targetDate = null }) {
+  const state = store.activeCareer();
+  if (!state) throw new Error('Synchronise ta sauvegarde une première fois.');
+  const step = advanceCalendar(state, { mode, targetDate });
+  if (step.revealedFixtures.length && state.snapshot) {
+    try { archiveSeason(state, state.snapshot); } catch { /* ignore */ }
+  }
+  try {
+    lifeHubTick(state, state.snapshot, {
+      changes: {
+        newResults: step.revealedFixtures,
+        matchday: Boolean(state.snapshot?.next?.date === step.nextDate),
+      },
+      newId,
+    });
+  } catch { /* ignore */ }
+  store.saveCareer(state);
+  return { state, step };
+}
+
+function calendarSetMode({ store, mode }) {
+  const clean = mode === 'full' ? 'full' : 'basic';
+  const nextSettings = store.saveSettings({ calendarMode: clean });
+  const state = store.activeCareer();
+  if (state && clean === 'basic') {
+    const fl = flushCalendarToSave(state);
+    if (fl.flushed) {
+      if (fl.revealedFixtures?.length && state.snapshot) {
+        try { archiveSeason(state, state.snapshot); } catch { /* ignore */ }
+      }
+      try { lifeHubTick(state, state.snapshot, { changes: { newResults: fl.revealedFixtures || [] }, newId }); } catch { /* ignore */ }
+    }
+    store.saveCareer(state);
+  }
+  return { settings: nextSettings, state };
+}
+
+const calendarAddEvent = ({ store, payload }) => withCareer(store, (state) => {
+  addCustomCalendarEvent(state, payload, newId);
+});
+
+const calendarRemoveEvent = ({ store, id }) => withCareer(store, (state) => {
+  removeCustomCalendarEvent(state, id);
+});
+
+function applyLifeSaveEffects({ store, settings }) {
+  if (!settings?.lifeSaveEffects) throw new Error('Les effets Ma vie sur la sauvegarde sont désactivés : active-les dans les réglages.');
+  const state = store.activeCareer();
+  if (!state || !state.snapshot) throw new Error('Synchronise ta sauvegarde une première fois.');
+  if (!settings.savePath) throw new Error('Aucune sauvegarde choisie.');
+  const pending = state.lifeHub?.pendingSaveEffects;
+  if (!pending || (!pending.affectionDelta && !pending.formArrowDelta)) {
+    throw new Error('Aucun changement à écrire dans la sauvegarde.');
+  }
+  const career = readSave(settings.savePath);
+  if (career.player.id !== state.snapshot.player.id) {
+    throw new Error('La sauvegarde suivie n’est plus celle de ce joueur : synchronise d’abord.');
+  }
+  const refDate = state.saveSnapshot?.gameDate || state.snapshot.gameDate;
+  if (career.save.date && refDate && career.save.date !== refDate) {
+    throw new Error('Ta sauvegarde a avancé depuis la dernière synchro : synchronise d’abord.');
+  }
+  const r = applyLifeEffects({
+    savePath: settings.savePath,
+    backupDir: path.join(store.dir, 'careers', state.careerId, 'backups'),
+    playerId: state.snapshot.player.id,
+    affectionDelta: pending.affectionDelta || 0,
+    formArrowDelta: pending.formArrowDelta || 0,
+  });
+  clearPendingSaveEffects(state, { on: state.snapshot.gameDate, changes: r.changes, backup: r.backup });
+  store.saveCareer(state);
+  return { state, result: r };
+}
+
+const dismissLifeSaveEffects = ({ store }) => withCareer(store, (state) => {
+  clearPendingSaveEffects(state);
+});
+
 // Page profil de Kop, modifiable : textes, couleur de bannière, badge, photo et bannière.
 // Les images arrivent recadrées en JPEG et sont rangées dans le dossier de la carrière (profile/).
 const PROFILE_COLORS = ['#c8102e', '#15181e', '#0b1d4a', '#13286b', '#1b7a4b', '#a50d26', '#9a6b00', '#4a515c']; // palette de La Transversale (anciennes couleurs gardées si déjà choisies)
@@ -3249,4 +3340,4 @@ function loadScores({ store }) {
   return state ? store.loadAux(state.careerId, 'scores') : null;
 }
 
-module.exports = { savePrivacy, savePersona, saveClubAlias, saveLifeEvents, calibrateCareerLifeHub, buyLifeAsset, sellLifeAsset, addLifeSponsor, updateLifeSponsor, removeLifeSponsor, answerLifeSponsorOffer, completeLifeObligation, doLifeAction, answerLifeDilemma, ensureLifeHub, noteKeyMemory, privacyMapFor, previewMasked, getAiAuditLog, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };
+module.exports = { savePrivacy, savePersona, saveClubAlias, saveLifeEvents, calibrateCareerLifeHub, buyLifeAsset, sellLifeAsset, addLifeSponsor, updateLifeSponsor, removeLifeSponsor, answerLifeSponsorOffer, completeLifeObligation, doLifeAction, answerLifeDilemma, ensureLifeHub, calendarAdvance, calendarSetMode, calendarAddEvent, calendarRemoveEvent, applyLifeSaveEffects, dismissLifeSaveEffects, noteKeyMemory, privacyMapFor, previewMasked, getAiAuditLog, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };

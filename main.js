@@ -386,6 +386,19 @@ app.whenReady().then(() => {
   handle('lifeHub:completeObligation', ({ obligationId, skip }) => world.completeLifeObligation({ store, obligationId, skip }));
   handle('lifeHub:action', (payload) => world.doLifeAction({ store, payload }));
   handle('lifeHub:dilemma', ({ dilemmaId, choiceId }) => world.answerLifeDilemma({ store, dilemmaId, choiceId }));
+  handle('lifeHub:applySaveEffects', () => {
+    const r = world.applyLifeSaveEffects({ store, settings: store.getSettings() });
+    logActivity(`effets Ma vie écrits dans la sauvegarde : ${r.result.changes.join(', ')}`);
+    return r;
+  });
+  handle('lifeHub:dismissSaveEffects', () => world.dismissLifeSaveEffects({ store }));
+  handle('calendar:advance', ({ mode, targetDate } = {}) => world.calendarAdvance({ store, mode, targetDate }));
+  handle('calendar:setMode', ({ mode }) => {
+    const r = world.calendarSetMode({ store, mode });
+    return { state: r.state, settings: store.publicSettings() };
+  });
+  handle('calendar:addEvent', (payload) => world.calendarAddEvent({ store, payload }));
+  handle('calendar:removeEvent', (id) => world.calendarRemoveEvent({ store, id }));
   handle('career:aliasClub', ({ clubRef, name }) => world.saveClubAlias({ store, clubRef, name }));
   handle('lifeEvents:save', (events) => world.saveLifeEvents({ store, events }));
   handle('privacy:preview', ({ text, privacy, player, handle: h, persona } = {}) => {
