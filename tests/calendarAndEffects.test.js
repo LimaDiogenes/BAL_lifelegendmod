@@ -223,8 +223,14 @@ describe('Calendrier complet anti-spoilers (Phase D)', () => {
     assert.throws(() => addCustomCalendarEvent(state, { date: 'bad', title: 'X' }), /Date et titre requis/);
     addCustomCalendarEvent(state, { date: '2026-08-12', title: 'Gala', category: 'charity' }, () => 'c2');
     addCustomCalendarEvent(state, { date: '2026-08-07', title: 'Famille', category: 'family' }, () => 'c1');
-    assert.deepEqual(state.calendar.customEvents.map((e) => e.id), ['c1', 'c2']);
+    addCustomCalendarEvent(state, { date: '2026-08-10', title: 'Twitch Live', category: '__custom__', customCategory: 'Streaming' }, () => 'c3');
+    assert.deepEqual(state.calendar.customEvents.map((e) => e.id), ['c1', 'c3', 'c2']);
+    const ag = calendarAgenda(state, '2026-08');
+    const c3Item = ag.items.find((x) => x.id === 'c3');
+    assert.equal(c3Item.category, 'custom');
+    assert.equal(c3Item.customCategory, 'Streaming');
     removeCustomCalendarEvent(state, 'c1');
+    removeCustomCalendarEvent(state, 'c3');
     assert.deepEqual(state.calendar.customEvents.map((e) => e.id), ['c2']);
 
     assert.equal(dayRhythm(state, '2026-08-04'), 'match_prep');

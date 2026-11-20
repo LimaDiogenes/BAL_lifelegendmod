@@ -291,14 +291,18 @@ function flushCalendarToSave(state) {
   return { flushed: true, prevDate, nextDate: cal.simDate, revealedFixtures };
 }
 
-function addCustomCalendarEvent(state, { date, title, category = 'personal' } = {}, newId = () => `ev_${Date.now()}`) {
+function addCustomCalendarEvent(state, { date, title, category = 'personal', customCategory = '' } = {}, newId = () => `ev_${Date.now()}`) {
   const cal = ensureCalendar(state, state.snapshot);
   const d = String(date || '').trim();
   const cleanTitle = cleanStr(title, 100);
   if (!isIsoDate(d) || !cleanTitle) throw new Error('Date et titre requis.');
   if (cal.customEvents.length >= MAX_CUSTOM_EVENTS) cal.customEvents.shift();
-  const cat = CALENDAR_EVENT_CATEGORIES.includes(category) ? category : 'personal';
-  const ev = { id: newId(), date: d, title: cleanTitle, category: cat };
+  const rawCat = cleanStr(category, 40);
+  const rawCustom = cleanStr(customCategory, 40);
+  const builtIn = CALENDAR_EVENT_CATEGORIES.includes(rawCat);
+  const cat = builtIn ? rawCat : 'custom';
+  const customCat = !builtIn ? (rawCustom || (rawCat && rawCat !== '__custom__' && rawCat !== 'custom' ? rawCat : '')) : '';
+  const ev = { id: newId(), date: d, title: cleanTitle, category: cat, ...(customCat ? { customCategory: customCat } : {}) };
   cal.customEvents.push(ev);
   cal.customEvents.sort((a, b) => a.date.localeCompare(b.date));
   return ev;
@@ -359,7 +363,7 @@ function calendarAgenda(state, monthIso = null) {
     if (inMonth(ev.date)) items.push({ date: ev.date, kind: 'life', title: ev.title, detail: '' });
   }
   for (const ev of cal.customEvents || []) {
-    if (inMonth(ev.date)) items.push({ id: ev.id, date: ev.date, kind: 'custom', category: ev.category, title: ev.title, detail: '' });
+    if (inMonth(ev.date)) items.push({ id: ev.id, date: ev.date, kind: 'custom', category: ev.category, customCategory: ev.customCategory || '', title: ev.title, detail: '' });
   }
   for (const w of state.snapshot?.windows || []) {
     if (inMonth(w.open)) items.push({ date: w.open, kind: 'window', title: w.kind, detail: 'open' });

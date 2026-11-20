@@ -4336,8 +4336,17 @@ html, body { height: 100%; overflow: hidden; background: var(--sh-back); }
 .ml-cal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; align-items: start; }
 .ml-cal-fol { display: grid; gap: 6px; }
 .ml-cal-sp-list { display: grid; gap: 6px; }
-.ml-cal-sp-row { display: grid; grid-template-columns: minmax(140px, 1.3fr) minmax(115px, 1fr) minmax(115px, .9fr) minmax(115px, .9fr) 140px auto; gap: 8px; align-items: end; padding: 10px; border: 1px solid var(--line); border-radius: var(--r-s); background: var(--surface-2); }
-@media (max-width: 780px) { .ml-cal-sp-row { grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); } }
+.ml-cal-sp-row { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: var(--r-s); background: var(--surface-2); }
+.ml-cal-sp-top { display: grid; grid-template-columns: minmax(150px, 1.4fr) minmax(115px, .9fr) minmax(115px, .9fr) 140px auto; gap: 8px; align-items: end; }
+@media (max-width: 780px) { .ml-cal-sp-top { grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); } }
+.ml-sp-cats-field { grid-column: 1 / -1; }
+.ml-cat-picker { display: grid; gap: 7px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-s); background: var(--surface); }
+.ml-cat-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.ml-cat-chip { padding: 4px 9px; border: 1px solid var(--line-2); border-radius: var(--r-pill); background: var(--surface-2); color: var(--ink-2); font-size: 12px; font-weight: 600; cursor: pointer; }
+.ml-cat-chip:hover { border-color: var(--ink-2); }
+.ml-cat-chip.on { border-color: var(--gold); background: var(--gold-soft); color: var(--gold-ink); }
+.ml-cat-custom-row { display: flex; gap: 6px; align-items: center; }
+.ml-cat-custom-row input { flex: 1 1 auto; padding: 6px 9px; border: 1px solid var(--line-2); border-radius: var(--r-s); background: var(--surface-2); color: var(--ink); font-size: 13px; font-weight: 400; }
 .ml-cal-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; }
 .ml-hero-pills { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .ml-mode-pill { padding: 3px 10px; border: 1px solid var(--line-2); border-radius: var(--r-pill); background: var(--surface-2); color: var(--ink-2); font-size: 11px; font-weight: 600; cursor: pointer; }
