@@ -21,7 +21,7 @@ Window exposes `window.live` via `contextBridge` (`contextIsolation: true`, `san
 
 | Channel | `window.live` Method | Handler |
 |---|---|---|
-| `settings:get` / `settings:save` | `getSettings` / `saveSettings` | `store.publicSettings()` / `saveSettings()` + `setupAutoSync()` |
+| `settings:get` / `settings:save` / `ai:models` | `getSettings` / `saveSettings` / `listModels` | `store.publicSettings()` / `saveSettings()` + `setupAutoSync()` / live `listModels` |
 | `saves:detect` / `saves:browse` | `detectSaves` / `browseSave` | Scan `KONAMI` & `SPGAME` for `BL\d{8}` via `peekSave` |
 | `keys:count` / `keys:add` | `saveKeyCount` / `addSaveKey` | Validate 64-byte `.bin` keys into `data/keys/` |
 | `game:detect` / `game:browse` | `detectGame` / `browseGame` | `detectGameFolders` / `isGameDir` |
@@ -64,7 +64,7 @@ Window exposes `window.live` via `contextBridge` (`contextIsolation: true`, `san
 
 ## 4. AI Layer (`src/ai/`)
 - `privacyShield.js`: Default-ON local decoy mapper (`PRIVACY_FIELDS`, up to 10 renamable `customPeople`, `real = decoy` lines/overrides, single-pass `giu` case-insensitive regex, preserves lowercase/Title Case/ALL CAPS on output); auto-ingests `persona.roots` (`hometown`, `childhood`, `academy`) and `persona.circle` (`protect !== false`, role-aware pools via `personaPrivacyEntries`); `previewMasked`, `privacyWords`.
-- `providers.js`: `anthropic`, `google` (Gemini + auto backups + audio `transcribe`), `openai`, `groq`, `openrouter`, `custom` (OpenAI-compatible).
+- `providers.js`: 13 AI presets (`anthropic`, `google` with backups + audio `transcribe`, `openai`, `groq`, `cerebras`, `sambanova`, `mistral`, `github`, `deepseek`, `openrouter`, zero-key local `ollama` & `lmstudio`, `custom`), `listModels`, `response_format` fallback, `<think>` stripping in `parseJson`.
 - `prompts.js`: System/user prompts for the active national paper (`applyPaper`), edition bundle, Kop replies/threads/discussions, DMs, press, interviews, mails, Vestiaire, `factCheck`, `OFF-PITCH LIFE`, `PERSONA & INNER CIRCLE` (`FACTS.persona`), `OFF-PITCH HUB` (`FACTS.off_pitch_hub`).
 - `factcheck.js`: Deterministic pre-filter (`hasFactualClaim`, `needsAiFactCheck`, `filterBanter`) + `privacyMap` masking + `onAudit` logging + `salvageCorrections`.
 
@@ -82,5 +82,5 @@ Window exposes `window.live` via `contextBridge` (`contextIsolation: true`, `san
   6. **Scoreline** (`stats`) — live stats, comparator, career table, league/club hubs
   7. **Panthéon** (`pantheon`) — bio chapters, Full Career Records (`Club + International`), inline unknown-club naming, Career Path, Debuts/Records, Honours (`playerOfYear`)
   8. **My Life** (`mylife`) — top rail item & default landing page; calibration, overview (dilemmas, opt-in Save Effects card, 5 relationship meters, days-off AP actions, off-pitch log), **Calendar** (Basic/Full spoiler-safe queue toggle, `Next day`/`Next event`/`Catch up`, interactive month grid, day rhythm tags, custom events), multi-slot editable sponsors, lifestyle shop & financial ledger
-  9. **Settings** (`settings`) — Save/Key (`lifeSaveEffects`), AI provider/backups, Language (`en` default, `pt` second), Appearance, Gameplay / World (`nationalPaper` Auto/preset/custom, `calendarMode`), *Your Player* (`bio`, `Persona & Inner Circle`, `Privacy Shield`, `Life dates`), About/Report/Updates.
+  9. **Settings** (`settings`) — Save/Key (`lifeSaveEffects`), AI provider/model presets/live refresh/local Base URL, Language (`en` default, `pt` second), Appearance, Gameplay / World (`nationalPaper` Auto/preset/custom, `calendarMode`), *Your Player* (`bio`, `Persona & Inner Circle`, `Privacy Shield`, `Life dates`), About/Report/Updates.
 - **Dictionaries (`lifelegend/i18n/`):** `en.js`, `pt.js`, `es.js`, `it.js`, `de.js` (strict key & placeholder parity enforced by `tests/i18n.test.js`).

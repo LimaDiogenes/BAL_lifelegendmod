@@ -11,6 +11,7 @@ const call = async (channel, arg) => {
 contextBridge.exposeInMainWorld('live', {
   getSettings: () => call('settings:get'),
   saveSettings: (update) => call('settings:save', update),
+  listModels: (payload) => call('ai:models', payload),
   detectSaves: () => call('saves:detect'),
   browseSave: () => call('saves:browse'),
   saveKeyCount: () => call('keys:count'),
