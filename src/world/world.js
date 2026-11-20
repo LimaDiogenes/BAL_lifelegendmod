@@ -10,6 +10,7 @@ const { buildSnapshot, diffSnapshots, hasNews, sameMatch } = require('./snapshot
 const { complete: completeRaw, transcribe, parseJson, isDailyQuota } = require('../ai/providers');
 const { normalizePrivacy, buildPrivacyMap, maskText, unmaskText, previewMasked } = require('../ai/privacyShield');
 const { normalizePersona, personaFacts } = require('./persona');
+const { estimateStartProfile, ensureLifeHub, calibrateLifeHub: applyCalibration, lifeHubTick, buyAsset, sellAsset, addSponsor, updateSponsor, removeSponsor, answerSponsorOffer, completeObligation, performAction, answerDilemma, lifeHubFacts } = require('./lifeHub');
 const { updateRival, rivalFacts, rivalInNews } = require('./rival');
 const { derbyFacts } = require('./derby');
 const { reunionFacts, formerClubs } = require('./reunion');
@@ -76,6 +77,56 @@ function saveLifeEvents({ store, events }) {
   store.saveCareer(state);
   return state;
 }
+
+function withCareer(store, fn) {
+  const state = store.activeCareer();
+  if (!state) throw new Error('Synchronise ta sauvegarde une première fois.');
+  fn(state);
+  store.saveCareer(state);
+  return state;
+}
+
+const calibrateCareerLifeHub = ({ store, payload }) => withCareer(store, (state) => {
+  applyCalibration(state, state.snapshot, payload, newId);
+});
+
+const buyLifeAsset = ({ store, payload }) => withCareer(store, (state) => {
+  buyAsset(state, payload, state.snapshot?.gameDate || '', newId);
+});
+
+const sellLifeAsset = ({ store, assetId }) => withCareer(store, (state) => {
+  sellAsset(state, assetId, state.snapshot?.gameDate || '');
+});
+
+const addLifeSponsor = ({ store, payload }) => withCareer(store, (state) => {
+  addSponsor(state, payload, state.snapshot?.gameDate || '', newId);
+});
+
+const updateLifeSponsor = ({ store, payload }) => withCareer(store, (state) => {
+  updateSponsor(state, payload);
+});
+
+const removeLifeSponsor = ({ store, id }) => withCareer(store, (state) => {
+  removeSponsor(state, id, state.snapshot?.gameDate || '');
+});
+
+const answerLifeSponsorOffer = ({ store, offerId, choice }) => withCareer(store, (state) => {
+  answerSponsorOffer(state, offerId, choice, state.snapshot?.gameDate || '', newId);
+});
+
+const completeLifeObligation = ({ store, obligationId, skip }) => withCareer(store, (state) => {
+  completeObligation(state, obligationId, { skip: Boolean(skip) }, state.snapshot?.gameDate || '');
+});
+
+const doLifeAction = ({ store, payload }) => withCareer(store, (state) => {
+  const { memoryLine } = performAction(state, state.snapshot, payload, newId);
+  if (memoryLine) noteKeyMemory(state, memoryLine, state.snapshot?.gameDate || '');
+});
+
+const answerLifeDilemma = ({ store, dilemmaId, choiceId }) => withCareer(store, (state) => {
+  const { memoryLine } = answerDilemma(state, dilemmaId, choiceId, state.snapshot?.gameDate || '');
+  if (memoryLine) noteKeyMemory(state, memoryLine, state.snapshot?.gameDate || '');
+});
 
 function noteKeyMemory(state, line, gameDate = '') {
   const text = String(line || '').replace(/\s+/g, ' ').trim().slice(0, 120);
@@ -191,10 +242,11 @@ function careerIdOf(snapshot) {
 
 function newCareerState(snapshot) {
   const base = slug(snapshot.player.name).slice(0, 12) || 'joueur';
+  const est = estimateStartProfile(snapshot);
   return {
     version: 1,
     careerId: careerIdOf(snapshot),
-    profile: { handle: `${base}_off`, displayName: snapshot.player.name, followers: 4200 },
+    profile: { handle: `${base}_off`, displayName: snapshot.player.name, followers: est.followers || 4200 },
     writers: null,
     localPaper: null,
     myLife: [],
@@ -222,7 +274,7 @@ const strip = ({ homeRef, awayRef, id, competitionId, ...rest }) => {
 function profileFacts(p, suspended = false) {
   if (!p) return null;
   const outfield = !isGoalkeeper(p);
-  const abilities = Object.fromEntries(ABILITIES.filter(([k]) => outfield !== k.startsWith('gk')).map(([k, label]) => [label, p.abilities[k]]));
+  const abilities = p.abilities ? Object.fromEntries(ABILITIES.filter(([k]) => outfield !== k.startsWith('gk')).map(([k, label]) => [label, p.abilities[k]])) : undefined;
   return {
     age: p.age,
     height_cm: p.height,
@@ -342,6 +394,7 @@ function factsFor(s, profile = {}, state = null) {
     career: state ? careerFacts(state) : null,
     biography: state?.bio?.text || undefined,
     persona: state?.persona ? personaFacts(state.persona) : undefined,
+    off_pitch_hub: state?.lifeHub ? lifeHubFacts(state) : undefined,
     mercato: state ? { transfer_window_open: windowOpen(s.gameDate), window: windowFacts(s), recent_transfers: (state.transfers || []).slice(-12) } : null,
     agent: state ? agentFacts(state.agent) : null,
     discipline: state ? conductFacts(state, s.gameDate) : undefined,
@@ -681,6 +734,7 @@ function loadState(store) {
   if (a || b || c || d || e || g) store.saveCareer(state);
   // Carrière pas encore resynchronisée : la vue de l'agent n'a pas encore les chiffres par attitude.
   if (state?.agent?.view && state.agent.market && !state.agent.view.extensionByStance) state.agent.view.extensionByStance = extensionByStance(state.agent.market);
+  if (state?.snapshot) ensureLifeHub(state, state.snapshot);
   return state;
 }
 
@@ -1905,6 +1959,10 @@ async function syncInner({ store, settings, log, t }) {
       log(`Mails : ${sponsor.offer.brand} te propose un contrat d’équipementier.`);
     }
   } catch (err) { log(`Équipementier : ${err.message}`); }
+  // Hub "Ma vie" (src/world/lifeHub.js) : salaires, sponsors multi-slots, patrimoine, jauges et dilemmes hors terrain.
+  try {
+    lifeHubTick(state, snapshot, { changes, newId });
+  } catch (err) { log(`Ma vie : ${err.message}`); }
   // Des matchs restés sans article après une synchro de secours comptent comme une nouvelle : l'édition les rattrape.
   if (!hasNews(changes) && !mercatoNews && !state.missedResults?.length) {
     state.lastSync = { published: false, gameDate: snapshot.gameDate };
@@ -3191,4 +3249,4 @@ function loadScores({ store }) {
   return state ? store.loadAux(state.careerId, 'scores') : null;
 }
 
-module.exports = { savePrivacy, savePersona, saveClubAlias, saveLifeEvents, noteKeyMemory, privacyMapFor, previewMasked, getAiAuditLog, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };
+module.exports = { savePrivacy, savePersona, saveClubAlias, saveLifeEvents, calibrateCareerLifeHub, buyLifeAsset, sellLifeAsset, addLifeSponsor, updateLifeSponsor, removeLifeSponsor, answerLifeSponsorOffer, completeLifeObligation, doLifeAction, answerLifeDilemma, ensureLifeHub, noteKeyMemory, privacyMapFor, previewMasked, getAiAuditLog, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };

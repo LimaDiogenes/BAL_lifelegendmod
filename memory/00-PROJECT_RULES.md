@@ -36,4 +36,5 @@
   - `d05922d` — `LifeLegend 1.0.0 — première version publique` (preserved on branch `v1.0.0-original`)
   - `b65f796` — `LifeLegend 1.0.1` (preserved on branch `v1.0.1-original`)
   - `3686e1b` — `LifeLegend 1.1.0` (preserved on branch `v1.1.0-original`)
+- Original LifeLegend author: **Saamz09** (`d05922d` commit history; MIT License `Copyright (c) 2026 The LifeLegend authors`). Note for Mod Studio integration: remember to credit `Saamz09` explicitly alongside existing `pesXdecrypter` (`the4chancup`), `PES21 BAL Ultimate Editor` (`AlexDelPiero23`), and `TyNet` credits in `README.md` / About UI.
 - License: MIT (`LICENSE`, `THIRD-PARTY-NOTICES.txt`).

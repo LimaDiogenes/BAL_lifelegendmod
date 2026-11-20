@@ -11,7 +11,7 @@ All symbols, file paths, IPC channels, and offsets below are **verified** in the
 - **`keys/*.bin`:** User-supplied 64-byte save encryption keys (e.g. `FL_key.bin`).
 - **`active.json`:** Points to active `{ careerId }`.
 - **`careers/<playerId>-<slug>/`:**
-  - `state.json`: `snapshot`, `seasons`, `prevCareerCombined`, `clubAliases`, `feed`, `accounts`, `follows`, `interactions`, `editions`, `mail`, `dms`, `huddles`, `agent`, `sponsor`, `objectives`, `conduct`, `influence`, `rival`, `promises`, `onRecord`, `bio`, `persona`, `privacy`, `lifeEvents`, `keyMemory`, `pantheon`, `awards`, `progressLog`, `followerLog`, `lastSync`.
+  - `state.json`: `snapshot`, `seasons`, `prevCareerCombined`, `clubAliases`, `feed`, `accounts`, `follows`, `interactions`, `editions`, `mail`, `dms`, `huddles`, `agent`, `sponsor`, `lifeHub`, `objectives`, `conduct`, `influence`, `rival`, `promises`, `onRecord`, `bio`, `persona`, `privacy`, `lifeEvents`, `keyMemory`, `pantheon`, `awards`, `progressLog`, `followerLog`, `lastSync`.
   - `scores.json`, `clubs.json`, `influence.json`, `backups/`, `emblems/`, `faces/`, `boots/`, `profile/`.
 
 ---
@@ -41,6 +41,7 @@ Window exposes `window.live` via `contextBridge` (`contextIsolation: true`, `san
 | `bio:save` / `life:save` / `lifeEvents:save` / `profile:save` / `career:new` / `career:aliasClub` | `saveBio` / `saveLife` / `saveLifeEvents` / `saveProfile` / `newCareerInfo` / `setClubAlias` | Player identity, custom club names, off-pitch dates |
 | `privacy:save` / `privacy:preview` / `privacy:audit` | `savePrivacy` / `previewPrivacy` / `auditPrivacy` | Privacy Shield config, decoy preview (with `persona`), outgoing prompt log |
 | `persona:save` | `savePersona` | Persist `state.persona` (presets, traits, roots, flavor, categorized inner circle) |
+| `lifeHub:calibrate` / `lifeHub:buyAsset` / `lifeHub:sellAsset` / `lifeHub:addSponsor` / `lifeHub:updateSponsor` / `lifeHub:removeSponsor` / `lifeHub:answerOffer` / `lifeHub:completeObligation` / `lifeHub:action` / `lifeHub:dilemma` | `calibrateLifeHub`, `buyLifeAsset`, `sellLifeAsset`, `addLifeSponsor`, `updateLifeSponsor`, `removeLifeSponsor`, `answerLifeSponsorOffer`, `completeLifeObligation`, `doLifeAction`, `answerLifeDilemma` | My Life calibration, finances/assets, multi-slot sponsors, days-off actions & dilemmas |
 | `report:make` / `update:check` | `makeReport` / `checkUpdate` | Sanitized bug report `.txt` / GitHub `LimaDiogenes/BAL_lifelegendmod` check |
 | `share:image` / `share:save` | `shareImage` / `saveShot` | Capture UI PNG card to clipboard/file |
 | `app:paths` / `emblem:colors` / `faces:get` | `paths` / `emblemColors` / `playerFaces` | Local portraits, emblems & palette colors |
@@ -61,14 +62,14 @@ Window exposes `window.live` via `contextBridge` (`contextIsolation: true`, `san
 ## 4. AI Layer (`src/ai/`)
 - `privacyShield.js`: Default-ON local decoy mapper (`PRIVACY_FIELDS`, up to 10 renamable `customPeople`, `real = decoy` lines/overrides, single-pass `giu` case-insensitive regex, preserves lowercase/Title Case/ALL CAPS on output); auto-ingests `persona.roots` (`hometown`, `childhood`, `academy`) and `persona.circle` (`protect !== false`, role-aware pools via `personaPrivacyEntries`); `previewMasked`, `privacyWords`.
 - `providers.js`: `anthropic`, `google` (Gemini + auto backups + audio `transcribe`), `openai`, `groq`, `openrouter`, `custom` (OpenAI-compatible).
-- `prompts.js`: System/user prompts for *La Transversale*, edition bundle, Kop replies/threads/discussions, DMs, press, interviews, mails, Vestiaire, `factCheck`, `OFF-PITCH LIFE`, `PERSONA & INNER CIRCLE` (`FACTS.persona`).
+- `prompts.js`: System/user prompts for *La Transversale*, edition bundle, Kop replies/threads/discussions, DMs, press, interviews, mails, Vestiaire, `factCheck`, `OFF-PITCH LIFE`, `PERSONA & INNER CIRCLE` (`FACTS.persona`), `OFF-PITCH HUB` (`FACTS.off_pitch_hub`).
 - `factcheck.js`: Deterministic pre-filter (`hasFactualClaim`, `needsAiFactCheck`, `filterBanter`) + `privacyMap` masking + `onAudit` logging + `salvageCorrections`.
 
 ---
 
 ## 5. World Simulation (`src/world/`) & Frontend (`lifelegend/`)
 - **Orchestrator:** `world.js` (Sync pipeline + interactive handlers + in-memory `aiAuditLog`).
-- **Simulation modules:** `snapshot.js`, `persona.js` (8 presets, 6 traits, roots, flavor, 4-group Inner Circle), `seasons.js` (`resolveCareerRecords`, `resolveHistory`, `careerFacts`), `pantheon.js`, `reunion.js`, `scores.js`, `worldFootball.js`, `agent.js`, `sponsors.js` / `sponsorTexts.js`, `objectives.js`, `conduct.js`, `influence.js`, `rival.js`, `derby.js`, `fanVote.js`, `chant.js`, `interview.js`, `promises.js`, `rumors.js`, `coachAdvice.js`, `dms.js`, `huddle.js`, `fanMood.js`, `toneContext.js`, `mercato.js`, `notoriety.js`, `clubAccounts.js`, `clubPosts.js`, `clubFollowers.js`, `clubColors.js`, `competitions.js`, `competitionDesk.js`, `paperRules.js`, `tribunePlan.js`, `postTexts.js`, `media.js`, `playerFaces.js`.
+- **Simulation modules:** `snapshot.js`, `persona.js` (8 presets, 6 traits, roots, flavor, 4-group Inner Circle), `lifeHub.js` (career-stage calibration, finances/ledger, lifestyle shop, 5 relationship meters, 1→5 multi-slot sponsors, days-off actions & dilemmas), `seasons.js` (`resolveCareerRecords`, `resolveHistory`, `careerFacts`), `pantheon.js`, `reunion.js`, `scores.js`, `worldFootball.js`, `agent.js`, `sponsors.js` / `sponsorTexts.js`, `objectives.js`, `conduct.js`, `influence.js`, `rival.js`, `derby.js`, `fanVote.js`, `chant.js`, `interview.js`, `promises.js`, `rumors.js`, `coachAdvice.js`, `dms.js`, `huddle.js`, `fanMood.js`, `toneContext.js`, `mercato.js`, `notoriety.js`, `clubAccounts.js`, `clubPosts.js`, `clubFollowers.js`, `clubColors.js`, `competitions.js`, `competitionDesk.js`, `paperRules.js`, `tribunePlan.js`, `postTexts.js`, `media.js`, `playerFaces.js`.
 - **Frontend Views (`lifelegend/app.js`):**
   1. **La Transversale** (`national`) — national sports daily & press conference portal
   2. **Local Fan Blog** (`local`) — club-colored fan blog
@@ -77,5 +78,6 @@ Window exposes `window.live` via `contextBridge` (`contextIsolation: true`, `san
   5. **Vestiaire** (`huddle`) — club & national team private group chats
   6. **Scoreline** (`stats`) — live stats, comparator, career table, league/club hubs
   7. **Panthéon** (`pantheon`) — bio chapters, Full Career Records (`Club + International`), inline unknown-club naming, Career Path, Debuts/Records, Honours (`playerOfYear`)
-  8. **Settings** (`settings`) — Save/Key, AI provider/backups, Language (`en` default, `pt` second), Appearance, Gameplay, *Your Player* (`bio`, `Persona & Inner Circle`, `Privacy Shield`, `Life dates`), About/Report/Updates.
+  8. **My Life** (`mylife`) — calibration, overview (dilemmas, 5 relationship meters, days-off AP actions, off-pitch log), multi-slot editable sponsors, lifestyle shop & financial ledger
+  9. **Settings** (`settings`) — Save/Key, AI provider/backups, Language (`en` default, `pt` second), Appearance, Gameplay, *Your Player* (`bio`, `Persona & Inner Circle`, `Privacy Shield`, `Life dates`), About/Report/Updates.
 - **Dictionaries (`lifelegend/i18n/`):** `en.js`, `pt.js`, `es.js`, `it.js`, `de.js` (strict key & placeholder parity enforced by `tests/i18n.test.js`).
