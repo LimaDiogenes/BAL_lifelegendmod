@@ -56,11 +56,12 @@
 
 Per owner customization rule: always offer rich curated presets + custom user-editable options wherever feasible.
 
-- **Phase A — Full-App Consistency Sweep & Map (*Current Milestone*):**
-  - Sync `careerRecords`, `clubAliases`, mid-career milestone tracking (`prevCareerCombined`), `pantheonEvents` guards, `reunion.js` former-club stats, Mails › Career File, Scoreline `careerCard`, `prompts.js` off-pitch cues, and write `memory/04-APP_MAP.md`.
-- **Phase B — Onboarding Questionnaire & Personality Presets (Auto-Linked to Privacy Shield):**
-  - 6+ editable Personality Presets (*Humble Grinder*, *Showman*, *Fiery Leader*, *Hometown Kid*, *Mercenary*, *Maverick*) + custom trait/flavor fields (Media Style, Lifestyle, Ambition, Dressing Room Role, Idol, Signature Celebration, Hobby, Dream) + auto-syncing Roots/Inner Circle directly into Privacy Shield; ultra-compact `FACTS.persona` (~40 tokens).
-- **Phase C — "My Life" Hub Tab & Active Between-Match RPG Sim:**
+- **Phase A — Full-App Consistency Sweep & Map *(Done — branch `v1.1.0-phaseA`, commit `bee6af0`)*:**
+  - Synced `careerRecords`, `clubAliases`, mid-career milestone tracking (`prevCareerCombined`), `pantheonEvents` guards, `reunion.js` former-club stats, Mails › Career File, Scoreline `careerCard`, `prompts.js` off-pitch cues, and wrote `memory/04-APP_MAP.md`.
+- **Phase B — Onboarding Questionnaire, Personality Presets & Categorized Inner Circle *(Done)*:**
+  - `src/world/persona.js`: 8 curated Personality Presets + custom option, 6 traits (preset options + `'__custom__'` text override), 4 roots fields, 4 flavor fields (curated datalist suggestions + free text), and 4 categorized Inner Circle sections (`family`, `friends`, `business`, `roots` — starter roles, up to 10/group, `-` delete with `kConfirm()`).
+  - Auto-linked directly into `src/ai/privacyShield.js` + `src/report.js` (`roots.hometown`/`childhood`/`academy` + `circle` contacts with role-aware decoy pools, `protect: true` by default, opt-out toggle) and wired into Setup Step 3, Settings › *Your Player*, `factsFor`, and `prompts.js` (`FACTS.persona`).
+- **Phase C — "My Life" Hub Tab & Active Between-Match RPG Sim *(Next Milestone)*:**
   - New **My Life** tab: Bank Balance (wages + sponsor income + bonuses), Lifestyle/Career Purchases (homes, cars, personal chef/physio, PR, charity), Relationship Meters (Manager Trust, Top Teammates, Fans, Sponsors, Media Persona), Interactive Days-Off Actions, Dilemma Decision Cards (zero extra AI calls), and Scaling Editable Multi-Slot Sponsors (1 → 3 → 5 slots by Kop followers, custom editable brand names, scheduled obligation dates).
 - **Phase D — Full Calendar Mode (Spoiler-Safe Catch-Up Queue) + Optional Save Effects:**
   - Switchable `Basic` vs. `Full Calendar` mode (`state.simDate` + hidden `pendingMatches` queue so multi-match PES sessions play out day-by-day chronologically with both `"Next Day"` and `"Next Event / Match"` controls) + optional gated write effects (`playerProfile.js`: `+327` formArrow, `+318` affection, `+328` unavailableDays) when FL27 is closed on standard layouts.

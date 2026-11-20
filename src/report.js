@@ -49,7 +49,7 @@ function careerLines(state) {
 
 // Le rapport complet. logs : { errors, activity, sync } (textes bruts, nettoyés ici).
 function buildReport({ version, settings = {}, state = null, logs = {}, env = {}, now = new Date() }) {
-  const names = [state?.snapshot?.player?.name, ...(String(state?.snapshot?.player?.name || '').split(/\s+/)), state?.profile?.displayName, state?.profile?.handle, state?.careerId, ...privacyWords(state?.privacy)];
+  const names = [state?.snapshot?.player?.name, ...(String(state?.snapshot?.player?.name || '').split(/\s+/)), state?.profile?.displayName, state?.profile?.handle, state?.careerId, ...privacyWords(state?.privacy, state?.persona)];
   const clean = (t) => scrub(t, { names });
   const lines = [
     'LifeLegend · rapport de problème',
