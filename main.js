@@ -375,14 +375,16 @@ app.whenReady().then(() => {
     return state;
   });
   handle('privacy:save', (privacy) => world.savePrivacy({ store, privacy }));
+  handle('persona:save', (persona) => world.savePersona({ store, persona }));
   handle('career:aliasClub', ({ clubRef, name }) => world.saveClubAlias({ store, clubRef, name }));
   handle('lifeEvents:save', (events) => world.saveLifeEvents({ store, events }));
-  handle('privacy:preview', ({ text, privacy, player, handle: h } = {}) => {
+  handle('privacy:preview', ({ text, privacy, player, handle: h, persona } = {}) => {
     const state = store.activeCareer();
     return previewMasked(text, normalizePrivacy(privacy), {
       careerId: state?.careerId || '',
       playerName: player || state?.snapshot?.player?.name || '',
       handle: h || state?.profile?.handle || '',
+      persona: persona || state?.persona || null,
     });
   });
   handle('privacy:audit', () => world.getAiAuditLog());

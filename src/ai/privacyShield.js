@@ -3,6 +3,8 @@
 // custom words) with consistent fictional decoys locally before any text is sent to an AI provider, and restores
 // the real words locally when the response returns. Zero personal identifiers leave the user's PC.
 
+const { personaPrivacyEntries } = require('../world/persona');
+
 // Distinctive fictional decoys chosen to avoid colliding with real-world football clubs or common player surnames.
 const DECOYS = {
   firstName: ['Dorian', 'Cassian', 'Bastien', 'Valentin', 'Soren', 'Henrik', 'Evander', 'Caleb', 'Nolan', 'Tarek', 'Arnaud', 'Kieran', 'Gideon', 'Leander', 'Corbin', 'Alistair'],
@@ -108,7 +110,13 @@ function parseOverridePair(entry, explicitOverride) {
   return real ? { real, decoy: explicitOverride ? cleanVal(explicitOverride) : null } : null;
 }
 
-function buildPrivacyMap(privacy, { careerId = '', playerName = '', handle = '' } = {}) {
+function collectTokens(real, realLowers) {
+  if (!real) return;
+  realLowers.add(real.toLowerCase());
+  for (const tok of real.split(/\s+/)) if (tok.length >= 3) realLowers.add(tok.toLowerCase());
+}
+
+function buildPrivacyMap(privacy, { careerId = '', playerName = '', handle = '', persona = null } = {}) {
   const norm = normalizePrivacy(privacy);
   if (!norm.enabled) return { enabled: false, pairs: [], maskRegex: null, unmaskRegex: null };
 
@@ -120,6 +128,17 @@ function buildPrivacyMap(privacy, { careerId = '', playerName = '', handle = '' 
   if (!effectiveFields.playerName && playerName) effectiveFields.playerName = cleanVal(playerName);
   if (!effectiveFields.handle && handle) effectiveFields.handle = cleanVal(handle).replace(/^@/, '');
 
+  const pInfo = persona ? personaPrivacyEntries(persona) : { roots: {}, people: [] };
+  const extraRoots = [];
+  const mergeRoot = (shieldKey, kind, val) => {
+    if (!val || val.length < 2) return;
+    if (!effectiveFields[shieldKey]) effectiveFields[shieldKey] = val;
+    else if (effectiveFields[shieldKey].toLowerCase() !== val.toLowerCase()) extraRoots.push({ val, kind });
+  };
+  mergeRoot('hometown', 'hometown', pInfo.roots.hometown);
+  mergeRoot('youthClub', 'youthClub', pInfo.roots.academy);
+  if (pInfo.roots.childhood && pInfo.roots.childhood.length >= 3) mergeRoot('region', 'region', pInfo.roots.childhood);
+
   // Pre-collect real lowers so auto-picked decoys never collide with any real word.
   for (const { key, kind } of PRIVACY_FIELDS) {
     const raw = effectiveFields[key];
@@ -127,16 +146,12 @@ function buildPrivacyMap(privacy, { careerId = '', playerName = '', handle = '' 
     const parts = kind === 'personList' || kind === 'customList' ? raw.split(/[,;\n]+/) : [raw];
     for (const part of parts) {
       const p = parseOverridePair(part, norm.overrides[key]);
-      if (!p) continue;
-      realLowers.add(p.real.toLowerCase());
-      for (const tok of p.real.split(/\s+/)) if (tok.length >= 3) realLowers.add(tok.toLowerCase());
+      if (p) collectTokens(p.real, realLowers);
     }
   }
-  for (const person of norm.customPeople) {
-    if (!person.real) continue;
-    realLowers.add(person.real.toLowerCase());
-    for (const tok of person.real.split(/\s+/)) if (tok.length >= 3) realLowers.add(tok.toLowerCase());
-  }
+  for (const r of extraRoots) collectTokens(r.val, realLowers);
+  for (const person of norm.customPeople) collectTokens(person.real, realLowers);
+  for (const person of pInfo.people) collectTokens(person.real, realLowers);
 
   const addPair = (real, decoy, kind) => {
     const r = cleanVal(real);
@@ -221,22 +236,27 @@ function buildPrivacyMap(privacy, { careerId = '', playerName = '', handle = '' 
     }
   }
 
-  for (const [idx, person] of norm.customPeople.entries()) {
-    if (!person.real || person.real.length < 2) continue;
-    const tokens = person.real.split(/\s+/).filter(Boolean);
-    let decoyFull = person.decoy || '';
+  const addNamedEntity = ({ real, decoy, kindTag, seedPrefix, poolKey = 'firstName', splitPersonTokens = true }) => {
+    if (!real || real.length < 2) return;
+    const tokens = real.split(/\s+/).filter(Boolean);
+    let decoyFull = decoy || '';
     let decoyTokens;
     if (decoyFull) {
       decoyTokens = decoyFull.split(/\s+/).filter(Boolean);
       for (const t of decoyTokens) usedDecoys.add(t.toLowerCase());
+    } else if (!splitPersonTokens) {
+      const picked = pickFrom(DECOYS[poolKey] || DECOYS.generic, `${seedPrefix}:${real}`, usedDecoys, real.toLowerCase());
+      decoyFull = picked;
+      decoyTokens = [picked];
     } else {
-      const f = pickFrom(DECOYS.firstName, `${careerId}:customPerson:${idx}:f:${person.real}`, usedDecoys, person.real.toLowerCase());
-      const l = tokens.length > 1 ? pickFrom(DECOYS.lastName, `${careerId}:customPerson:${idx}:l:${person.real}`, usedDecoys, person.real.toLowerCase()) : '';
+      const firstPool = DECOYS[poolKey] || DECOYS.firstName;
+      const f = pickFrom(firstPool, `${seedPrefix}:f:${real}`, usedDecoys, real.toLowerCase());
+      const l = tokens.length > 1 ? pickFrom(DECOYS.lastName, `${seedPrefix}:l:${real}`, usedDecoys, real.toLowerCase()) : '';
       decoyFull = l ? `${f} ${l}` : f;
       decoyTokens = l ? [f, l] : [f];
     }
-    const kindTag = person.label ? `custom:${person.label}` : 'customPerson';
-    addPair(person.real, decoyFull, kindTag);
+    addPair(real, decoyFull, kindTag);
+    if (!splitPersonTokens) return;
     const sigReal = tokens.filter((t) => t.length >= 3 && !PARTICLES.has(t.toLowerCase()));
     if (sigReal.length >= 2) {
       sigReal.forEach((tok, ti) => {
@@ -244,10 +264,41 @@ function buildPrivacyMap(privacy, { careerId = '', playerName = '', handle = '' 
           ? decoyTokens[0]
           : ti === sigReal.length - 1
             ? decoyTokens[decoyTokens.length - 1]
-            : pickFrom(DECOYS.lastName, `${careerId}:customPerson:${idx}:m${ti}:${tok}`, usedDecoys, tok.toLowerCase());
+            : pickFrom(DECOYS.lastName, `${seedPrefix}:m${ti}:${tok}`, usedDecoys, tok.toLowerCase());
         if (dt && !realLowers.has(dt.toLowerCase())) addPair(tok, dt, `${kindTag}_part`);
       });
     }
+  };
+
+  for (const [idx, r] of extraRoots.entries()) {
+    const pool = DECOYS[r.kind] || DECOYS.generic;
+    const decoy = pickFrom(pool, `${careerId}:root:${r.kind}:${idx}:${r.val}`, usedDecoys, r.val.toLowerCase());
+    usedDecoys.add(decoy.toLowerCase());
+    addPair(r.val, decoy, r.kind);
+  }
+
+  for (const [idx, person] of norm.customPeople.entries()) {
+    addNamedEntity({
+      real: person.real,
+      decoy: person.decoy,
+      kindTag: person.label ? `custom:${person.label}` : 'customPerson',
+      seedPrefix: `${careerId}:customPerson:${idx}`,
+      poolKey: 'firstName',
+      splitPersonTokens: true,
+    });
+  }
+
+  for (const person of pInfo.people) {
+    const isPlaceOrPet = person.kind === 'pet' || person.kind === 'youthClub';
+    const poolKey = person.kind === 'pet' ? 'pet' : person.kind === 'youthClub' ? 'youthClub' : person.kind === 'femaleName' ? 'femaleName' : 'firstName';
+    addNamedEntity({
+      real: person.real,
+      decoy: person.decoy,
+      kindTag: person.role ? `circle:${person.group}:${person.role}` : `circle:${person.group}`,
+      seedPrefix: `${careerId}:circle:${person.group}:${person.idx}`,
+      poolKey,
+      splitPersonTokens: !isPlaceOrPet,
+    });
   }
 
   // Deduplicate by lowercase `real` (longest/most-specific kept first).
@@ -318,7 +369,14 @@ function unmaskText(text, map) {
   });
 }
 
-function privacyWords(privacy) {
+function addWordTokens(words, real, splitTokens = true) {
+  if (!real) return;
+  words.push(real);
+  if (!splitTokens) return;
+  for (const tok of real.split(/\s+/)) if (tok.length >= 3 && !PARTICLES.has(tok.toLowerCase())) words.push(tok);
+}
+
+function privacyWords(privacy, persona = null) {
   const norm = normalizePrivacy(privacy);
   const words = [];
   for (const { key, kind } of PRIVACY_FIELDS) {
@@ -327,15 +385,16 @@ function privacyWords(privacy) {
     const parts = kind === 'personList' || kind === 'customList' ? raw.split(/[,;\n]+/) : [raw];
     for (const part of parts) {
       const p = parseOverridePair(part);
-      if (!p) continue;
-      words.push(p.real);
-      for (const tok of p.real.split(/\s+/)) if (tok.length >= 3 && !PARTICLES.has(tok.toLowerCase())) words.push(tok);
+      if (p) addWordTokens(words, p.real, true);
     }
   }
-  for (const person of norm.customPeople) {
-    if (!person.real) continue;
-    words.push(person.real);
-    for (const tok of person.real.split(/\s+/)) if (tok.length >= 3 && !PARTICLES.has(tok.toLowerCase())) words.push(tok);
+  for (const person of norm.customPeople) addWordTokens(words, person.real, true);
+  if (persona) {
+    const pInfo = personaPrivacyEntries(persona);
+    if (pInfo.roots.hometown) addWordTokens(words, pInfo.roots.hometown, false);
+    if (pInfo.roots.childhood && pInfo.roots.childhood.length >= 3) addWordTokens(words, pInfo.roots.childhood, false);
+    if (pInfo.roots.academy) addWordTokens(words, pInfo.roots.academy, false);
+    for (const person of pInfo.people) addWordTokens(words, person.real, person.kind !== 'pet' && person.kind !== 'youthClub');
   }
   return [...new Set(words)];
 }

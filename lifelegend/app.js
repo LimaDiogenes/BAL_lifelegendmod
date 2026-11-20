@@ -490,7 +490,7 @@ function readPrivacyForm(prefix) {
   return { enabled: toggle.checked, fields, customPeople };
 }
 
-function bindPrivacyForm(prefix, { getBio, getPlayer, getHandle, onChange } = {}) {
+function bindPrivacyForm(prefix, { getBio, getPlayer, getHandle, getPersona, onChange } = {}) {
   const openBtn = $(`#${prefix}-priv-open-btn`);
   if (openBtn) {
     openBtn.onclick = () => {
@@ -560,7 +560,7 @@ function bindPrivacyForm(prefix, { getBio, getPlayer, getHandle, onChange } = {}
       if (!box) return;
       try {
         const priv = readPrivacyForm(prefix);
-        const r = await live.previewPrivacy({ text: getBio?.() || '', privacy: { ...priv, enabled: true }, player: getPlayer?.() || '', handle: getHandle?.() || '' });
+        const r = await live.previewPrivacy({ text: getBio?.() || '', privacy: { ...priv, enabled: true }, player: getPlayer?.() || '', handle: getHandle?.() || '', persona: getPersona?.() || null });
         box.classList.remove('hidden');
         if (!r.pairs.length) {
           box.innerHTML = `<p class="fineprint">${esc(tr('Aucun mot protégé pour l’instant : active la protection ou remplis un champ.'))}</p>`;
@@ -597,9 +597,382 @@ function bindPrivacyForm(prefix, { getBio, getPlayer, getHandle, onChange } = {}
   }
 }
 
+const PERSONA_GROUP_MAX = 10;
+
+const PERSONA_PRESETS_UI = [
+  { id: 'humble_grinder', label: () => tr('Humble travailleur'), sub: () => tr('Discret, bosseur, laisse parler le terrain'), traits: { media: 'calm_humble', temperament: 'ice_cold', ambition: 'chasing_greatness', loyalty: 'one_club', lifestyle: 'family_first', ego: 'team_first' } },
+  { id: 'showman', label: () => tr('Showman flamboyant'), sub: () => tr('Charismatique, aime la lumière et les punchlines'), traits: { media: 'cocky_charismatic', temperament: 'expressive', ambition: 'trophy_hunter', loyalty: 'ambitious_climber', lifestyle: 'flashy_lux', ego: 'main_character' } },
+  { id: 'fiery_leader', label: () => tr('Capitaine volcanique'), sub: () => tr('Exigeant, passionné, voix forte du vestiaire'), traits: { media: 'diplomatic_leader', temperament: 'hot_headed', ambition: 'legacy_captain', loyalty: 'loyal_fighter', lifestyle: 'quiet_pro', ego: 'demanding_standards' } },
+  { id: 'hometown_kid', label: () => tr('Enfant du quartier'), sub: () => tr('Fidèle à ses racines, simple et affamé'), traits: { media: 'warm_open', temperament: 'passionate', ambition: 'roots_pride', loyalty: 'homegrown_soul', lifestyle: 'street_roots', ego: 'humble_star' } },
+  { id: 'mercenary', label: () => tr('Mercenaire froid'), sub: () => tr('Professionnel calculateur, vise salaires et sommets'), traits: { media: 'guarded_tactical', temperament: 'detached', ambition: 'big_money', loyalty: 'highest_bidder', lifestyle: 'jet_setter', ego: 'business_first' } },
+  { id: 'maverick', label: () => tr('Franc-tireur de rue'), sub: () => tr('Électrique, sans filtre, génie imprévisible'), traits: { media: 'unfiltered', temperament: 'volatile', ambition: 'prove_doubters', loyalty: 'restless_nomad', lifestyle: 'nightlife_music', ego: 'untamed_flair' } },
+  { id: 'silent_tactician', label: () => tr('Tacticien silencieux'), sub: () => tr('Calme, cérébral, fuit les micros'), traits: { media: 'media_shy', temperament: 'composed', ambition: 'craft_mastery', loyalty: 'mentor_driven', lifestyle: 'bookish_calm', ego: 'understated' } },
+  { id: 'fan_darling', label: () => tr('Chouchou du public'), sub: () => tr('Proche des supporters, se nourrit du stade'), traits: { media: 'banter_king', temperament: 'electric', ambition: 'entertain_crowd', loyalty: 'club_icon', lifestyle: 'community_heart', ego: 'crowd_fueled' } },
+];
+
+const PERSONA_TRAITS_UI = [
+  { key: 'media', label: () => tr('Face aux médias'), options: [
+    ['calm_humble', () => tr('Calme et humble')],
+    ['cocky_charismatic', () => tr('Audacieux et charismatique')],
+    ['diplomatic_leader', () => tr('Diplomatique, voix de leader')],
+    ['warm_open', () => tr('Chaleureux et spontané')],
+    ['guarded_tactical', () => tr('Méfiant, réponses courtes')],
+    ['unfiltered', () => tr('Brut et sans filtre')],
+    ['media_shy', () => tr('Très discret avec la presse')],
+    ['banter_king', () => tr('Taquin avec les fans et médias')],
+  ] },
+  { key: 'temperament', label: () => tr('Tempérament'), options: [
+    ['ice_cold', () => tr('Sang-froid glacial')],
+    ['expressive', () => tr('Expressif et démonstratif')],
+    ['hot_headed', () => tr('Sang chaud, impulsif')],
+    ['passionate', () => tr('Passionné, à fleur de peau')],
+    ['detached', () => tr('Détaché et imperturbable')],
+    ['volatile', () => tr('Imprévisible et émotif')],
+    ['composed', () => tr('Posé et analytique')],
+    ['electric', () => tr('Électrique et infatigable')],
+  ] },
+  { key: 'ambition', label: () => tr('Ambition'), options: [
+    ['chasing_greatness', () => tr('Atteindre les sommets du jeu')],
+    ['trophy_hunter', () => tr('Collectionner les trophées')],
+    ['legacy_captain', () => tr('Devenir une légende du club')],
+    ['roots_pride', () => tr('Rendre fiers les siens')],
+    ['big_money', () => tr('Viser les plus gros contrats')],
+    ['prove_doubters', () => tr('Faire taire les sceptiques')],
+    ['craft_mastery', () => tr('Perfectionniste du jeu')],
+    ['entertain_crowd', () => tr('Faire vibrer le stade')],
+  ] },
+  { key: 'loyalty', label: () => tr('Fidélité'), options: [
+    ['one_club', () => tr('Fidèle à un club dans l’âme')],
+    ['ambitious_climber', () => tr('Ambitieux, prêt à monter d’un cran')],
+    ['loyal_fighter', () => tr('Loyal mais lucide')],
+    ['homegrown_soul', () => tr('Attaché aux couleurs formatrices')],
+    ['highest_bidder', () => tr('Strictement business au mercato')],
+    ['restless_nomad', () => tr('Nomade, aime changer de championnat')],
+    ['mentor_driven', () => tr('Suit un coach ou un projet')],
+    ['club_icon', () => tr('Veut devenir l’idole du stade')],
+  ] },
+  { key: 'lifestyle', label: () => tr('Mode de vie'), options: [
+    ['family_first', () => tr('Vie de famille paisible')],
+    ['flashy_lux', () => tr('Luxe, mode et projecteurs')],
+    ['quiet_pro', () => tr('Pro strict : sommeil, salle et récup')],
+    ['street_roots', () => tr('Ancré dans son quartier et ses potes')],
+    ['jet_setter', () => tr('Voyages et cercles VIP')],
+    ['nightlife_music', () => tr('Sorties, musique et vie nocturne')],
+    ['bookish_calm', () => tr('Calme, lecture et jeux vidéo')],
+    ['community_heart', () => tr('Engagé dans le social et les jeunes')],
+  ] },
+  { key: 'ego', label: () => tr('Ego & vestiaire'), options: [
+    ['team_first', () => tr('Le collectif avant tout')],
+    ['main_character', () => tr('Veut être la star de l’équipe')],
+    ['demanding_standards', () => tr('Très exigeant envers ses coéquipiers')],
+    ['humble_star', () => tr('Modeste, partage les mérites')],
+    ['business_first', () => tr('Le foot est un métier d’élite')],
+    ['untamed_flair', () => tr('Esprit libre, déteste les cadres rigides')],
+    ['understated', () => tr('Influence discrète dans le groupe')],
+    ['crowd_fueled', () => tr('Porté par l’ovation du public')],
+  ] },
+];
+
+const PERSONA_ROOTS_UI = [
+  { key: 'hometown', label: () => tr('Ville d’origine'), hint: () => tr('ex. Santos, Lyon, Naples…'), shield: true },
+  { key: 'childhood', label: () => tr('Quartier ou enfance'), hint: () => tr('Quartier, banlieue ou lieu d’enfance'), shield: true },
+  { key: 'academy', label: () => tr('Premier club / académie'), hint: () => tr('Nom de l’école de foot ou club formateur'), shield: true },
+  { key: 'heritage', label: () => tr('Origines ou culture'), hint: () => tr('ex. Brésilien-Italien, famille de marins'), shield: false },
+];
+
+const PERSONA_FLAVORS_UI = [
+  { key: 'signature', label: () => tr('Rituel ou manie'), hint: () => tr('ex. Bandage blanc au poignet, prière avant le coup d’envoi'), suggestions: [
+    () => tr('Bandage blanc et prière avant le coup d’envoi'),
+    () => tr('Embrasse son poignet après chaque but'),
+    () => tr('Reste toujours après l’entraînement pour les coups francs'),
+    () => tr('Crampons rétro et maillot toujours rentré'),
+  ] },
+  { key: 'hobby', label: () => tr('Musique & loisirs'), hint: () => tr('ex. Pagode, échecs, jeux vidéo'), suggestions: [
+    () => tr('Pagode et jeux vidéo avec ses amis'),
+    () => tr('Lo-fi et parties d’échecs'),
+    () => tr('Rap, sneakers et photographie'),
+    () => tr('Pêche au calme et barbecues en famille'),
+  ] },
+  { key: 'favoriteDish', label: () => tr('Plat préféré'), hint: () => tr('ex. Feijoada maison, pizza margherita'), suggestions: [
+    () => tr('La feijoada maison de sa mère'),
+    () => tr('Pizza margherita au feu de bois'),
+    () => tr('Picanha grillée et riz'),
+    () => tr('Pâtes au ragù de sa grand-mère'),
+  ] },
+  { key: 'motto', label: () => tr('Devise personnelle'), hint: () => tr('ex. Travailler en silence, briller sous les projecteurs'), suggestions: [
+    () => tr('Travailler en silence, briller sous les projecteurs'),
+    () => tr('Ne jamais oublier les terrains en terre'),
+    () => tr('Affamé à chaque jour de match'),
+    () => tr('La pression est un privilège'),
+  ] },
+];
+
+const PERSONA_CIRCLE_UI = [
+  { key: 'family', label: () => tr('Famille'), hint: () => tr('Parents, fratrie, conjoint(e), enfants…'), starters: [() => tr('Mère'), () => tr('Père'), () => tr('Frère / Sœur'), () => tr('Conjoint(e)')] },
+  { key: 'friends', label: () => tr('Amis'), hint: () => tr('Meilleurs amis, bande d’enfance, confidents…'), starters: [() => tr('Meilleur ami'), () => tr('Ami d’enfance'), () => tr('Confident du vestiaire')] },
+  { key: 'business', label: () => tr('Contacts pro & staff'), hint: () => tr('Agent, préparateur physique, avocat, conseiller médias…'), starters: [() => tr('Agent'), () => tr('Préparateur personnel'), () => tr('Conseiller médias')] },
+  { key: 'roots', label: () => tr('Racines & mentors'), hint: () => tr('Coach formateur, premier club, idole, animal de compagnie…'), starters: [() => tr('Entraîneur formateur'), () => tr('Premier club'), () => tr('Idole / Mentor'), () => tr('Animal de compagnie')] },
+];
+
+function personaDraft(raw) {
+  if (raw && typeof raw === 'object' && raw.circle) {
+    return {
+      preset: raw.preset || '',
+      traits: { ...(raw.traits || {}) },
+      roots: { ...(raw.roots || {}) },
+      flavor: { ...(raw.flavor || {}) },
+      circle: Object.fromEntries(PERSONA_CIRCLE_UI.map((g) => [g.key, Array.isArray(raw.circle[g.key]) ? raw.circle[g.key].slice(0, PERSONA_GROUP_MAX) : []])),
+    };
+  }
+  const circle = {};
+  for (const g of PERSONA_CIRCLE_UI) {
+    circle[g.key] = g.starters.map((fn) => ({ role: fn(), name: '', decoy: '', protect: true }));
+  }
+  return { preset: raw?.preset || '', traits: { ...(raw?.traits || {}) }, roots: { ...(raw?.roots || {}) }, flavor: { ...(raw?.flavor || {}) }, circle };
+}
+
+function detectPersonaPreset(traits) {
+  for (const p of PERSONA_PRESETS_UI) {
+    if (PERSONA_TRAITS_UI.every((t) => (traits[t.key] || '') === p.traits[t.key])) return p.id;
+  }
+  return PERSONA_TRAITS_UI.some((t) => Boolean(traits[t.key])) ? 'custom' : '';
+}
+
+function personaBadgeLabel(presetId) {
+  if (!presetId) return tr('Optionnel');
+  if (presetId === 'custom') return tr('Personnalisé');
+  const found = PERSONA_PRESETS_UI.find((p) => p.id === presetId);
+  return found ? found.label() : tr('Optionnel');
+}
+
+function personaPersonRowHtml(person = {}) {
+  return `<div class="per-person-row">
+    <input class="per-p-role" value="${esc(person.role || '')}" placeholder="${esc(tr('Rôle (ex. Tante, Kiné)'))}" maxlength="60">
+    <input class="per-p-name" value="${esc(person.name || '')}" placeholder="${esc(tr('Nom réel'))}" maxlength="120">
+    <input class="per-p-decoy" value="${esc(person.decoy || '')}" placeholder="${esc(tr('Pseudo (auto)'))}" maxlength="120">
+    <label class="per-p-shield" title="${esc(tr('Masquer dans le bouclier de confidentialité'))}"><input type="checkbox" class="per-p-protect"${person.protect !== false ? ' checked' : ''} aria-label="${esc(tr('Masquer dans le bouclier de confidentialité'))}"><span>${hi('shieldCheck')}</span></label>
+    <button type="button" class="per-p-del" title="${esc(tr('Retirer cette personne'))}" aria-label="${esc(tr('Retirer cette personne'))}">−</button>
+  </div>`;
+}
+
+function personaFormHtml(prefix, rawPersona) {
+  const d = personaDraft(rawPersona);
+  const activePreset = d.preset || detectPersonaPreset(d.traits);
+  const presetCards = PERSONA_PRESETS_UI.map((p) => `<button type="button" class="per-preset${activePreset === p.id ? ' on' : ''}" data-preset="${p.id}"><b>${esc(p.label())}</b><small>${esc(p.sub())}</small></button>`).join('');
+  const customPill = `<button type="button" class="per-preset per-preset-custom${activePreset === 'custom' ? ' on' : ''}" data-preset="custom"><b>${esc(tr('Personnalisé'))}</b><small>${esc(tr('Personnalisé…'))}</small></button>`;
+
+  const traitSelects = PERSONA_TRAITS_UI.map((t) => {
+    const cur = d.traits[t.key] || '';
+    const known = cur && t.options.some(([id]) => id === cur);
+    const isCustom = Boolean(cur && !known);
+    const opts = [
+      `<option value="">${esc(tr('Par défaut (non précisé)'))}</option>`,
+      ...t.options.map(([id, fn]) => `<option value="${id}"${cur === id ? ' selected' : ''}>${esc(fn())}</option>`),
+      `<option value="__custom__"${isCustom ? ' selected' : ''}>${esc(tr('Personnalisé…'))}</option>`,
+    ].join('');
+    return `<div class="per-trait">
+      <label class="per-field"><span>${esc(t.label())}</span><select id="${prefix}-per-tr-${t.key}" data-per-trait="${t.key}">${opts}</select></label>
+      <input id="${prefix}-per-trc-${t.key}" class="per-trait-custom${isCustom ? '' : ' hidden'}" value="${esc(isCustom ? cur : '')}" placeholder="${esc(tr('Écris ta version personnalisée…'))}" maxlength="80">
+    </div>`;
+  }).join('');
+
+  const rootsHtml = PERSONA_ROOTS_UI.map((r) => `<label class="per-field">
+    <span class="per-field-head"><span>${esc(r.label())}</span>${r.shield ? `<span class="per-shield-pill" title="${esc(tr('Masquer dans le bouclier de confidentialité'))}">${hi('shieldCheck')} ${esc(tr('Protégé'))}</span>` : ''}</span>
+    <input id="${prefix}-per-root-${r.key}" value="${esc(d.roots[r.key] || '')}" placeholder="${esc(r.hint())}" maxlength="120">
+  </label>`).join('');
+
+  const flavorsHtml = PERSONA_FLAVORS_UI.map((f) => {
+    const dlId = `${prefix}-per-dl-${f.key}`;
+    return `<label class="per-field">
+      <span>${esc(f.label())}</span>
+      <input id="${prefix}-per-flv-${f.key}" list="${dlId}" value="${esc(d.flavor[f.key] || '')}" placeholder="${esc(f.hint())}" maxlength="140">
+      <datalist id="${dlId}">${f.suggestions.map((s) => `<option value="${esc(s())}">`).join('')}</datalist>
+    </label>`;
+  }).join('');
+
+  const circleHtml = PERSONA_CIRCLE_UI.map((g) => {
+    const rows = d.circle[g.key] || [];
+    const filled = rows.filter((x) => x.name).length;
+    return `<details class="per-group" data-per-group="${g.key}" open>
+      <summary>
+        <div><b>${esc(g.label())}</b><span class="fineprint">${esc(g.hint())}</span></div>
+        <span class="priv-badge${filled ? ' on' : ''}" id="${prefix}-per-cnt-${g.key}">${rows.length} / ${PERSONA_GROUP_MAX}</span>
+      </summary>
+      <div class="per-group-body">
+        <div class="per-group-list" id="${prefix}-per-list-${g.key}">${rows.map((p) => personaPersonRowHtml(p)).join('')}</div>
+        <button type="button" class="btn per-p-add" data-group="${g.key}"${rows.length >= PERSONA_GROUP_MAX ? ' disabled' : ''}>+ ${esc(tr('Ajouter'))}</button>
+      </div>
+    </details>`;
+  }).join('');
+
+  return `<details class="per-box" id="${prefix}-per-box" open>
+    <summary><span>${tr('Personnalité, racines & cercle intime')}</span><span class="priv-badge${activePreset ? ' on' : ''}" id="${prefix}-per-badge">${esc(personaBadgeLabel(activePreset))}</span></summary>
+    <div class="per-body">
+      <div class="per-shield-tip">${hi('shieldCheck')}<span>${esc(tr('Protégé automatiquement : la ville d’origine, le quartier, le premier club et les proches cochés sont masqués par le Bouclier de confidentialité avant tout envoi à l’IA.'))}</span></div>
+      <div class="per-sec"><h4>${esc(tr('Archétype de personnalité'))}</h4><div class="per-presets" id="${prefix}-per-presets">${presetCards}${customPill}</div></div>
+      <div class="per-sec"><h4>${esc(tr('Traits de caractère'))}</h4><div class="per-grid">${traitSelects}</div></div>
+      <div class="per-sec"><h4>${esc(tr('Origines & racines'))}</h4><div class="per-grid per-grid-2">${rootsHtml}</div></div>
+      <div class="per-sec"><h4>${esc(tr('Habitudes, goûts & devise'))}</h4><div class="per-grid per-grid-2">${flavorsHtml}</div></div>
+      <div class="per-sec"><h4>${esc(tr('Cercle intime'))}</h4><div class="per-circle">${circleHtml}</div></div>
+    </div>
+  </details>`;
+}
+
+function readPersonaForm(prefix) {
+  const box = $(`#${prefix}-per-box`);
+  if (!box) return null;
+  const traits = {};
+  for (const t of PERSONA_TRAITS_UI) {
+    const sel = $(`#${prefix}-per-tr-${t.key}`);
+    if (!sel) continue;
+    if (sel.value === '__custom__') traits[t.key] = $(`#${prefix}-per-trc-${t.key}`)?.value.trim() || '';
+    else traits[t.key] = sel.value || '';
+  }
+  const activeBtn = box.querySelector('.per-preset.on')?.dataset.preset || '';
+  const preset = activeBtn || detectPersonaPreset(traits);
+  const roots = {};
+  for (const r of PERSONA_ROOTS_UI) roots[r.key] = $(`#${prefix}-per-root-${r.key}`)?.value.trim() || '';
+  const flavor = {};
+  for (const f of PERSONA_FLAVORS_UI) flavor[f.key] = $(`#${prefix}-per-flv-${f.key}`)?.value.trim() || '';
+  const circle = {};
+  for (const g of PERSONA_CIRCLE_UI) {
+    const list = $(`#${prefix}-per-list-${g.key}`);
+    const out = [];
+    if (list) {
+      list.querySelectorAll('.per-person-row').forEach((row, idx) => {
+        if (out.length >= PERSONA_GROUP_MAX) return;
+        const role = row.querySelector('.per-p-role')?.value.trim() || '';
+        const name = row.querySelector('.per-p-name')?.value.trim() || '';
+        const decoy = row.querySelector('.per-p-decoy')?.value.trim() || '';
+        const protect = row.querySelector('.per-p-protect')?.checked !== false;
+        if (role || name || decoy) out.push({ id: `${g.key}_${idx + 1}`, role, name, decoy, protect });
+      });
+    }
+    circle[g.key] = out;
+  }
+  return { preset, traits, roots, flavor, circle };
+}
+
+function bindPersonaForm(prefix, { onChange } = {}) {
+  const box = $(`#${prefix}-per-box`);
+  if (!box) return;
+  const notify = () => onChange?.(readPersonaForm(prefix));
+  const syncPresetUi = (presetId) => {
+    box.querySelectorAll('.per-preset').forEach((b) => b.classList.toggle('on', b.dataset.preset === presetId));
+    const badge = $(`#${prefix}-per-badge`);
+    if (badge) {
+      badge.textContent = personaBadgeLabel(presetId);
+      badge.classList.toggle('on', Boolean(presetId));
+    }
+  };
+  const syncDetectedPreset = () => {
+    const cur = readPersonaForm(prefix);
+    if (cur) syncPresetUi(detectPersonaPreset(cur.traits));
+  };
+
+  box.querySelectorAll('.per-preset').forEach((btn) => {
+    btn.onclick = () => {
+      const id = btn.dataset.preset;
+      if (id === 'custom') {
+        syncPresetUi('custom');
+        notify();
+        return;
+      }
+      const p = PERSONA_PRESETS_UI.find((x) => x.id === id);
+      if (!p) return;
+      for (const t of PERSONA_TRAITS_UI) {
+        const sel = $(`#${prefix}-per-tr-${t.key}`);
+        const inp = $(`#${prefix}-per-trc-${t.key}`);
+        if (sel) sel.value = p.traits[t.key] || '';
+        if (inp) { inp.value = ''; inp.classList.add('hidden'); }
+      }
+      syncPresetUi(id);
+      notify();
+    };
+  });
+
+  for (const t of PERSONA_TRAITS_UI) {
+    const sel = $(`#${prefix}-per-tr-${t.key}`);
+    const inp = $(`#${prefix}-per-trc-${t.key}`);
+    if (sel) {
+      sel.onchange = () => {
+        const isCustom = sel.value === '__custom__';
+        if (inp) inp.classList.toggle('hidden', !isCustom);
+        if (isCustom) { inp?.focus(); syncPresetUi('custom'); }
+        else syncDetectedPreset();
+        notify();
+      };
+    }
+    if (inp) inp.oninput = () => { syncPresetUi('custom'); notify(); };
+  }
+
+  for (const r of PERSONA_ROOTS_UI) {
+    const el = $(`#${prefix}-per-root-${r.key}`);
+    if (el) el.oninput = notify;
+  }
+  for (const f of PERSONA_FLAVORS_UI) {
+    const el = $(`#${prefix}-per-flv-${f.key}`);
+    if (el) el.oninput = notify;
+  }
+
+  for (const g of PERSONA_CIRCLE_UI) {
+    const list = $(`#${prefix}-per-list-${g.key}`);
+    const addBtn = box.querySelector(`.per-p-add[data-group="${g.key}"]`);
+    const cntBadge = $(`#${prefix}-per-cnt-${g.key}`);
+    if (!list) continue;
+    const syncGroupUi = () => {
+      const rows = list.querySelectorAll('.per-person-row');
+      const filled = [...rows].filter((r) => r.querySelector('.per-p-name')?.value.trim()).length;
+      if (cntBadge) {
+        cntBadge.textContent = `${rows.length} / ${PERSONA_GROUP_MAX}`;
+        cntBadge.classList.toggle('on', filled > 0);
+      }
+      if (addBtn) addBtn.disabled = rows.length >= PERSONA_GROUP_MAX;
+    };
+    const bindRow = (row) => {
+      row.querySelectorAll('input').forEach((inp) => {
+        if (inp.type === 'checkbox') inp.onchange = notify;
+        else inp.oninput = () => { syncGroupUi(); notify(); };
+      });
+      const del = row.querySelector('.per-p-del');
+      if (del) {
+        del.onclick = async () => {
+          const role = row.querySelector('.per-p-role')?.value.trim() || '';
+          const name = row.querySelector('.per-p-name')?.value.trim() || '';
+          const who = [role, name].filter(Boolean).join(' — ');
+          const ok = await kConfirm({
+            title: tr('Retirer cette personne ?'),
+            body: who ? tr('Supprimer « {who} » de ton cercle intime ?', { who }) : tr('Supprimer cette ligne de ton cercle intime ?'),
+            ok: tr('Retirer'),
+            cancel: tr('Annuler'),
+          });
+          if (!ok) return;
+          row.remove();
+          syncGroupUi();
+          notify();
+        };
+      }
+    };
+    list.querySelectorAll('.per-person-row').forEach(bindRow);
+    if (addBtn) {
+      addBtn.onclick = () => {
+        if (list.querySelectorAll('.per-person-row').length >= PERSONA_GROUP_MAX) return;
+        const wrap = document.createElement('div');
+        wrap.innerHTML = personaPersonRowHtml({ role: '', name: '', decoy: '', protect: true });
+        const row = wrap.firstElementChild;
+        list.appendChild(row);
+        bindRow(row);
+        syncGroupUi();
+        row.querySelector('.per-p-role')?.focus();
+        notify();
+      };
+    }
+  }
+}
+
 function openBioStep(info) {
   const pb = settings.pendingBio?.savePath === settings.savePath ? settings.pendingBio : null;
-  view.setup = { step: 3, newCareer: true, savePath: settings.savePath, info, bio: pb?.text || '', kind: pb?.kind || null, privacy: pb?.privacy || { enabled: true, fields: {}, customPeople: [] } };
+  view.setup = { step: 3, newCareer: true, savePath: settings.savePath, info, bio: pb?.text || '', kind: pb?.kind || null, privacy: pb?.privacy || { enabled: true, fields: {}, customPeople: [] }, persona: pb?.persona || null };
   if (current === 'settings') current = 'national';
   render();
   viewScrollTo(0);
@@ -670,9 +1043,12 @@ function setupBioHtml(su) {
       ${su.info?.club ? `<p class="fineprint su-club">${esc(su.info.club)}</p>` : ''}
       <p class="su-ask">${tr('Qui incarnes-tu ?')}</p>
       <div class="saves su-kind">${kindOptions('su-kind', su.kind, su.busy)}</div>
-      ${written ? `<p class="su-text">${tr('Raconte son histoire : d’où il vient, où il a grandi, ses premiers clubs, sa famille, son caractère, ce dont il rêve. Dans ce monde, tout cela sera vrai : la presse le présentera ainsi dès la première édition, et Panthéon en fera le premier chapitre de sa page.')}</p>
+      ${written ? `<p class="su-text">${tr('Définis le caractère de ton joueur, ses origines et son cercle intime : dans ce monde, tout cela sera vrai dès la première édition.')}</p>
+      ${personaFormHtml('su', su.persona)}
+      <p class="su-ask">${tr('Histoire libre (optionnel)')}</p>
+      <p class="fineprint">${tr('Complète librement ce que le questionnaire ne dit pas : anecdotes, blessure fondatrice, rêve précis… Tout reste optionnel.')}</p>
       ${privacyNoticeHtml('su')}
-      <textarea id="su-bio" rows="11" maxlength="${BIO_MAX}" placeholder="${tr('Il est né à… Il a grandi dans… Il a commencé le football à…')}"${su.busy ? ' disabled' : ''}>${esc(su.bio)}</textarea>
+      <textarea id="su-bio" rows="6" maxlength="${BIO_MAX}" placeholder="${tr('Il est né à… Il a grandi dans… Il a commencé le football à…')}"${su.busy ? ' disabled' : ''}>${esc(su.bio)}</textarea>
       <p class="su-count" id="su-count">${su.bio.length} / ${BIO_MAX}</p>
       <p class="fineprint">${tr('Si elle contredit la sauvegarde (âge, club, sélection), c’est la sauvegarde qui l’emporte. Tu pourras l’écrire ou la modifier plus tard dans les réglages.')}</p>
       ${privacyFormHtml('su', su.privacy, { playerName: su.info?.player || '' })}` : ''}
@@ -695,12 +1071,14 @@ async function setupScan() {
 async function setupPublish() {
   const su = view.setup;
   const text = su.kind === 'real' ? '' : su.bio.trim();
-  const privacy = readPrivacyForm('su') || su.privacy || { enabled: false, fields: {} };
+  const privacy = readPrivacyForm('su') || su.privacy || { enabled: true, fields: {}, customPeople: [] };
+  const persona = su.kind === 'real' ? null : (readPersonaForm('su') || su.persona || null);
   su.privacy = privacy;
+  su.persona = persona;
   su.busy = true;
   render();
   try {
-    settings = await live.saveSettings({ savePath: su.savePath, pendingBio: { savePath: su.savePath, text, kind: su.kind, privacy } });
+    settings = await live.saveSettings({ savePath: su.savePath, pendingBio: { savePath: su.savePath, text, kind: su.kind, privacy, persona } });
     if (await doSync({ bioAsked: true })) {
       view.setup = null;
       render();
@@ -713,7 +1091,7 @@ async function setupPublish() {
 }
 
 function renderSetup(page) {
-  const su = (view.setup ||= { step: 1, savePath: settings.savePath || null, info: null, saves: null, bio: settings.pendingBio?.text || '', kind: settings.pendingBio?.kind || null, privacy: settings.pendingBio?.privacy || { enabled: false, fields: {} } });
+  const su = (view.setup ||= { step: 1, savePath: settings.savePath || null, info: null, saves: null, bio: settings.pendingBio?.text || '', kind: settings.pendingBio?.kind || null, privacy: settings.pendingBio?.privacy || { enabled: true, fields: {}, customPeople: [] }, persona: settings.pendingBio?.persona || null });
   const steps = su.newCareer ? '' : `<ol class="su-steps">${SETUP_STEPS.map((l, i) => `<li class="${i + 1 === su.step ? 'on' : i + 1 < su.step ? 'done' : ''}"><b>${i + 1}</b><span>${tr(l)}</span></li>`).join('')}</ol>`;
   const hero = su.step === 1 ? `<p class="k-eyebrow">${tr('Première édition · bientôt en kiosque')}</p>
       <h1>${tr('Ta carrière va faire <em>la une</em>.')}</h1><div class="k-rule"></div>
@@ -764,16 +1142,23 @@ function renderSetup(page) {
         su.step = 3;
         render();
         viewScrollTo(0);
-        $('#su-bio')?.focus();
       } catch (err) { toast(err.message, true); }
     };
   } else {
     page.querySelectorAll('input[name=su-kind]').forEach((r) => {
-      r.onchange = () => { su.kind = r.value; render(); $('#su-bio')?.focus(); };
+      r.onchange = () => {
+        if (su.kind !== 'real') {
+          const p = readPersonaForm('su'); if (p) su.persona = p;
+          const pr = readPrivacyForm('su'); if (pr) su.privacy = pr;
+        }
+        su.kind = r.value;
+        render();
+      };
     });
     const ta = $('#su-bio');
     if (ta) ta.oninput = () => { su.bio = ta.value; $('#su-count').textContent = `${ta.value.length} / ${BIO_MAX}`; };
-    bindPrivacyForm('su', { getBio: () => su.bio, getPlayer: () => su.info?.player || '', onChange: (p) => { su.privacy = p; } });
+    bindPersonaForm('su', { onChange: (p) => { su.persona = p; } });
+    bindPrivacyForm('su', { getBio: () => su.bio, getPlayer: () => su.info?.player || '', getPersona: () => readPersonaForm('su') || su.persona, onChange: (p) => { su.privacy = p; } });
     $('#su-publish').onclick = setupPublish;
   }
 }
@@ -7739,7 +8124,7 @@ const RG_TABS = [
   ['about', 'À propos', ''],
 ];
 // L'onglet de chaque section qu'ouvrent les autres pages (« Réglages de l'IA », « Ajouter ma clé… », la bio de Panthéon).
-const RG_SECTION_TAB = { 'rg-save': 'save', 'rg-key': 'save', 'rg-names': 'save', 'rg-ai': 'ai', 'rg-lang': 'look', 'rg-theme': 'look', 'rg-tone': 'world', 'rg-replays': 'world', 'rg-mebio': 'me', 'rg-privacy': 'me', 'rg-about': 'about', 'rg-update': 'about' };
+const RG_SECTION_TAB = { 'rg-save': 'save', 'rg-key': 'save', 'rg-names': 'save', 'rg-ai': 'ai', 'rg-lang': 'look', 'rg-theme': 'look', 'rg-tone': 'world', 'rg-replays': 'world', 'rg-mebio': 'me', 'rg-mepersona': 'me', 'rg-privacy': 'me', 'rg-lifeevents': 'me', 'rg-about': 'about', 'rg-update': 'about' };
 const rgRow = (id, label, control, note = '') => `<div class="rg-row"${id ? ` id="${id}"` : ''}><div class="rg-label"><h3>${label}</h3>${note ? `<p>${note}</p>` : ''}</div><div class="rg-ctl">${control}</div></div>`;
 const rgSwitch = (id, on, label, note = '') => `<label class="rg-switch"><input type="checkbox" id="${id}"${on ? ' checked' : ''}><span class="rg-switch-text"><b>${label}</b>${note ? `<small>${note}</small>` : ''}</span></label>`;
 // Miniature d'un thème : le cadre de LifeLegend (rail, barre, blocs), clair ou sombre ; Automatique est coupé en diagonale.
@@ -7882,8 +8267,10 @@ async function renderSettings(page) {
     // « Ton histoire » réunit la biographie et l'ancien « Ma vie » : ses lignes, s'il en reste, s'ajoutent au texte.
     rgRow('rg-mebio', tr('Ton histoire'), `<p class="su-ask">${tr('Qui incarnes-tu ?')}</p><div class="saves su-kind">${kindOptions('rg-kind', state.playerKind)}</div>
       ${state.playerKind === 'real' ? '' : privacyNoticeHtml('rg')}
-      <textarea id="bio" aria-label="${tr('Ton histoire')}" class="${state.playerKind === 'real' ? 'hidden' : ''}" rows="10" maxlength="${BIO_MAX}">${esc([state.bio?.text, ...(state.myLife || [])].filter(Boolean).join('\n'))}</textarea>`,
+      <textarea id="bio" aria-label="${tr('Ton histoire')}" class="${state.playerKind === 'real' ? 'hidden' : ''}" rows="6" maxlength="${BIO_MAX}">${esc([state.bio?.text, ...(state.myLife || [])].filter(Boolean).join('\n'))}</textarea>`,
       tr('D’où vient ton joueur, ses premiers clubs, son caractère, et aussi sa vie d’aujourd’hui : sa famille, sa ville, son chien… Tout le monde dans ce monde la tient pour vraie, et Panthéon en fait le premier chapitre de sa page à la prochaine édition.')),
+    rgRow('rg-mepersona', tr('Personnalité & cercle intime'), personaFormHtml('rg', state.persona),
+      tr('Choisis un archétype, des traits sur mesure, tes racines et les proches qui comptent. Les éléments marqués Protégé alimentent automatiquement le Bouclier de confidentialité.')),
     rgRow('rg-privacy', tr('Confidentialité'), privacyFormHtml('rg', state.privacy || settings.privacy || { enabled: true, fields: {}, customPeople: [] }, { playerName: state.snapshot?.player?.name || '', handle: state.profile?.handle || '' })),
     rgRow('rg-lifeevents', tr('Dates de vie'), lifeEventsFormHtml(state.lifeEvents || [], state.snapshot?.gameDate || ''),
       tr('Ajoute des dates importantes hors football (anniversaire, événement caritatif, déménagement…). Quand le jeu atteint cette date, la presse, les supporters et le vestiaire peuvent réagir.')),
@@ -7966,8 +8353,15 @@ async function renderSettings(page) {
     } catch (err) { toast(err.message, true); }
   };
   $('#save-settings').onclick = saveSettings;
-  page.querySelectorAll('input[name=rg-kind]').forEach((r) => { r.onchange = () => $('#bio').classList.toggle('hidden', r.value === 'real'); });
-  if (state) bindPrivacyForm('rg', { getBio: () => $('#bio')?.value || '', getPlayer: () => state.snapshot?.player?.name || '', getHandle: () => state.profile?.handle || '' });
+  const syncRealVisibility = (isReal) => {
+    $('#bio')?.classList.toggle('hidden', isReal);
+    $('#rg-mepersona')?.classList.toggle('hidden', isReal);
+    $('#rg-mebio .priv-notice')?.classList.toggle('hidden', isReal);
+  };
+  if (state) syncRealVisibility(state.playerKind === 'real');
+  page.querySelectorAll('input[name=rg-kind]').forEach((r) => { r.onchange = () => syncRealVisibility(r.value === 'real'); });
+  if (state) bindPersonaForm('rg');
+  if (state) bindPrivacyForm('rg', { getBio: () => $('#bio')?.value || '', getPlayer: () => state.snapshot?.player?.name || '', getHandle: () => state.profile?.handle || '', getPersona: () => readPersonaForm('rg') });
   if (state) bindLifeEventsForm(state.snapshot?.gameDate || '');
   $('#browse-clips').onclick = async () => {
     try {
@@ -8053,8 +8447,13 @@ async function saveSettings() {
     // Le nom, le pseudo et le poste se changent sur Kop (Éditer le profil) : ici, « Ton histoire ». Elle contient déjà les
     // anciennes lignes de « Ma vie » : une fois l'histoire enregistrée, on les vide (pas de doublon).
     if (state && $('#bio')) {
-      state = await live.saveBio({ text: $('#bio').value, kind: document.querySelector('input[name=rg-kind]:checked')?.value || null });
+      const kind = document.querySelector('input[name=rg-kind]:checked')?.value || null;
+      state = await live.saveBio({ text: $('#bio').value, kind });
       if (state.myLife?.length) state = await live.saveLife([]);
+      if (kind !== 'real') {
+        const pers = readPersonaForm('rg');
+        if (pers) state = await live.savePersona(pers);
+      }
       const priv = readPrivacyForm('rg');
       if (priv) state = await live.savePrivacy(priv);
       const lifeEvs = readLifeEventsForm();
