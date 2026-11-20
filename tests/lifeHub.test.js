@@ -115,7 +115,12 @@ describe('Phase C My Life Hub, Mid-Career Calibration & Sim Engine', () => {
     assert.ok(star.followers >= 1200000);
     assert.ok(star.cashOnly > star.cashBundle);
     assert.ok(star.cashBundle > 1000000);
-    assert.equal(sponsorSlotCap(star.followers, star.stage), 5);
+    assert.equal(sponsorSlotCap(4200, 'rookie'), 1);
+    assert.equal(sponsorSlotCap(30000, 'rising'), 2);
+    assert.equal(sponsorSlotCap(200000, 'established'), 3);
+    assert.equal(sponsorSlotCap(750000, 'established'), 5);
+    assert.equal(sponsorSlotCap(star.followers, star.stage), null);
+    assert.equal(sponsorSlotCap(2100000, 'established'), null);
     assert.ok(star.meters.manager >= 80);
     assert.ok(star.meters.sponsors >= 80);
     assert.ok(star.bundleAssetIds.includes('luxury_villa'));
@@ -170,22 +175,31 @@ describe('Phase C My Life Hub, Mid-Career Calibration & Sim Engine', () => {
     assert.equal(hub.sponsors.length, 1);
     assert.equal(hub.sponsors[0].linkedBootDeal, true);
 
-    // Rename synced boot sponsor in My Life -> propagates back into state.sponsor.deal!
-    updateSponsor(state, { id: hub.sponsors[0].id, brand: 'Nike Custom Gold', fee: 250000, notes: 'Gold signature pack' });
+    // Rename synced boot sponsor in My Life & add multiple/custom categories -> propagates!
+    updateSponsor(state, { id: hub.sponsors[0].id, brand: 'Nike Custom Gold', categories: ['boots', 'apparel', 'Signature Pack'], fee: 250000, notes: 'Gold signature pack' });
     assert.equal(state.sponsor.deal.brand, 'Nike Custom Gold');
     assert.equal(hub.renamedBootBrand, true);
+    assert.deepEqual(hub.sponsors[0].categories, ['boots', 'apparel', 'Signature Pack']);
 
-    // Fill remaining 4 slots (cap = 5), then adding a 6th must throw
-    for (let i = 1; i <= 4; i++) {
-      addSponsor(state, { brand: `Brand ${i}`, category: 'lifestyle', fee: 100000 }, snap.gameDate, () => `sp_${i}`);
+    // Same brand on a NEW category succeeds, while duplicate covered category throws
+    addSponsor(state, { brand: 'Nike Custom Gold', categories: ['automotive'], fee: 120000 }, snap.gameDate, () => 'sp_auto');
+    assert.throws(() => addSponsor(state, { brand: 'Nike Custom Gold', categories: ['boots'], fee: 90000 }, snap.gameDate), /Ce sponsor existe déjà/);
+
+    // Superstar has unlimited sponsor slots (can sign 7+ deals without error)
+    for (let i = 1; i <= 6; i++) {
+      addSponsor(state, { brand: `Brand ${i}`, categories: ['beverage', 'lifestyle'], fee: 100000 }, snap.gameDate, () => `sp_${i}`);
     }
-    assert.equal(hub.sponsors.length, 5);
-    assert.throws(() => addSponsor(state, { brand: 'Brand 6', fee: 50000 }, snap.gameDate), /Toutes les places/);
+    assert.equal(hub.sponsors.length, 8);
 
-    // Remove one slot, then test inbound offer negotiate (+15%) -> accept
-    removeSponsor(state, 'sp_4', snap.gameDate);
-    assert.equal(hub.sponsors.length, 4);
-    hub.offers.push({ id: 'off1', category: 'tech', brand: 'Sony PlayStation', person: 'Elena Duarte', fee: 200000, bonus: 4000, until: '2030-06-30', negotiated: false });
+    // Lower career stage still enforces slotCap
+    const rookieSnap = makeRookieSnapshot();
+    const rookieState = { careerId: '1-cap', profile: { followers: 5000 }, snapshot: rookieSnap, mail: [] };
+    calibrateLifeHub(rookieState, rookieSnap, { startMode: 'cash_only', cash: 30000 });
+    addSponsor(rookieState, { brand: 'Local Cafe', categories: ['beverage'], fee: 15000 }, rookieSnap.gameDate, () => 'sp_r1');
+    assert.throws(() => addSponsor(rookieState, { brand: 'Brand 2', fee: 15000 }, rookieSnap.gameDate), /Toutes les places/);
+
+    // Inbound offer negotiate (+15%) -> accept
+    hub.offers.push({ id: 'off1', category: 'tech', categories: ['tech', 'media'], brand: 'Sony PlayStation', person: 'Elena Duarte', fee: 200000, bonus: 4000, until: '2030-06-30', negotiated: false });
     const neg = answerSponsorOffer(state, 'off1', 'negotiate', snap.gameDate);
     assert.equal(neg.offer.negotiated, true);
     assert.throws(() => answerSponsorOffer(state, 'off1', 'negotiate', snap.gameDate), /déjà négocié/);
@@ -211,12 +225,16 @@ describe('Phase C My Life Hub, Mid-Career Calibration & Sim Engine', () => {
     buyAsset(state, { catalogId: 'city_apartment' }, '2026-08-20');
     assert.equal(hub.cash, 60000);
     buyAsset(state, { custom: true, name: 'Parents House Downpayment', category: 'home', price: 40000, monthlyCost: 200 }, '2026-08-20', () => 'cust1');
-    assert.equal(hub.cash, 20000);
+    buyAsset(state, { custom: true, name: 'Custom Yacht', category: '__custom__', customCategory: 'Marine', price: 10000, monthlyCost: 100 }, '2026-08-20', () => 'cust2');
+    const yacht = hub.assets.find((a) => a.id === 'cust2');
+    assert.equal(yacht.category, 'custom');
+    assert.equal(yacht.customCategory, 'Marine');
+    assert.equal(hub.cash, 10000);
     assert.throws(() => buyAsset(state, { catalogId: 'penthouse' }, '2026-08-20'), /Fonds insuffisants/);
 
-    // Sell city apartment at 75% (240000 * 0.75 = 180000)
+    // Sell city apartment at 75% (240000 * 0.75 = 180000 -> 10000 + 180000 = 190000)
     sellAsset(state, 'city_apartment', '2026-08-21');
-    assert.equal(hub.cash, 200000);
+    assert.equal(hub.cash, 190000);
 
     // Advance sync +10 days with a goal+assist match -> adds pro-rated wage + match bonus
     const snapLater = makeRookieSnapshot('2026-08-30');

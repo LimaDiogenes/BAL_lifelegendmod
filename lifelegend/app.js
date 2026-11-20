@@ -8138,18 +8138,33 @@ const ML_METER_LABELS = {
 const ML_SPONSOR_CAT_LABELS = {
   boots: () => tr('Crampons'),
   apparel: () => tr('Mode & Équipement'),
+  beverage: () => tr('Boissons & Nutrition'),
+  automotive: () => tr('Automobile'),
+  watches: () => tr('Horlogerie & Bijoux'),
   lifestyle: () => tr('Lifestyle & Luxe'),
   tech: () => tr('Tech & Gaming'),
+  travel: () => tr('Voyage & Compagnies'),
+  finance: () => tr('Banque & Finance'),
+  grooming: () => tr('Soins & Parfums'),
+  media: () => tr('Médias & Télécoms'),
+  health: () => tr('Santé & Récupération'),
   global: () => tr('Partenaire mondial'),
 };
 
+function mlSponsorCatLabel(cat) {
+  const fn = ML_SPONSOR_CAT_LABELS[cat];
+  return fn ? fn() : String(cat || '');
+}
+
 const ML_SPONSOR_PRESETS_UI = [
-  { category: 'boots', brand: 'Nike Football', fee: 180000, bonus: 3500 },
-  { category: 'apparel', brand: 'Adidas Originals', fee: 240000, bonus: 4000 },
-  { category: 'lifestyle', brand: 'Gatorade Fuel', fee: 140000, bonus: 2500 },
-  { category: 'lifestyle', brand: 'TAG Heuer Chrono', fee: 420000, bonus: 6000 },
-  { category: 'tech', brand: 'HyperStrike Gaming', fee: 160000, bonus: 3000 },
-  { category: 'global', brand: 'Emirates Fly', fee: 650000, bonus: 9000 },
+  { category: 'boots', categories: ['boots', 'apparel'], brand: 'Nike Football', fee: 180000, bonus: 3500 },
+  { category: 'apparel', categories: ['apparel', 'boots'], brand: 'Adidas Originals', fee: 240000, bonus: 4000 },
+  { category: 'boots', categories: ['boots', 'apparel'], brand: 'Puma Sport', fee: 170000, bonus: 3000 },
+  { category: 'beverage', categories: ['beverage', 'health'], brand: 'Gatorade Fuel', fee: 140000, bonus: 2500 },
+  { category: 'automotive', categories: ['automotive', 'lifestyle'], brand: 'Porsche Motorsport', fee: 380000, bonus: 5500 },
+  { category: 'watches', categories: ['watches', 'lifestyle'], brand: 'TAG Heuer Chrono', fee: 420000, bonus: 6000 },
+  { category: 'tech', categories: ['tech', 'media'], brand: 'HyperStrike Gaming', fee: 160000, bonus: 3000 },
+  { category: 'travel', categories: ['travel', 'global'], brand: 'Emirates Fly', fee: 650000, bonus: 9000 },
 ];
 
 const ML_OBLIGATION_LABELS = {
@@ -8168,6 +8183,7 @@ const ML_ASSET_CAT_LABELS = {
   staff: () => tr('Staff privé'),
   investment: () => tr('Investissements'),
   charity: () => tr('Œuvres & Dons'),
+  custom: () => tr('Personnalisé'),
 };
 
 const ML_ASSET_CATALOG_UI = [
@@ -8276,10 +8292,10 @@ const ML_DILEMMAS_UI = {
 };
 
 function mlSlotCap(followers = 0, stage = 'rookie') {
-  const floor = { rookie: 1, rising: 2, established: 3, superstar: 4 }[stage] || 1;
+  if (stage === 'superstar' || followers >= 2000000) return null;
+  const floor = { rookie: 1, rising: 2, established: 3 }[stage] || 1;
   let fCap = 1;
-  if (followers >= 2000000) fCap = 5;
-  else if (followers >= 600000) fCap = 4;
+  if (followers >= 600000) fCap = 5;
   else if (followers >= 150000) fCap = 3;
   else if (followers >= 25000) fCap = 2;
   return Math.max(floor, fCap);
@@ -8289,15 +8305,127 @@ function mlStageLabel(stage) {
   return (ML_STAGE_LABELS[stage] || ML_STAGE_LABELS.rookie)();
 }
 
+function mlSponsorCatPickerHtml(selected = ['lifestyle'], extraAttr = '') {
+  const list = Array.isArray(selected) && selected.length ? selected : ['lifestyle'];
+  const lowSet = new Set(list.map((c) => String(c || '').trim().toLowerCase()).filter(Boolean));
+  const chips = Object.entries(ML_SPONSOR_CAT_LABELS).map(([k, fn]) => {
+    const on = lowSet.has(k);
+    return `<button type="button" class="ml-cat-chip${on ? ' on' : ''}" data-cat="${k}" aria-pressed="${on ? 'true' : 'false'}">${esc(fn())}</button>`;
+  });
+  const extras = list.filter((c) => c && !ML_SPONSOR_CAT_LABELS[String(c).toLowerCase()] && String(c).toLowerCase() !== '__custom__');
+  for (const c of extras) {
+    chips.push(`<button type="button" class="ml-cat-chip on is-custom" data-cat="${esc(c)}" data-custom="1" aria-pressed="true">${esc(c)} ×</button>`);
+  }
+  return `<div class="ml-cat-picker"${extraAttr ? ` ${extraAttr}` : ''}>
+    <div class="ml-cat-chips">${chips.join('')}</div>
+    <div class="ml-cat-custom-row">
+      <input type="text" class="ml-cat-custom-in" placeholder="${esc(tr('Autre catégorie personnalisée (ex. Esport, Ligne signature)…'))}" maxlength="40">
+      <button type="button" class="btn ml-cat-custom-add" title="${esc(tr('Ajouter'))}">+</button>
+    </div>
+  </div>`;
+}
+
+function readSponsorCatPicker(root) {
+  const picker = root?.classList?.contains('ml-cat-picker') ? root : root?.querySelector('.ml-cat-picker');
+  if (!picker) return ['lifestyle'];
+  const out = [];
+  const seen = new Set();
+  const push = (val) => {
+    const clean = String(val || '').trim().slice(0, 40);
+    if (!clean) return;
+    const low = clean.toLowerCase();
+    if (low === '__custom__' || seen.has(low)) return;
+    seen.add(low);
+    out.push(ML_SPONSOR_CAT_LABELS[low] ? low : clean);
+  };
+  picker.querySelectorAll('.ml-cat-chip.on').forEach((b) => push(b.dataset.cat));
+  const typed = picker.querySelector('.ml-cat-custom-in')?.value || '';
+  for (const part of typed.split(',')) push(part);
+  return out.length ? out : ['lifestyle'];
+}
+
+function bindSponsorCatPicker(root, onChange) {
+  const picker = root?.classList?.contains('ml-cat-picker') ? root : root?.querySelector('.ml-cat-picker');
+  if (!picker) return;
+  const bindChip = (chip) => {
+    chip.onclick = () => {
+      if (chip.dataset.custom === '1') {
+        chip.remove();
+      } else {
+        const next = !chip.classList.contains('on');
+        chip.classList.toggle('on', next);
+        chip.setAttribute('aria-pressed', String(next));
+      }
+      onChange?.();
+    };
+  };
+  picker.querySelectorAll('.ml-cat-chip').forEach(bindChip);
+  const addFromInput = () => {
+    const inp = picker.querySelector('.ml-cat-custom-in');
+    const chipsBox = picker.querySelector('.ml-cat-chips');
+    if (!inp || !chipsBox) return;
+    const parts = inp.value.split(',').map((s) => s.trim().slice(0, 40)).filter(Boolean);
+    for (const part of parts) {
+      const low = part.toLowerCase();
+      const existing = [...chipsBox.querySelectorAll('.ml-cat-chip')].find((b) => String(b.dataset.cat || '').toLowerCase() === low);
+      if (existing) {
+        existing.classList.add('on');
+        existing.setAttribute('aria-pressed', 'true');
+        continue;
+      }
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ml-cat-chip on is-custom';
+      btn.dataset.cat = part;
+      btn.dataset.custom = '1';
+      btn.setAttribute('aria-pressed', 'true');
+      btn.textContent = `${part} ×`;
+      chipsBox.appendChild(btn);
+      bindChip(btn);
+    }
+    inp.value = '';
+    onChange?.();
+  };
+  const addBtn = picker.querySelector('.ml-cat-custom-add');
+  if (addBtn) addBtn.onclick = addFromInput;
+  const inp = picker.querySelector('.ml-cat-custom-in');
+  if (inp) {
+    inp.onkeydown = (ev) => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        addFromInput();
+      }
+    };
+  }
+}
+
+function mlSetSponsorCatPicker(picker, categories = ['lifestyle'], onChange) {
+  if (!picker) return;
+  const wrap = document.createElement('div');
+  wrap.innerHTML = mlSponsorCatPickerHtml(categories);
+  const fresh = wrap.firstElementChild;
+  if (!fresh) return;
+  if (picker.id) fresh.id = picker.id;
+  picker.replaceWith(fresh);
+  bindSponsorCatPicker(fresh, onChange);
+}
+
 function mlCalSponsorRowHtml(item = {}, untilDefault = '') {
-  const cats = Object.entries(ML_SPONSOR_CAT_LABELS).map(([k, fn]) => `<option value="${k}"${(item.category || 'lifestyle') === k ? ' selected' : ''}>${esc(fn())}</option>`).join('');
+  const cats = Array.isArray(item.categories) && item.categories.length
+    ? item.categories
+    : (item.category ? [item.category] : ['lifestyle']);
   return `<div class="ml-cal-sp-row">
-    <label class="per-field"><span>${tr('Nom de la marque')}</span><input class="ml-csp-brand" value="${esc(item.brand || '')}" placeholder="${esc(tr('Nom du sponsor (éditable)'))}" maxlength="80"></label>
-    <label class="per-field"><span>${tr('Catégorie')}</span><select class="ml-csp-cat">${cats}</select></label>
-    <label class="per-field"><span>${tr('Montant annuel (€)')}</span><input class="ml-csp-fee" type="number" min="0" step="5000" value="${esc(item.fee ?? 150000)}" placeholder="${esc(tr('Montant annuel (€)'))}"></label>
-    <label class="per-field"><span>${tr('Prime but/passe (€)')}</span><input class="ml-csp-bonus" type="number" min="0" step="500" value="${esc(item.bonus ?? 2500)}" placeholder="${esc(tr('Prime but/passe (€)'))}"></label>
-    <label class="per-field"><span>${tr('Fin du contrat')}</span><input class="ml-csp-until" type="date" value="${esc(item.until || untilDefault)}"></label>
-    <button type="button" class="per-p-del ml-csp-del" aria-label="${esc(tr('Supprimer'))}">−</button>
+    <div class="ml-cal-sp-top">
+      <label class="per-field"><span>${tr('Nom de la marque')}</span><input class="ml-csp-brand" value="${esc(item.brand || '')}" placeholder="${esc(tr('Nom du sponsor (éditable)'))}" maxlength="80"></label>
+      <label class="per-field"><span>${tr('Montant annuel (€)')}</span><input class="ml-csp-fee" type="number" min="0" step="5000" value="${esc(item.fee ?? 150000)}" placeholder="${esc(tr('Montant annuel (€)'))}"></label>
+      <label class="per-field"><span>${tr('Prime but/passe (€)')}</span><input class="ml-csp-bonus" type="number" min="0" step="500" value="${esc(item.bonus ?? 2500)}" placeholder="${esc(tr('Prime but/passe (€)'))}"></label>
+      <label class="per-field"><span>${tr('Fin du contrat')}</span><input class="ml-csp-until" type="date" value="${esc(item.until || untilDefault)}"></label>
+      <button type="button" class="per-p-del ml-csp-del" aria-label="${esc(tr('Supprimer'))}">−</button>
+    </div>
+    <div class="per-field">
+      <span>${tr('Catégories (choix multiples & personnalisé)')}</span>
+      ${mlSponsorCatPickerHtml(cats)}
+    </div>
   </div>`;
 }
 
@@ -8403,7 +8531,7 @@ function mlAgendaItems(s, hub, cal, monthIso) {
     if (inMonth(ev.date)) items.push({ date: ev.date, kind: 'life', title: ev.title, detail: '' });
   }
   for (const ev of cal?.customEvents || []) {
-    if (inMonth(ev.date)) items.push({ id: ev.id, date: ev.date, kind: 'custom', category: ev.category, title: ev.title, detail: '' });
+    if (inMonth(ev.date)) items.push({ id: ev.id, date: ev.date, kind: 'custom', category: ev.category, customCategory: ev.customCategory || '', title: ev.title, detail: '' });
   }
   for (const w of s?.windows || []) {
     if (inMonth(w.open)) items.push({ date: w.open, kind: 'window', title: w.kind || tr('Mercato'), detail: tr('Ouverture') });
@@ -8435,7 +8563,7 @@ function renderMyLife(page) {
       ? view.mlCalSponsors
       : (hub.sponsors || []).filter((x) => !x.linkedBootDeal);
     view.mlCalSponsors = draftSponsors;
-    const calSlotCap = est.slotCap || slotCap;
+    const calSlotCap = est.slotCap === undefined ? slotCap : est.slotCap;
 
     const presetChips = ML_SPONSOR_PRESETS_UI.map((p, idx) => `<button type="button" class="ml-chip" data-calsp-preset="${idx}">+ ${esc(p.brand)}</button>`).join('');
     page.innerHTML = `<div class="ml">
@@ -8443,7 +8571,9 @@ function renderMyLife(page) {
         <div>
           <span class="ml-stage-pill">${esc(mlStageLabel(est.stage))}</span>
           <h1>${esc(s.player?.name || '')} · ${tr('Calibration de carrière')}</h1>
-          <p class="fineprint">${esc(tr('Détecté dans ta sauvegarde : {stage} · {apps} matchs · {goals} buts · jusqu’à {slots} sponsors', { stage: mlStageLabel(est.stage), apps: fmtNum(est.apps || 0), goals: fmtNum(est.goals || 0), slots: calSlotCap }))}</p>
+          <p class="fineprint">${esc(calSlotCap === null
+            ? tr('Détecté dans ta sauvegarde : {stage} · {apps} matchs · {goals} buts · sponsors illimités', { stage: mlStageLabel(est.stage), apps: fmtNum(est.apps || 0), goals: fmtNum(est.goals || 0) })
+            : tr('Détecté dans ta sauvegarde : {stage} · {apps} matchs · {goals} buts · jusqu’à {slots} sponsors', { stage: mlStageLabel(est.stage), apps: fmtNum(est.apps || 0), goals: fmtNum(est.goals || 0), slots: calSlotCap }))}</p>
         </div>
         ${hub.calibrated ? `<button type="button" class="btn" id="ml-cal-cancel">${tr('Retour au hub')}</button>` : ''}
       </header>
@@ -8480,11 +8610,13 @@ function renderMyLife(page) {
         </div>
 
         <h3>${tr('2. Sponsors déjà actifs (optionnel)')}</h3>
-        <p class="fineprint">${esc(tr('Tu peux ajouter jusqu’à {n} sponsor(s) déjà existant(s) et éditer chaque nom, catégorie ou montant.', { n: calSlotCap }))}</p>
+        <p class="fineprint">${esc(calSlotCap === null
+          ? tr('Ajoute autant de sponsors déjà existants que tu veux et édite chaque nom, montant ou catégorie.')
+          : tr('Tu peux ajouter jusqu’à {n} sponsor(s) déjà existant(s) et éditer chaque nom, catégorie ou montant.', { n: calSlotCap }))}</p>
         <div class="ml-chips">${presetChips}</div>
         <div class="ml-cal-sp-list" id="ml-cal-sp-list">${draftSponsors.map((sp) => mlCalSponsorRowHtml(sp, untilDefault)).join('')}</div>
         <div class="ml-cal-foot">
-          <button type="button" class="btn" id="ml-cal-sp-add"${draftSponsors.length >= calSlotCap ? ' disabled' : ''}>+ ${tr('Ajouter un sponsor')}</button>
+          <button type="button" class="btn" id="ml-cal-sp-add"${calSlotCap !== null && draftSponsors.length >= calSlotCap ? ' disabled' : ''}>+ ${tr('Ajouter un sponsor')}</button>
           <button type="button" class="btn primary big" id="ml-cal-submit">${tr('Valider et ouvrir Ma vie')}</button>
         </div>
       </section>
@@ -8492,18 +8624,23 @@ function renderMyLife(page) {
 
     const syncCalRows = () => {
       const rows = [...page.querySelectorAll('.ml-cal-sp-row')];
-      view.mlCalSponsors = rows.map((r) => ({
-        brand: r.querySelector('.ml-csp-brand')?.value.trim() || '',
-        category: r.querySelector('.ml-csp-cat')?.value || 'lifestyle',
-        fee: Number(r.querySelector('.ml-csp-fee')?.value) || 0,
-        bonus: Number(r.querySelector('.ml-csp-bonus')?.value) || 0,
-        until: r.querySelector('.ml-csp-until')?.value || untilDefault,
-      }));
+      view.mlCalSponsors = rows.map((r) => {
+        const categories = readSponsorCatPicker(r);
+        return {
+          brand: r.querySelector('.ml-csp-brand')?.value.trim() || '',
+          category: categories[0],
+          categories,
+          fee: Number(r.querySelector('.ml-csp-fee')?.value) || 0,
+          bonus: Number(r.querySelector('.ml-csp-bonus')?.value) || 0,
+          until: r.querySelector('.ml-csp-until')?.value || untilDefault,
+        };
+      });
       const addBtn = $('#ml-cal-sp-add');
-      if (addBtn) addBtn.disabled = rows.length >= calSlotCap;
+      if (addBtn) addBtn.disabled = calSlotCap !== null && rows.length >= calSlotCap;
     };
     const bindCalRow = (row) => {
       row.querySelectorAll('input, select').forEach((el) => { el.onchange = syncCalRows; });
+      bindSponsorCatPicker(row, syncCalRows);
       const del = row.querySelector('.ml-csp-del');
       if (del) del.onclick = () => { row.remove(); syncCalRows(); };
     };
@@ -8526,7 +8663,7 @@ function renderMyLife(page) {
     const appendCalSponsor = (sp = {}) => {
       syncCalRows();
       const list = $('#ml-cal-sp-list');
-      if (!list || list.querySelectorAll('.ml-cal-sp-row').length >= calSlotCap) return;
+      if (!list || (calSlotCap !== null && list.querySelectorAll('.ml-cal-sp-row').length >= calSlotCap)) return;
       const wrap = document.createElement('div');
       wrap.innerHTML = mlCalSponsorRowHtml(sp, untilDefault);
       const row = wrap.firstElementChild;
@@ -8605,7 +8742,7 @@ function renderMyLife(page) {
   const subTabs = [
     ['overview', tr('Tableau de bord'), (hub.pendingDilemma ? 1 : 0) + (sfxEnabled && hasPendingSfx ? 1 : 0)],
     ['calendar', tr('Calendrier'), pendingCalCount],
-    ['sponsors', tr('Sponsors ({cur}/{max})', { cur: hub.sponsors.length, max: slotCap }), spBadge],
+    ['sponsors', slotCap === null ? tr('Sponsors ({cur})', { cur: hub.sponsors.length }) : tr('Sponsors ({cur}/{max})', { cur: hub.sponsors.length, max: slotCap }), spBadge],
     ['shop', tr('Lifestyle & Patrimoine'), 0],
     ['finances', tr('Finances'), 0],
   ];
@@ -8633,36 +8770,41 @@ function renderMyLife(page) {
     ? hub.recentEvents.slice(0, 12).map((e) => `<li><span class="fineprint">${esc(shortDate(e.date))}</span><span>${esc(e.text)}</span></li>`).join('')
     : `<p class="fineprint">${tr('Aucune activité récente : choisis une action ou avance dans ta saison.')}</p>`;
 
-  const spCatsOpts = (sel) => Object.entries(ML_SPONSOR_CAT_LABELS).map(([k, fn]) => `<option value="${k}"${sel === k ? ' selected' : ''}>${esc(fn())}</option>`).join('');
-  const spPresetOpts = `<option value="">${esc(tr('Choisir un modèle (ou écrire en dessous)…'))}</option>${ML_SPONSOR_PRESETS_UI.map((p, i) => `<option value="${i}">${esc(p.brand)} (${esc(ML_SPONSOR_CAT_LABELS[p.category]())})</option>`).join('')}`;
-  const offersHtml = (hub.offers || []).length ? `<div class="ml-list">${hub.offers.map((o) => `<div class="card ml-offer">
-    <div class="ml-offer-info"><span class="priv-tag">${esc((ML_SPONSOR_CAT_LABELS[o.category] || ML_SPONSOR_CAT_LABELS.lifestyle)())}</span><h4>${esc(o.brand)}</h4><p class="fineprint">${esc(o.person)} · ${esc(tr('{fee}/an · +{bonus}/but ou passe', { fee: euros(o.fee), bonus: euros(o.bonus) }))}</p></div>
-    <div class="ml-offer-acts">
-      <button type="button" class="btn primary" data-mloff="${esc(o.id)}" data-offact="accept"${hub.sponsors.length >= slotCap ? ' disabled' : ''}>${tr('Signer')}</button>
-      <button type="button" class="btn" data-mloff="${esc(o.id)}" data-offact="negotiate"${o.negotiated ? ' disabled' : ''}>${tr('Négocier')}</button>
-      <button type="button" class="btn" data-mloff="${esc(o.id)}" data-offact="decline">${tr('Refuser')}</button>
-    </div>
-  </div>`).join('')}</div>` : `<p class="fineprint">${tr('Aucune offre en attente pour l’instant. Enchaîne les matchs pour attirer de nouvelles marques.')}</p>`;
+  const spPresetOpts = `<option value="">${esc(tr('Choisir un modèle (ou écrire en dessous)…'))}</option>${ML_SPONSOR_PRESETS_UI.map((p, i) => `<option value="${i}">${esc(p.brand)} (${esc((p.categories || [p.category]).map(mlSponsorCatLabel).join(' / '))})</option>`).join('')}`;
+  const offersHtml = (hub.offers || []).length ? `<div class="ml-list">${hub.offers.map((o) => {
+    const oCats = Array.isArray(o.categories) && o.categories.length ? o.categories : [o.category || 'lifestyle'];
+    return `<div class="card ml-offer">
+      <div class="ml-offer-info"><div class="ml-sp-head">${oCats.map((c) => `<span class="priv-tag">${esc(mlSponsorCatLabel(c))}</span>`).join('')}</div><h4>${esc(o.brand)}</h4><p class="fineprint">${esc(o.person)} · ${esc(tr('{fee}/an · +{bonus}/but ou passe', { fee: euros(o.fee), bonus: euros(o.bonus) }))}</p></div>
+      <div class="ml-offer-acts">
+        <button type="button" class="btn primary" data-mloff="${esc(o.id)}" data-offact="accept"${slotCap !== null && hub.sponsors.length >= slotCap ? ' disabled' : ''}>${tr('Signer')}</button>
+        <button type="button" class="btn" data-mloff="${esc(o.id)}" data-offact="negotiate"${o.negotiated ? ' disabled' : ''}>${tr('Négocier')}</button>
+        <button type="button" class="btn" data-mloff="${esc(o.id)}" data-offact="decline">${tr('Refuser')}</button>
+      </div>
+    </div>`;
+  }).join('')}</div>` : `<p class="fineprint">${tr('Aucune offre en attente pour l’instant. Enchaîne les matchs pour attirer de nouvelles marques.')}</p>`;
 
-  const activeSponsorsHtml = hub.sponsors.length ? hub.sponsors.map((sp) => `<div class="card ml-sp-card" data-spid="${esc(sp.id)}">
-    <div class="ml-sp-head">
-      <span class="priv-tag">${esc((ML_SPONSOR_CAT_LABELS[sp.category] || ML_SPONSOR_CAT_LABELS.lifestyle)())}</span>
-      ${sp.linkedBootDeal ? `<span class="priv-badge on">${tr('Lié aux crampons (Mails)')}</span>` : ''}
-      <span class="fineprint">${esc(sp.until ? tr('Jusqu’au {d}', { d: shortDate(sp.until) }) : '')}</span>
-    </div>
-    <div class="ml-sp-grid">
-      <label class="per-field"><span>${tr('Nom de la marque')}</span><input class="ml-sp-brand" value="${esc(sp.brand)}" maxlength="80"></label>
-      <label class="per-field"><span>${tr('Catégorie')}</span><select class="ml-sp-cat">${spCatsOpts(sp.category)}</select></label>
-      <label class="per-field"><span>${tr('Montant annuel (€)')}</span><input class="ml-sp-fee" type="number" min="0" step="1000" value="${esc(sp.fee || 0)}"></label>
-      <label class="per-field"><span>${tr('Prime but/passe (€)')}</span><input class="ml-sp-bonus" type="number" min="0" step="250" value="${esc(sp.bonus || 0)}"></label>
-      <label class="per-field"><span>${tr('Fin du contrat')}</span><input class="ml-sp-until" type="date" value="${esc(sp.until || '')}"></label>
-      <label class="per-field"><span>${tr('Notes personnelles')}</span><input class="ml-sp-notes" value="${esc(sp.notes || '')}" placeholder="${esc(tr('Clause ou détail libre…'))}" maxlength="140"></label>
-    </div>
-    <div class="ml-sp-acts">
-      <button type="button" class="btn primary ml-sp-save">${tr('Enregistrer')}</button>
-      <button type="button" class="btn ml-sp-del">${tr('Résilier')}</button>
-    </div>
-  </div>`).join('') : `<p class="fineprint">${tr('Aucun sponsor actif pour l’instant.')}</p>`;
+  const activeSponsorsHtml = hub.sponsors.length ? hub.sponsors.map((sp) => {
+    const spCats = Array.isArray(sp.categories) && sp.categories.length ? sp.categories : [sp.category || 'lifestyle'];
+    return `<div class="card ml-sp-card" data-spid="${esc(sp.id)}">
+      <div class="ml-sp-head">
+        ${spCats.map((c) => `<span class="priv-tag">${esc(mlSponsorCatLabel(c))}</span>`).join('')}
+        ${sp.linkedBootDeal ? `<span class="priv-badge on">${tr('Lié aux crampons (Mails)')}</span>` : ''}
+        <span class="fineprint">${esc(sp.until ? tr('Jusqu’au {d}', { d: shortDate(sp.until) }) : '')}</span>
+      </div>
+      <div class="ml-sp-grid">
+        <label class="per-field"><span>${tr('Nom de la marque')}</span><input class="ml-sp-brand" value="${esc(sp.brand)}" maxlength="80"></label>
+        <label class="per-field"><span>${tr('Montant annuel (€)')}</span><input class="ml-sp-fee" type="number" min="0" step="1000" value="${esc(sp.fee || 0)}"></label>
+        <label class="per-field"><span>${tr('Prime but/passe (€)')}</span><input class="ml-sp-bonus" type="number" min="0" step="250" value="${esc(sp.bonus || 0)}"></label>
+        <label class="per-field"><span>${tr('Fin du contrat')}</span><input class="ml-sp-until" type="date" value="${esc(sp.until || '')}"></label>
+        <label class="per-field"><span>${tr('Notes personnelles')}</span><input class="ml-sp-notes" value="${esc(sp.notes || '')}" placeholder="${esc(tr('Clause ou détail libre…'))}" maxlength="140"></label>
+        <div class="per-field ml-sp-cats-field"><span>${tr('Catégories (choix multiples & personnalisé)')}</span>${mlSponsorCatPickerHtml(spCats)}</div>
+      </div>
+      <div class="ml-sp-acts">
+        <button type="button" class="btn primary ml-sp-save">${tr('Enregistrer')}</button>
+        <button type="button" class="btn ml-sp-del">${tr('Résilier')}</button>
+      </div>
+    </div>`;
+  }).join('') : `<p class="fineprint">${tr('Aucun sponsor actif pour l’instant.')}</p>`;
 
   const obligationsHtml = pendingObs.length ? pendingObs.map((ob) => `<div class="card ml-ob">
     <div><b>${esc(ob.brand)}</b><div class="fineprint">${esc((ML_OBLIGATION_LABELS[ob.kind] || ML_OBLIGATION_LABELS.brand_appearance)())} · ${esc(tr('Avant le {d}', { d: shortDate(ob.dueDate) }))} · +${esc(euros(ob.rewardCash))}</div></div>
@@ -8698,7 +8840,7 @@ function renderMyLife(page) {
       </div>
     </div>`;
   }).join('') + ownedCustom.map((a) => `<div class="card ml-shop-card owned">
-    <div class="ml-sp-head"><span class="priv-tag">${esc((ML_ASSET_CAT_LABELS[a.category] || ML_ASSET_CAT_LABELS.investment)())}</span><span class="priv-badge on">${tr('Possédé')}</span></div>
+    <div class="ml-sp-head"><span class="priv-tag">${esc(a.customCategory || (ML_ASSET_CAT_LABELS[a.category] || ML_ASSET_CAT_LABELS.custom)())}</span><span class="priv-badge on">${tr('Possédé')}</span></div>
     <h4>${esc(a.name)}</h4>
     <div class="ml-shop-foot">
       <span class="fineprint">${esc(euros(a.price))}${a.monthlyCost ? ` · ${esc(euros(a.monthlyCost))}/m` : ''}</span>
@@ -8747,7 +8889,7 @@ function renderMyLife(page) {
     if (it.kind === 'sponsor') return tr('Sponsor');
     if (it.kind === 'window') return tr('Mercato');
     if (it.kind === 'life') return tr('Événement');
-    return (ML_CAL_CAT_LABELS[it.category] || ML_CAL_CAT_LABELS.personal)();
+    return it.customCategory || (ML_CAL_CAT_LABELS[it.category] || ML_CAL_CAT_LABELS.personal)();
   };
   const selItemsHtml = selItems.length
     ? `<ul class="ml-cal-items">${selItems.map((it) => `<li class="ml-cal-item ml-cal-item--${esc(it.kind)}">
@@ -8759,7 +8901,7 @@ function renderMyLife(page) {
         ${it.kind === 'custom' && it.id ? `<button type="button" class="per-p-del" data-caldel="${esc(it.id)}" aria-label="${esc(tr('Supprimer'))}">−</button>` : ''}
       </li>`).join('')}</ul>`
     : `<p class="fineprint">${tr('Journée calme : tu peux ajouter un événement personnel ou avancer dans le calendrier.')}</p>`;
-  const calCatOpts = Object.entries(ML_CAL_CAT_LABELS).map(([k, fn]) => `<option value="${k}">${esc(fn())}</option>`).join('');
+  const calCatOpts = `${Object.entries(ML_CAL_CAT_LABELS).map(([k, fn]) => `<option value="${k}">${esc(fn())}</option>`).join('')}<option value="__custom__">${esc(tr('Personnalisé…'))}</option>`;
   const calHistHtml = (cal.history || []).slice(0, 6).map((h) => {
     const rLabel = (ML_RHYTHM_LABELS[h.rhythm] || ML_RHYTHM_LABELS.training)();
     const detail = h.matches ? `${rLabel} · ${tr('{n} match(s) révélé(s).', { n: h.matches })}` : rLabel;
@@ -8781,7 +8923,9 @@ function renderMyLife(page) {
           <button type="button" class="ml-mode-pill${calModeFull ? ' on' : ''}" id="ml-cal-mode-toggle" title="${esc(tr('Basculer entre synchro directe et calendrier complet anti-spoilers'))}">${esc(calModeFull ? tr('Calendrier : Complet') : tr('Calendrier : Basique'))}${calModeFull && pendingCalCount ? ` (${pendingCalCount})` : ''}</button>
         </div>
         <h1>${esc(s.player?.name || '')} · ${esc(s.club?.name || '')}</h1>
-        <p class="fineprint">${esc(tr('{f} abonnés Kop · {slots} places sponsors', { f: fmtCount(state.profile?.followers || 0), slots: slotCap }))}</p>
+        <p class="fineprint">${esc(slotCap === null
+          ? tr('{f} abonnés Kop · sponsors illimités', { f: fmtCount(state.profile?.followers || 0) })
+          : tr('{f} abonnés Kop · {slots} places sponsors', { f: fmtCount(state.profile?.followers || 0), slots: slotCap }))}</p>
       </div>
       <button type="button" class="btn" id="ml-recalibrate">${tr('Recalibrer')}</button>
     </header>
@@ -8827,7 +8971,12 @@ function renderMyLife(page) {
         ${offersHtml}
       </div>
       <div class="card ml-card">
-        <div class="ml-sec-head"><h3>${tr('Contrats actifs ({cur} / {max})', { cur: hub.sponsors.length, max: slotCap })}</h3><span class="fineprint">${tr('Débloque jusqu’à 5 places selon ta notoriété et tes abonnés Kop.')}</span></div>
+        <div class="ml-sec-head">
+          <h3>${slotCap === null ? tr('Contrats actifs ({cur})', { cur: hub.sponsors.length }) : tr('Contrats actifs ({cur} / {max})', { cur: hub.sponsors.length, max: slotCap })}</h3>
+          <span class="fineprint">${slotCap === null
+            ? tr('Statut Superstar / 2M+ abonnés : sponsors illimités et mêmes marques cumulables sur plusieurs catégories.')
+            : tr('Débloque des places illimitées au statut Superstar ou dès 2M d’abonnés Kop.')}</span>
+        </div>
         <div class="ml-sp-list">${activeSponsorsHtml}</div>
         <details class="ml-custom-box">
           <summary>${tr('+ Ajouter un sponsor personnalisé')}</summary>
@@ -8835,12 +8984,12 @@ function renderMyLife(page) {
             <label class="per-field"><span>${tr('Modèle rapide')}</span><select id="ml-sp-preset">${spPresetOpts}</select></label>
             <div class="ml-sp-grid">
               <label class="per-field"><span>${tr('Nom de la marque')}</span><input id="ml-newsp-brand" placeholder="${esc(tr('Nom du sponsor (éditable)'))}" maxlength="80"></label>
-              <label class="per-field"><span>${tr('Catégorie')}</span><select id="ml-newsp-cat">${spCatsOpts('lifestyle')}</select></label>
               <label class="per-field"><span>${tr('Montant annuel (€)')}</span><input id="ml-newsp-fee" type="number" min="0" step="5000" value="150000" placeholder="${esc(tr('Montant annuel (€)'))}"></label>
               <label class="per-field"><span>${tr('Prime but/passe (€)')}</span><input id="ml-newsp-bonus" type="number" min="0" step="500" value="2500" placeholder="${esc(tr('Prime but/passe (€)'))}"></label>
               <label class="per-field"><span>${tr('Fin du contrat')}</span><input id="ml-newsp-until" type="date" value="${esc(`${Number(String(s.gameDate || '2026-08-01').slice(0, 4)) + 2}-06-30`)}"></label>
+              <div class="per-field ml-sp-cats-field"><span>${tr('Catégories (choix multiples & personnalisé)')}</span>${mlSponsorCatPickerHtml(['lifestyle'], 'id="ml-newsp-cats"')}</div>
             </div>
-            <button type="button" class="btn primary" id="ml-newsp-go"${hub.sponsors.length >= slotCap ? ' disabled' : ''}>${tr('Ajouter')}</button>
+            <button type="button" class="btn primary" id="ml-newsp-go"${slotCap !== null && hub.sponsors.length >= slotCap ? ' disabled' : ''}>${tr('Ajouter')}</button>
           </div>
         </details>
       </div>
@@ -8858,7 +9007,8 @@ function renderMyLife(page) {
           <summary>${tr('+ Achat ou investissement personnalisé')}</summary>
           <div class="ml-custom-form">
             <label class="per-field"><span>${tr('Nom')}</span><input id="ml-casset-name" placeholder="${esc(tr('ex. Maison au Brésil, yacht, académie locale…'))}" maxlength="80"></label>
-            <label class="per-field"><span>${tr('Catégorie')}</span><select id="ml-casset-cat">${Object.entries(ML_ASSET_CAT_LABELS).filter(([k]) => k !== 'all').map(([k, fn]) => `<option value="${k}">${esc(fn())}</option>`).join('')}</select></label>
+            <label class="per-field"><span>${tr('Catégorie')}</span><select id="ml-casset-cat">${Object.entries(ML_ASSET_CAT_LABELS).filter(([k]) => k !== 'all' && k !== 'custom').map(([k, fn]) => `<option value="${k}">${esc(fn())}</option>`).join('')}<option value="__custom__">${esc(tr('Personnalisé…'))}</option></select></label>
+            <label class="per-field" id="ml-casset-cat-custom-wrap" hidden><span>${tr('Catégorie personnalisée')}</span><input id="ml-casset-cat-custom" placeholder="${esc(tr('ex. Montre, Yacht, Studio musique…'))}" maxlength="40"></label>
             <label class="per-field"><span>${tr('Prix (€)')}</span><input id="ml-casset-price" type="number" min="0" step="1000" value="50000" placeholder="${esc(tr('Prix (€)'))}"></label>
             <label class="per-field"><span>${tr('Coût mensuel (€)')}</span><input id="ml-casset-mcost" type="number" min="0" step="100" value="0" placeholder="${esc(tr('Coût mensuel (€)'))}"></label>
             <button type="button" class="btn primary" id="ml-casset-go">${tr('Acheter')}</button>
@@ -8933,6 +9083,7 @@ function renderMyLife(page) {
               <label class="per-field"><span>${tr('Date')}</span><input id="ml-calev-date" type="date" value="${esc(calDay)}"></label>
               <label class="per-field"><span>${tr('Titre')}</span><input id="ml-calev-title" placeholder="${esc(tr('ex. Dîner famille, séance photo, visite fondation…'))}" maxlength="100"></label>
               <label class="per-field"><span>${tr('Catégorie')}</span><select id="ml-calev-cat">${calCatOpts}</select></label>
+              <label class="per-field" id="ml-calev-cat-custom-wrap" hidden><span>${tr('Catégorie personnalisée')}</span><input id="ml-calev-cat-custom" placeholder="${esc(tr('ex. Gala, Entraînement perso…'))}" maxlength="40"></label>
               <button type="button" class="btn primary" id="ml-calev-go">${tr('Planifier')}</button>
             </div>
           </details>
@@ -8972,15 +9123,18 @@ function renderMyLife(page) {
   });
   page.querySelectorAll('.ml-sp-card').forEach((card) => {
     const id = card.dataset.spid;
+    bindSponsorCatPicker(card);
     const saveBtn = card.querySelector('.ml-sp-save');
     const delBtn = card.querySelector('.ml-sp-del');
     if (saveBtn) {
       saveBtn.onclick = async () => {
         try {
+          const categories = readSponsorCatPicker(card);
           state = await live.updateLifeSponsor({
             id,
             brand: card.querySelector('.ml-sp-brand').value,
-            category: card.querySelector('.ml-sp-cat').value,
+            category: categories[0],
+            categories,
             fee: Number(card.querySelector('.ml-sp-fee').value) || 0,
             bonus: Number(card.querySelector('.ml-sp-bonus').value) || 0,
             until: card.querySelector('.ml-sp-until').value,
@@ -9000,23 +9154,26 @@ function renderMyLife(page) {
       };
     }
   });
+  if ($('#ml-newsp-cats')) bindSponsorCatPicker($('#ml-newsp-cats'));
   const spPresetSel = $('#ml-sp-preset');
   if (spPresetSel) {
     spPresetSel.onchange = () => {
       const p = ML_SPONSOR_PRESETS_UI[Number(spPresetSel.value)];
       if (!p) return;
       $('#ml-newsp-brand').value = p.brand;
-      $('#ml-newsp-cat').value = p.category;
       $('#ml-newsp-fee').value = p.fee;
       $('#ml-newsp-bonus').value = p.bonus;
+      if ($('#ml-newsp-cats')) mlSetSponsorCatPicker($('#ml-newsp-cats'), p.categories || [p.category]);
     };
   }
   if ($('#ml-newsp-go')) {
     $('#ml-newsp-go').onclick = async () => {
       try {
+        const categories = $('#ml-newsp-cats') ? readSponsorCatPicker($('#ml-newsp-cats')) : ['lifestyle'];
         state = await live.addLifeSponsor({
           brand: $('#ml-newsp-brand').value,
-          category: $('#ml-newsp-cat').value,
+          category: categories[0],
+          categories,
           fee: Number($('#ml-newsp-fee').value) || 0,
           bonus: Number($('#ml-newsp-bonus').value) || 0,
           until: $('#ml-newsp-until').value,
@@ -9043,13 +9200,20 @@ function renderMyLife(page) {
       try { state = await live.sellLifeAsset(b.dataset.mlsell); render(); } catch (err) { toast(err.message, true); }
     };
   });
+  if ($('#ml-casset-cat')) {
+    $('#ml-casset-cat').onchange = () => {
+      if ($('#ml-casset-cat-custom-wrap')) $('#ml-casset-cat-custom-wrap').hidden = $('#ml-casset-cat').value !== '__custom__';
+    };
+  }
   if ($('#ml-casset-go')) {
     $('#ml-casset-go').onclick = async () => {
       try {
+        const cat = $('#ml-casset-cat').value;
         state = await live.buyLifeAsset({
           custom: true,
           name: $('#ml-casset-name').value,
-          category: $('#ml-casset-cat').value,
+          category: cat,
+          customCategory: cat === '__custom__' ? $('#ml-casset-cat-custom')?.value || '' : '',
           price: Number($('#ml-casset-price').value) || 0,
           monthlyCost: Number($('#ml-casset-mcost').value) || 0,
         });
@@ -9108,11 +9272,22 @@ function renderMyLife(page) {
   page.querySelectorAll('[data-calday]').forEach((b) => {
     b.onclick = () => { view.mlCalDay = b.dataset.calday; renderMyLife(page); };
   });
+  if ($('#ml-calev-cat')) {
+    $('#ml-calev-cat').onchange = () => {
+      if ($('#ml-calev-cat-custom-wrap')) $('#ml-calev-cat-custom-wrap').hidden = $('#ml-calev-cat').value !== '__custom__';
+    };
+  }
   if ($('#ml-calev-go')) {
     $('#ml-calev-go').onclick = async () => {
       try {
         const date = $('#ml-calev-date').value;
-        state = await live.addCalendarEvent({ date, title: $('#ml-calev-title').value, category: $('#ml-calev-cat').value });
+        const cat = $('#ml-calev-cat').value;
+        state = await live.addCalendarEvent({
+          date,
+          title: $('#ml-calev-title').value,
+          category: cat,
+          customCategory: cat === '__custom__' ? $('#ml-calev-cat-custom')?.value || '' : '',
+        });
         if (date) { view.mlCalMonth = date.slice(0, 7); view.mlCalDay = date; }
         toast(tr('Événement ajouté au calendrier.'));
         render();

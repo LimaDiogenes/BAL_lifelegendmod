@@ -5,15 +5,21 @@
 
 const { PERSONA_PRESETS } = require('./persona');
 
-const SPONSOR_CATEGORIES = ['boots', 'apparel', 'lifestyle', 'tech', 'global'];
+const SPONSOR_CATEGORIES = [
+  'boots', 'apparel', 'beverage', 'automotive', 'watches',
+  'lifestyle', 'tech', 'travel', 'finance', 'grooming',
+  'media', 'health', 'global',
+];
 
 const SPONSOR_PRESETS = [
-  { id: 'boots_pro', category: 'boots', brand: 'Nike Football', baseFee: 180000, bonus: 3500 },
-  { id: 'apparel_ath', category: 'apparel', brand: 'Adidas Originals', baseFee: 240000, bonus: 4000 },
-  { id: 'lifestyle_bev', category: 'lifestyle', brand: 'Gatorade Fuel', baseFee: 140000, bonus: 2500 },
-  { id: 'lifestyle_lux', category: 'lifestyle', brand: 'TAG Heuer Chrono', baseFee: 420000, bonus: 6000 },
-  { id: 'tech_game', category: 'tech', brand: 'EA / HyperStrike Gaming', baseFee: 160000, bonus: 3000 },
-  { id: 'global_air', category: 'global', brand: 'Emirates Fly', baseFee: 650000, bonus: 9000 },
+  { id: 'boots_pro', category: 'boots', categories: ['boots', 'apparel'], brand: 'Nike Football', baseFee: 180000, bonus: 3500 },
+  { id: 'apparel_ath', category: 'apparel', categories: ['apparel', 'boots'], brand: 'Adidas Originals', baseFee: 240000, bonus: 4000 },
+  { id: 'puma_pack', category: 'boots', categories: ['boots', 'apparel'], brand: 'Puma Sport', baseFee: 170000, bonus: 3000 },
+  { id: 'beverage_fuel', category: 'beverage', categories: ['beverage', 'health'], brand: 'Gatorade Fuel', baseFee: 140000, bonus: 2500 },
+  { id: 'auto_drive', category: 'automotive', categories: ['automotive', 'lifestyle'], brand: 'Porsche Motorsport', baseFee: 380000, bonus: 5500 },
+  { id: 'watch_lux', category: 'watches', categories: ['watches', 'lifestyle'], brand: 'TAG Heuer Chrono', baseFee: 420000, bonus: 6000 },
+  { id: 'tech_game', category: 'tech', categories: ['tech', 'media'], brand: 'EA / HyperStrike Gaming', baseFee: 160000, bonus: 3000 },
+  { id: 'global_air', category: 'global', categories: ['travel', 'global'], brand: 'Emirates Fly', baseFee: 650000, bonus: 9000 },
 ];
 
 const OFFER_PERSON_NAMES = [
@@ -186,10 +192,10 @@ function detectCareerStage(snapshot, state = null) {
 }
 
 function sponsorSlotCap(followers = 0, stage = 'rookie') {
-  const stageFloor = { rookie: 1, rising: 2, established: 3, superstar: 4 }[stage] || 1;
+  if (stage === 'superstar' || followers >= 2000000) return null;
+  const stageFloor = { rookie: 1, rising: 2, established: 3 }[stage] || 1;
   let fCap = 1;
-  if (followers >= 2000000) fCap = 5;
-  else if (followers >= 600000) fCap = 4;
+  if (followers >= 600000) fCap = 5;
   else if (followers >= 150000) fCap = 3;
   else if (followers >= 25000) fCap = 2;
   return Math.max(stageFloor, fCap);
@@ -290,8 +296,43 @@ function stampEstimate(hub, est) {
     cashOnly: est.cashOnly,
     cashHumble: est.cashHumble,
     bundleAssetIds: est.bundleAssetIds || [],
-    slotCap: est.slotCap || 1,
+    slotCap: est.slotCap === undefined ? 1 : est.slotCap,
   };
+}
+
+function normalizeSponsorCategories(raw) {
+  const list = [];
+  if (Array.isArray(raw?.categories)) list.push(...raw.categories);
+  else if (typeof raw?.categories === 'string') list.push(...raw.categories.split(','));
+  if (raw?.category && raw.category !== '__custom__') list.push(raw.category);
+  if (Array.isArray(raw?.customCategories)) list.push(...raw.customCategories);
+  else if (typeof raw?.customCategories === 'string') list.push(...raw.customCategories.split(','));
+
+  const out = [];
+  const seen = new Set();
+  for (const item of list) {
+    const clean = cleanText(item, 40);
+    if (!clean) continue;
+    const low = clean.toLowerCase();
+    if (low === '__custom__') continue;
+    const val = SPONSOR_CATEGORIES.includes(low) ? low : clean;
+    if (seen.has(val.toLowerCase())) continue;
+    seen.add(val.toLowerCase());
+    out.push(val);
+    if (out.length >= 8) break;
+  }
+  return out.length ? out : ['lifestyle'];
+}
+
+function isDuplicateSponsor(sponsors, entry) {
+  const b = cleanText(entry?.brand, 80).toLowerCase();
+  if (!b) return false;
+  const incoming = normalizeSponsorCategories(entry).map((c) => c.toLowerCase());
+  return (sponsors || []).some((s) => {
+    if (cleanText(s.brand, 80).toLowerCase() !== b) return false;
+    const existing = new Set(normalizeSponsorCategories(s).map((c) => c.toLowerCase()));
+    return incoming.every((c) => existing.has(c));
+  });
 }
 
 function ensureLifeHub(state, snapshot = state?.snapshot) {
@@ -328,6 +369,10 @@ function ensureLifeHub(state, snapshot = state?.snapshot) {
   hub.meters ||= { manager: 50, squad: 52, fans: 48, sponsors: 40, media: 48 };
   hub.assets ||= [];
   hub.sponsors ||= [];
+  for (const sp of hub.sponsors) {
+    sp.categories = normalizeSponsorCategories(sp);
+    sp.category = sp.categories[0];
+  }
   hub.offers ||= [];
   hub.obligations ||= [];
   hub.ledger ||= [];
@@ -392,7 +437,7 @@ function assetNetWorth(hub) {
 function normalizeSponsorEntry(raw, fallbackId, today) {
   const brand = cleanText(raw?.brand, 80);
   if (!brand) return null;
-  const category = SPONSOR_CATEGORIES.includes(raw?.category) ? raw.category : 'lifestyle';
+  const categories = normalizeSponsorCategories(raw);
   const fee = Math.max(0, Math.round(Number(raw?.fee) || 0));
   const bonus = Math.max(0, Math.round(Number(raw?.bonus) || 0));
   const since = cleanText(raw?.since, 10) || today || '';
@@ -400,7 +445,8 @@ function normalizeSponsorEntry(raw, fallbackId, today) {
   return {
     id: cleanText(raw?.id, 40) || fallbackId,
     linkedBootDeal: Boolean(raw?.linkedBootDeal),
-    category,
+    category: categories[0],
+    categories,
     brand,
     fee,
     bonus,
@@ -424,12 +470,15 @@ function syncBootSponsor(state, hub) {
     cur.fee = deal.fee;
     cur.bonus = deal.bonus;
     cur.until = deal.until;
+    cur.categories = normalizeSponsorCategories(cur.categories?.length ? cur : { category: 'boots' });
+    cur.category = cur.categories[0];
     return;
   }
   const entry = {
     id: 'boot_deal',
     linkedBootDeal: true,
     category: 'boots',
+    categories: ['boots'],
     brand: deal.brand,
     fee: deal.fee || 0,
     bonus: deal.bonus || 0,
@@ -450,15 +499,21 @@ function scheduleNextObligation(hub, today, newId) {
   const kinds = {
     boots: 'boot_launch',
     apparel: 'kit_shoot',
+    beverage: 'kit_shoot',
+    automotive: 'vip_event',
+    watches: 'vip_event',
     lifestyle: 'vip_event',
     tech: 'stream_promo',
+    media: 'stream_promo',
+    travel: 'brand_gala',
     global: 'brand_gala',
   };
+  const primaryCat = pick.categories?.[0] || pick.category;
   hub.obligations.push({
     id: newId(),
     sponsorId: pick.id,
     brand: pick.brand,
-    kind: kinds[pick.category] || 'brand_appearance',
+    kind: kinds[primaryCat] || 'brand_appearance',
     dueDate: addDaysIso(today, 21),
     rewardCash: roundStep(Math.max(2500, (pick.fee || 40000) * 0.04), 500),
     status: 'pending',
@@ -511,10 +566,10 @@ function calibrateLifeHub(state, snapshot, payload = {}, newId = () => `id_${Dat
   const cap = sponsorSlotCap(state.profile?.followers || est.followers, est.stage);
   const rawList = Array.isArray(payload.existingSponsors) ? payload.existingSponsors : [];
   for (const item of rawList) {
-    if (hub.sponsors.length >= cap) break;
+    if (cap !== null && hub.sponsors.length >= cap) break;
     const norm = normalizeSponsorEntry(item, newId(), today);
     if (!norm) continue;
-    if (hub.sponsors.some((s) => s.brand.toLowerCase() === norm.brand.toLowerCase())) continue;
+    if (isDuplicateSponsor(hub.sponsors, norm)) continue;
     hub.sponsors.push(norm);
   }
 
@@ -527,13 +582,13 @@ function calibrateLifeHub(state, snapshot, payload = {}, newId = () => `id_${Dat
 function makeSponsorOffer(state, snapshot, hub, newId) {
   const today = snapshot.gameDate;
   const est = estimateStartProfile(snapshot, state);
-  const activeBrands = new Set(hub.sponsors.map((s) => s.brand.toLowerCase()));
-  const openBrands = new Set(hub.offers.map((o) => o.brand.toLowerCase()));
-  const candidates = SPONSOR_PRESETS.filter((p) => !activeBrands.has(p.brand.toLowerCase()) && !openBrands.has(p.brand.toLowerCase()));
+  const openKeys = new Set(hub.offers.map((o) => `${o.brand.toLowerCase()}|${normalizeSponsorCategories(o).join(',')}`));
+  const candidates = SPONSOR_PRESETS.filter((p) => !isDuplicateSponsor(hub.sponsors, p) && !openKeys.has(`${p.brand.toLowerCase()}|${normalizeSponsorCategories(p).join(',')}`));
   if (!candidates.length) return null;
 
   const idx = hashStr(`${state.careerId}|${today}|mloff`) % candidates.length;
   const base = candidates[idx];
+  const categories = normalizeSponsorCategories(base);
   const scale = { rookie: 0.45, rising: 1.0, established: 2.0, superstar: 3.6 }[est.stage] || 1;
   const wageBoost = Math.max(0, (snapshot?.player?.salary || 0) * 0.08);
   const meterScale = 0.85 + (hub.meters.sponsors / 100) * 0.35;
@@ -542,7 +597,8 @@ function makeSponsorOffer(state, snapshot, hub, newId) {
   const person = OFFER_PERSON_NAMES[hashStr(`${today}|${base.brand}`) % OFFER_PERSON_NAMES.length];
   return {
     id: newId(),
-    category: base.category,
+    category: categories[0],
+    categories,
     brand: base.brand,
     person,
     fee,
@@ -671,7 +727,7 @@ function lifeHubTick(state, snapshot, { changes = {}, newId = () => `id_${Date.n
   // Génère une nouvelle offre de sponsor si une place est libre (tous les ~14 jours).
   const cap = sponsorSlotCap(state.profile?.followers || 0, hub.stage);
   const cooldownDone = !hub.offerCooldownUntil || today >= hub.offerCooldownUntil;
-  if (hub.sponsors.length < cap && hub.offers.length < 2 && cooldownDone && results.length > 0) {
+  if ((cap === null || hub.sponsors.length < cap) && hub.offers.length < 2 && cooldownDone && results.length > 0) {
     const offer = makeSponsorOffer(state, snapshot, hub, newId);
     if (offer) {
       hub.offers.push(offer);
@@ -701,10 +757,17 @@ function buyAsset(state, payload = {}, gameDate = '', newId = () => `id_${Date.n
   if (custom) {
     const name = cleanText(payload.name, 80);
     if (!name) throw new Error('Nom de l’élément requis.');
-    const category = ASSET_CATEGORIES.includes(payload.category) ? payload.category : 'lifestyle';
+    const rawCat = cleanText(payload.category, 40);
+    const customLabel = cleanText(payload.customCategory, 40);
+    let category = ASSET_CATEGORIES.includes(rawCat) ? rawCat : 'custom';
+    let customCategory = '';
+    if (rawCat === '__custom__' || rawCat === 'custom' || customLabel || !ASSET_CATEGORIES.includes(rawCat)) {
+      category = 'custom';
+      customCategory = customLabel || (rawCat && rawCat !== '__custom__' && rawCat !== 'custom' ? rawCat : '');
+    }
     const price = Math.max(0, Math.round(Number(payload.price) || 0));
     const monthlyCost = Math.max(0, Math.round(Number(payload.monthlyCost) || 0));
-    item = { id: newId(), catalogId: null, category, name, price, resaleValue: price, monthlyCost, passiveReturn: 0, perks: { fans: category === 'charity' ? 4 : 1, media: 1 }, custom: true };
+    item = { id: newId(), catalogId: null, category, ...(customCategory ? { customCategory } : {}), name, price, resaleValue: price, monthlyCost, passiveReturn: 0, perks: { fans: category === 'charity' ? 4 : 1, media: 1 }, custom: true };
   } else {
     const cat = ASSET_CATALOG.find((a) => a.id === payload.catalogId);
     if (!cat) throw new Error('Élément introuvable.');
@@ -742,10 +805,10 @@ function sellAsset(state, assetId, gameDate = '') {
 function addSponsor(state, payload = {}, gameDate = '', newId = () => `id_${Date.now()}`) {
   const hub = ensureLifeHub(state, state.snapshot);
   const cap = sponsorSlotCap(state.profile?.followers || 0, hub.stage);
-  if (hub.sponsors.length >= cap) throw new Error('Toutes les places de sponsors sont occupées pour ta notoriété actuelle.');
+  if (cap !== null && hub.sponsors.length >= cap) throw new Error('Toutes les places de sponsors sont occupées pour ta notoriété actuelle.');
   const entry = normalizeSponsorEntry(payload, newId(), gameDate);
   if (!entry) throw new Error('Nom de sponsor requis.');
-  if (hub.sponsors.some((s) => s.brand.toLowerCase() === entry.brand.toLowerCase())) throw new Error('Ce sponsor existe déjà.');
+  if (isDuplicateSponsor(hub.sponsors, entry)) throw new Error('Ce sponsor existe déjà.');
   hub.sponsors.push(entry);
   hub.meters.sponsors = clamp(hub.meters.sponsors + 4, 0, 100);
   scheduleNextObligation(hub, gameDate, newId);
@@ -760,7 +823,10 @@ function updateSponsor(state, payload = {}) {
   const brand = cleanText(payload.brand, 80);
   if (!brand) throw new Error('Nom de sponsor requis.');
   sp.brand = brand;
-  if (SPONSOR_CATEGORIES.includes(payload.category)) sp.category = payload.category;
+  if (payload.categories !== undefined || payload.category !== undefined || payload.customCategories !== undefined) {
+    sp.categories = normalizeSponsorCategories(payload);
+    sp.category = sp.categories[0];
+  }
   if (payload.fee !== undefined) sp.fee = Math.max(0, Math.round(Number(payload.fee) || 0));
   if (payload.bonus !== undefined) sp.bonus = Math.max(0, Math.round(Number(payload.bonus) || 0));
   if (payload.until !== undefined) sp.until = cleanText(payload.until, 10);
@@ -813,7 +879,7 @@ function answerSponsorOffer(state, offerId, choice, gameDate = '', newId = () =>
   }
 
   const cap = sponsorSlotCap(state.profile?.followers || 0, hub.stage);
-  if (hub.sponsors.length >= cap) throw new Error('Toutes les places de sponsors sont occupées pour ta notoriété actuelle.');
+  if (cap !== null && hub.sponsors.length >= cap) throw new Error('Toutes les places de sponsors sont occupées pour ta notoriété actuelle.');
   hub.offers.splice(idx, 1);
   const signed = addSponsor(state, { ...offer, id: newId(), since: gameDate }, gameDate, newId);
   return { status: 'signed', sponsor: signed };
@@ -922,7 +988,10 @@ function answerDilemma(state, dilemmaId, choiceId, gameDate = '') {
 function lifeHubFacts(state) {
   const hub = state?.lifeHub;
   if (!hub?.calibrated) return undefined;
-  const activeSponsors = (hub.sponsors || []).map((s) => s.brand).filter(Boolean).slice(0, 5);
+  const activeSponsors = (hub.sponsors || [])
+    .filter((s) => s?.brand)
+    .slice(0, 8)
+    .map((s) => `${s.brand} (${normalizeSponsorCategories(s).join(', ')})`);
   const notableAssets = (hub.assets || []).filter((a) => a.category === 'home' || a.category === 'charity' || a.custom).map((a) => a.name).slice(0, 5);
   const recent = (hub.recentEvents || []).slice(0, 3).map((e) => e.text);
   return {
@@ -944,6 +1013,8 @@ module.exports = {
   METER_KEYS,
   detectCareerStage,
   sponsorSlotCap,
+  normalizeSponsorCategories,
+  isDuplicateSponsor,
   estimateStartProfile,
   ensureLifeHub,
   calibrateLifeHub,
