@@ -400,6 +400,7 @@ app.whenReady().then(() => {
   handle('calendar:addEvent', (payload) => world.calendarAddEvent({ store, payload }));
   handle('calendar:removeEvent', (id) => world.calendarRemoveEvent({ store, id }));
   handle('career:aliasClub', ({ clubRef, name }) => world.saveClubAlias({ store, clubRef, name }));
+  handle('paper:save', (payload) => world.saveNationalPaper({ store, payload }));
   handle('lifeEvents:save', (events) => world.saveLifeEvents({ store, events }));
   handle('privacy:preview', ({ text, privacy, player, handle: h, persona } = {}) => {
     const state = store.activeCareer();

@@ -77,9 +77,40 @@ function ordinal(n) {
 }
 const shortDate = (iso) => fmtDate(iso, { day: 'numeric', month: 'short' });
 
+const ML_NATIONAL_PAPERS = [
+  { id: 'england', country: 'England', name: 'The Touchline', slug: 'thetouchline' },
+  { id: 'brazil', country: 'Brazil', name: 'Folha do Gramado', slug: 'folhadogramado' },
+  { id: 'spain', country: 'Spain', name: 'Diario Balón', slug: 'diariobalon' },
+  { id: 'italy', country: 'Italy', name: 'Corriere del Pallone', slug: 'corrieredelpallone' },
+  { id: 'germany', country: 'Germany', name: 'Anstoß Kurier', slug: 'anstosskurier' },
+  { id: 'france', country: 'France', name: 'La Transversale', slug: 'latransversale' },
+  { id: 'portugal', country: 'Portugal', name: 'Jornal da Baliza', slug: 'jornaldabaliza' },
+  { id: 'netherlands', country: 'Netherlands', name: 'De Buitenkant', slug: 'debuitenkant' },
+  { id: 'argentina', country: 'Argentina', name: 'Crónica del Área', slug: 'cronicadelarea' },
+  { id: 'saudi', country: 'Saudi Arabia', name: 'Al-Maydan Sports', slug: 'almaydansports' },
+  { id: 'scotland', country: 'Scotland', name: 'The Caledonian Pitch', slug: 'caledonianpitch' },
+  { id: 'belgium', country: 'Belgium', name: 'Le But Belge', slug: 'lebutbelge' },
+  { id: 'turkey', country: 'Turkey', name: 'Santra Gazetesi', slug: 'santragazetesi' },
+  { id: 'usa', country: 'United States', name: 'The Pitchside Ledger', slug: 'pitchsideledger' },
+  { id: 'japan', country: 'Japan', name: 'Pitch Shimbun', slug: 'pitchshimbun' },
+  { id: 'colombia', country: 'Colombia', name: 'El Pitazo Deportivo', slug: 'pitazodeportivo' },
+  { id: 'chile', country: 'Chile', name: 'Gaceta del Sur', slug: 'gacetadelsur' },
+];
+const natPaper = (edition = null) => {
+  if (edition?.paperName) {
+    return {
+      name: edition.paperName,
+      slug: edition.paperSlug || mailSlug(edition.paperName) || 'latransversale',
+      country: edition.paperCountry || state?.nationalPaper?.country || 'France',
+      mode: state?.nationalPaper?.mode || 'auto',
+    };
+  }
+  return state?.nationalPaper || { id: 'france', country: 'France', name: 'La Transversale', slug: 'latransversale', showName: 'Le Débrief', mode: 'auto' };
+};
+
 const SITES = [
   { id: 'mylife', label: () => tr('Ma vie') },
-  { id: 'national', label: () => 'La Transversale' },
+  { id: 'national', label: () => natPaper().name },
   { id: 'local', label: () => state?.localPaper?.name || tr('Journal local') },
   { id: 'tribune', label: () => 'Kop' },
   { id: 'mail', label: () => 'Mails' },
@@ -1397,10 +1428,10 @@ function scrollToId(id, extra = 12) {
 const gzCrest = (name, cls = '') => { const u = teamEmblem(name); return u ? `<img class="gz-crest${cls}" src="${esc(u)}" alt="">` : `<span class="gz-crest gz-crest-none${cls}">${esc(String(name || '?')[0])}</span>`; };
 const readTime = (a) => Math.max(1, Math.round(String(a.body || '').split(/\s+/).length / 220));
 const gzInitials = (n) => esc(String(n || 'R').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase());
-const gzRole = (author) => {
+const gzRole = (author, ed = null) => {
   const w = state.writers || {};
   const desk = (w.national_desk || []).find((x) => x.name === author);
-  return desk?.role ? tr(desk.role) : author && author === w.national_columnist ? tr('Chroniqueur national') : tr('Rédaction de La Transversale');
+  return desk?.role ? tr(desk.role) : author && author === w.national_columnist ? tr('Chroniqueur national') : tr('Rédaction de {paper}', { paper: natPaper(ed).name });
 };
 // Genre d'un article de La Transversale (écrit par l'IA depuis la rédaction à plusieurs plumes), avec une majuscule.
 const gzKind = (a) => { const k = a?.kind ? tr(a.kind) : ''; return k ? k[0].toUpperCase() + k.slice(1) : ''; };
@@ -1566,7 +1597,7 @@ function gzHeader(s, e, idx, eds) {
   return `<div class="gz-masthead"><div class="gz-wrap gz-mast-in">
       <div class="gz-mast-l"><button class="gz-icon-btn" data-gzsearch aria-expanded="false" aria-controls="gz-searchbar" title="${tr('Rechercher dans le journal')}">${GZ_SEARCH}</button><i></i>
         <button class="gz-icon-btn" data-gzedition aria-expanded="false" aria-controls="gz-editionbar" title="${tr('Édition et archives')}">${GZ_BARS}</button></div>
-      <a class="gz-brand ll-wordmark" data-gzhome>La Transversale</a>
+      <a class="gz-brand ll-wordmark" data-gzhome>${esc(natPaper(e).name)}</a>
       <div class="gz-mast-r"><a class="gz-icon-btn" data-gzsite="tribune" title="Kop" aria-label="Kop">${hi('logo')}</a><a class="gz-icon-btn" data-gzsite="mail" title="Mails" aria-label="Mails">${hi('envelope')}</a><i></i>
         <a class="gz-icon-btn" data-gzprofile title="${tr('Ton profil')}" aria-label="${tr('Ton profil')}">${hi('user')}</a></div>
     </div></div>
@@ -1582,7 +1613,7 @@ function gzHeader(s, e, idx, eds) {
       </ul></nav>
     </div>
     <div class="gz-searchbar" id="gz-searchbar" inert><div><div class="gz-wrap">
-      <input type="search" id="gz-search" placeholder="${tr('Rechercher un article, un club, un joueur…')}" autocomplete="off" aria-label="${tr('Rechercher dans La Transversale')}">
+      <input type="search" id="gz-search" placeholder="${tr('Rechercher un article, un club, un joueur…')}" autocomplete="off" aria-label="${esc(tr('Rechercher dans {paper}', { paper: natPaper(e).name }))}">
       <ul class="gz-search-results" id="gz-search-results"></ul>
     </div></div></div>
     <div class="gz-searchbar" id="gz-editionbar" inert><div><div class="gz-wrap gz-edition">
@@ -2319,7 +2350,7 @@ function gzFooter() {
         <p class="gz-news-note">${on ? tr('✓ Abonnement actif : le brief arrive dans Mails à chaque nouvelle édition.') : tr('Gratuit · désinscription en un clic.')}</p></div>
     </div>
     <div class="gz-footer-top">
-      <div class="gz-footer-brand"><a class="gz-word" data-gzhome>La Transversale</a>
+      <div class="gz-footer-brand"><a class="gz-word" data-gzhome>${esc(natPaper().name)}</a>
         <p>${tr('Le quotidien sportif de LifeLegend : chaque édition est écrite par l’IA à partir de ta sauvegarde, puis relue face aux faits.')}</p>
         <div class="gz-foot-social"><a data-gzsite="tribune" title="Kop" aria-label="Kop">${hi('logo')}</a><a data-gzsite="mail" title="Mails" aria-label="Mails">${hi('envelope')}</a></div></div>
       <div class="gz-foot-col"><h4>${tr('Rubriques')}</h4><ul><li><a data-gzhome>${tr('À la une')}</a></li>${gzHasMatch(s) ? `<li><a data-gzgo="gz-match">${tr('Le match')}</a></li>` : ''}<li><a data-gzgo="gz-scores">${tr('Les scores')}</a></li>${s.table?.length ? `<li><a data-gzgo="gz-table">${tr('Classement')}</a></li>` : ''}<li><a data-gzrubric="${GZ_AWARDS}">${tr('Récompenses')}</a></li><li><a data-gzrubric="${GZ_MERCATO}">${tr('Mercato')}</a></li><li><a data-gzall>${tr('Tous les articles')}</a></li></ul></div>
@@ -2437,13 +2468,13 @@ function renderNationalArticle(page) {
   // Débat télévisé (« Le Débrief ») : une intervention par paragraphe, le nom de l'intervenant en gras, sans exergue.
   const tv = a.kind === 'débat télévisé';
   const line = (p) => { const m = tv && /^([^:«»\n]{2,40}?)\s?:\s+([\s\S]+)$/.exec(p); return m ? `<p class="gz-say"><b>${esc(m[1])}${colon()}</b> ${esc(m[2]).replace(/\n/g, '<br>')}</p>` : `<p>${esc(p).replace(/\n/g, '<br>')}</p>`; };
-  const bodyHtml = paragraphs.map((p, k) => `${line(p)}${pull && !tv && k === 1 ? `<div class="gz-pullquote"><p>${quote(esc(pull))}</p><cite>La Transversale</cite></div>` : ''}`).join('');
+  const bodyHtml = paragraphs.map((p, k) => `${line(p)}${pull && !tv && k === 1 ? `<div class="gz-pullquote"><p>${quote(esc(pull))}</p><cite>${esc(natPaper(e).name)}</cite></div>` : ''}`).join('');
   // D'abord les autres articles de l'édition, puis les plus récents.
   const others = nationalArticles().filter((x) => !(x.edition === edition && x.i === i));
   const related = [...others.filter((x) => x.edition === edition), ...others.filter((x) => x.edition !== edition)];
   const reads = related.slice(0, 3), picks = related.slice(3, 7);
   const tags = [s.league.name, s.club.name, s.player.name].filter((x) => x && `${a.headline} ${a.dek} ${a.body}`.includes(x));
-  const role = gzRole(a.author);
+  const role = gzRole(a.author, e);
   const since = state.editions[0]?.gameDate;
   const rubric = gzRubricOf(a);
   const worldBeat = a.focus === 'world' && a.competition ? a.competition : null; // un correspondant suit sa compétition, pas sa carrière
@@ -2457,7 +2488,7 @@ function renderNationalArticle(page) {
         <header class="gz-article-head">
           ${rubric ? `<a class="gz-rub-chip" data-gzrubric="${esc(rubric)}">${gzCompLogo(rubric, 'gz-rub-chip-logo')}${esc(gzRubricTitle(rubric))}</a>` : ''}
           <div class="gz-article-titlerow"><h1 class="gz-article-title">${esc(a.headline)}</h1>
-            <div class="gz-share"><button class="gz-share-btn" data-gzshot title="${tr('Partager en image')}" aria-label="${tr('Partager en image')}">${hi('photo')}</button><button class="gz-share-btn" data-gzcopy="${esc(`${a.headline} — La Transversale`)}" title="${tr('Copier le titre')}">${GZ_LINK}</button></div></div>
+            <div class="gz-share"><button class="gz-share-btn" data-gzshot title="${tr('Partager en image')}" aria-label="${tr('Partager en image')}">${hi('photo')}</button><button class="gz-share-btn" data-gzcopy="${esc(`${a.headline} — ${natPaper(e).name}`)}" title="${tr('Copier le titre')}">${GZ_LINK}</button></div></div>
           <div class="gz-byrow"><span class="gz-avatar">${gzInitials(a.author)}</span><span class="gz-name">${tr('Par {who}', { who: esc(a.author || tr('la rédaction')) })}</span><span class="gz-by-meta">${esc(role)} · ${esc(fmtDate(e.gameDate, { day: 'numeric', month: 'long', year: 'numeric' }))}</span>
             <span class="gz-tagline"><span class="gz-kind">${esc(gzKind(a) || gzTopic(a, comps))}</span><span>${tr('{n} min de lecture', { n: readTime(a) })}</span></span></div>
         </header>
@@ -2465,7 +2496,7 @@ function renderNationalArticle(page) {
           <div class="gz-article-body" data-gzbody>${a.dek ? `<p class="gz-article-dek">${esc(a.dek)}</p>` : ''}${bodyHtml}
             ${tags.length ? `<div class="gz-article-tags">${tags.map((x) => `<span class="gz-tag">${esc(x)}</span>`).join('')}</div>` : ''}
             <div class="gz-article-author"><span class="gz-avatar gz-avatar--xl">${gzInitials(a.author)}</span><div><span class="gz-kicker">${tr('À propos de l’auteur')}</span><h3>${esc(a.author || tr('La rédaction'))}</h3>
-              <p>${esc(role === tr('Rédaction de La Transversale') ? role : tr('À La Transversale : {role}', { role: lcFirst(role) }))}. ${esc(worldBeat ? (since ? tr('Rubrique {league} depuis le {d}.', { league: gzShort(worldBeat), d: fmtDate(since, { day: 'numeric', month: 'long', year: 'numeric' }) }) : tr('Rubrique {league}.', { league: gzShort(worldBeat) }))
+              <p>${esc(role === tr('Rédaction de {paper}', { paper: natPaper(e).name }) ? role : tr('À {paper} : {role}', { paper: natPaper(e).name, role: lcFirst(role) }))}. ${esc(worldBeat ? (since ? tr('Rubrique {league} depuis le {d}.', { league: gzShort(worldBeat), d: fmtDate(since, { day: 'numeric', month: 'long', year: 'numeric' }) }) : tr('Rubrique {league}.', { league: gzShort(worldBeat) }))
                 : since ? tr('Suit {league} et la carrière de {player} depuis le {d}.', { league: s.league.name || tr('le championnat'), player: s.player.name, d: fmtDate(since, { day: 'numeric', month: 'long', year: 'numeric' }) }) : tr('Suit {league} et la carrière de {player}.', { league: s.league.name || tr('le championnat'), player: s.player.name }))}</p></div></div>
           </div>
           ${related.length ? `<aside class="gz-article-side">
@@ -2538,7 +2569,7 @@ function paintPressModal() {
         ${at > 0 ? `<button class="gz-modal-btn gz-modal-btn--ghost" data-pstep="-1">← ${tr('Question précédente')}</button>` : ''}
         ${at < total - 1 ? `<button class="gz-modal-btn" data-pstep="1">${tr('Question suivante')} →</button>` : `<button class="gz-modal-btn" id="press-submit">${tr('Terminer la conférence')}</button>`}
       </div>
-      <p class="gz-modal-note">${tr('Tes mots seront cités tels quels dans La Transversale, et repris par les journalistes dans les prochaines éditions.')}</p>`;
+      <p class="gz-modal-note">${tr('Tes mots seront cités tels quels dans {paper}, et repris par les journalistes dans les prochaines éditions.', { paper: esc(natPaper().name) })}</p>`;
   } else if (view.pressIn) {
     body = `${head}<h2 id="gz-modal-title">${tr('Les journalistes s’installent…')}</h2><p class="gz-modal-note">${tr('Préparation des questions.')}</p>`;
   } else {
@@ -2601,7 +2632,7 @@ function paintPressModal() {
         view.natArticle = count ? { edition: last, i: count - 1 } : null;
         render();
         gzScrollTo(0);
-        toast(tr('Ta conférence de presse est dans La Transversale.'));
+        toast(tr('Ta conférence de presse est dans {paper}.', { paper: natPaper().name }));
       } catch (err) {
         view.pressBusy = false;
         submit.disabled = false;
@@ -2974,7 +3005,7 @@ function fbFooter(paper, s) {
       <div class="fb-footer-brand"><a class="fb-logo" data-fbhome>${crestHtml(s.club.name, ' fb-logo-crest')}<b class="fb-title">${esc(paper.name)}</b></a>
         <p>${esc(about)}</p><p>${tr('Blog de supporters non officiel, sans lien avec le club.')}</p></div>
       <div class="fb-foot-col"><h4>${tr('Le blog')}</h4><ul><li><a data-fbtab="home">${tr('Accueil')}</a></li><li><a data-fbtab="matches">${tr('Matchs')}</a></li><li><a data-fbtab="table">${tr('Classement')}</a></li><li><a data-fbtab="wall">${tr('Le mur des supporters')}</a></li></ul></div>
-      <div class="fb-foot-col"><h4>${tr('Sur LifeLegend')}</h4><ul><li><a data-fbtribune>Kop</a></li><li><a data-fbsite="national">La Transversale</a></li><li><a data-fbsite="stats">Scoreline</a></li></ul></div>
+      <div class="fb-foot-col"><h4>${tr('Sur LifeLegend')}</h4><ul><li><a data-fbtribune>Kop</a></li><li><a data-fbsite="national">${esc(natPaper().name)}</a></li><li><a data-fbsite="stats">Scoreline</a></li></ul></div>
     </div>
     <p class="fb-footer-bottom">© ${esc(year)} ${esc(paper.name)} · ${tr('Le blog des supporters de {club}', { club: esc(s.club.name) })} · ${tr('Blog fictif de LifeLegend, billets écrits par l’IA à partir de ta sauvegarde.')}</p>
   </footer>`;
@@ -6408,13 +6439,13 @@ function threadEra(t) {
 // Adresse fictive d'un expéditeur : prenom.nom@organisation.foot.
 const mailSlug = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 function mailAddress(name, role, era = threadEra(null)) {
-  if (role === 'newsletter') return 'brief@latransversale.foot'; // le brief du matin de La Transversale
+  if (role === 'newsletter') return `brief@${mailSlug(name || natPaper().slug || natPaper().name) || 'latransversale'}.foot`;
   const local = String(name || 'contact').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.|\.$/g, '');
   const w = state.writers || {};
   const national = name === w.national_columnist || (w.national_desk || []).some((x) => x.name === name);
   const org = role === 'agent' ? state.agent?.agency
     : role === 'coach' || role === 'club' ? era.club
-      : role === 'journalist' ? (national ? 'La Transversale' : era.paper || 'presse')
+      : role === 'journalist' ? (national ? natPaper().name : era.paper || 'presse')
         : role === 'sponsor' ? spBrandOf(name) || name : 'mails';
   return `${local}@${mailSlug(org) || 'mails'}.foot`;
 }
@@ -6516,9 +6547,9 @@ function renderMail(page) {
         <div class="sm-pager">${step(-1, 'prev', tr('Message précédent'))}<span>${esc(tr('{a} sur {n}', { a: pos + 1, n: threads.length }))}</span>${step(1, 'next', tr('Message suivant'))}</div>
         <div class="sm-chips">${label ? `<span class="sm-chip">${esc(label)}</span>` : ''}${formerClub ? `<span class="sm-chip sm-chip--former">${tr('Ancien club')} · ${esc(formerClub)}</span>` : ''}${open.closed && open.role !== 'newsletter' ? `<span class="sm-chip sm-chip--closed">${tr('Conversation close')}</span>` : ''}</div></div>
       <div class="sm-thread">${open.request ? requestCard(open.request) : ''}${open.messages.map(msgHtml).join('')}${open.sponsorOffer ? sponsorCard(open) : attach}${adviceCard(open)}${conductCard(open)}
-        ${open.closed ? `<p class="sm-closed">${open.role === 'newsletter' ? tr('Envoyé automatiquement par La Transversale : on ne peut pas répondre à ce brief. Pour l’arrêter, {link} en bas de la une.', { link: quote(tr('Se désabonner')) }) : esc(tr('{name} ne répond plus à tes messages.', { name: open.from }))}</p>` : `
+        ${open.closed ? `<p class="sm-closed">${open.role === 'newsletter' ? tr('Envoyé automatiquement par {paper} : on ne peut pas répondre à ce brief. Pour l’arrêter, {link} en bas de la une.', { paper: esc(open.from || natPaper().name), link: quote(tr('Se désabonner')) }) : esc(tr('{name} ne répond plus à tes messages.', { name: open.from }))}</p>` : `
         <div class="sm-msg sm-reply"><div class="sm-msg-body"><label class="sm-reply-label" for="mail-reply">${ri('reply')} ${esc(tr('Répondre à {name}', { name: open.from }))}</label>
-          ${open.interview?.status === 'open' ? `<p class="fineprint sm-interview">${tr('Réponds à ses questions dans un seul message : ta réponse deviendra un long entretien dans La Transversale, tes mots tels quels.')}</p>` : ''}${open.role === 'agent' ? agentQuickReplies() : ''}<textarea id="mail-reply" placeholder="${tr('Écris ta réponse…')}">${esc(drafts.mail[open.id] || '')}</textarea></div>
+          ${open.interview?.status === 'open' ? `<p class="fineprint sm-interview">${tr('Réponds à ses questions dans un seul message : ta réponse deviendra un long entretien dans {paper}, tes mots tels quels.', { paper: esc(natPaper().name) })}</p>` : ''}${open.role === 'agent' ? agentQuickReplies() : ''}<textarea id="mail-reply" placeholder="${tr('Écris ta réponse…')}">${esc(drafts.mail[open.id] || '')}</textarea></div>
           <div class="sm-footer"><button class="sm-btn sm-btn-primary" id="mail-send">${ri('send')} ${tr('Envoyer')}</button></div></div>`}
       </div>`
       : `<div class="sm-placeholder">${ri('empty')}<h5>${threads.length ? tr('Aucun message sélectionné') : tr('Aucun message ici')}</h5></div>`;
@@ -6820,7 +6851,7 @@ function reviewCard() {
       <div><b>${ft.position ? esc(tr('{pos} sur {n}', { pos: ordinal(ft.position), n: ft.teams })) : '—'}</b> ${esc(tr('en {league}', { league: r.league || '' }))}${ft.record ? ` · ${esc(tr('{pts} pts ({w}V {d}N {l}D)', { pts: ft.record.points, w: ft.record.won, d: ft.record.drawn, l: ft.record.lost }))}` : ''}
       <div class="handle">${st.apps ? `${trn(st.apps, '{n} match', '{n} matchs')} · ${trn(st.goals, '{n} but', '{n} buts')} · ${trn(st.assists, '{n} passe D.', '{n} passes D.')} · ${tr('note moyenne {r}', { r: fmtRating(st.avgRating) })}` : tr('Pas de temps de jeu en championnat cette saison.')}</div>
       <div class="handle">${tr('Champion')}${colon()} ${esc(ft.champion?.team || '—')}${ft.relegation_zone.length ? ` · ${tr('relégués')}${colon()} ${esc(ft.relegation_zone.join(', '))}` : ''}</div></div></div>
-    <h4>${tr('Trophées de La Transversale')} · ${esc(r.club)}</h4>
+    <h4>${tr('Trophées de {paper}', { paper: esc(natPaper().name) })} · ${esc(r.club)}</h4>
     <div class="profile-grid">
       ${award('Joueur de la saison', r.awards.player_of_the_season, (v) => tr('note moyenne {r}', { r: fmtRating(v) }))}
       ${award('Meilleur buteur', r.awards.top_scorer, (v) => trn(v, '{n} but', '{n} buts'))}
@@ -8063,7 +8094,7 @@ function renderPantheon(page) {
   const tabs = `<nav class="pt-tabs" aria-label="${tr('Sommaire')}">${sections.map(([id, t], k) => `<button class="${k ? '' : 'on'}" data-ptgo="${id}">${esc(tr(t))}</button>`).join('')}</nav>`;
   const foot = `<footer class="pt-foot"><div class="pt-foot-in"><div class="pt-foot-about"><b>Panthéon</b>${chapters.length ? `<p>${tr('Dernière modification de cette page : {date}.', { date: esc(date(chapters.at(-1).gameDate)) })}</p>` : ''}<p>${tr('Panthéon est l’encyclopédie fictive de LifeLegend : la biographie est écrite par l’IA à partir de ta sauvegarde et de l’histoire que tu lui donnes.')}</p></div>
     <nav><h4>${tr('Sur cette page')}</h4>${sections.map(([id, t]) => `<a data-ptgo="${id}">${esc(tr(t))}</a>`).join('')}</nav>
-    <nav><h4>${tr('Sur LifeLegend')}</h4><a data-ptsite="national">La Transversale</a><a data-ptsite="tribune">Kop</a><a data-ptsite="mail">Mails</a><a data-ptsite="stats">Scoreline</a></nav></div></footer>`;
+    <nav><h4>${tr('Sur LifeLegend')}</h4><a data-ptsite="national">${esc(natPaper().name)}</a><a data-ptsite="tribune">Kop</a><a data-ptsite="mail">Mails</a><a data-ptsite="stats">Scoreline</a></nav></div></footer>`;
   page.innerHTML = `<div class="pt">${hero}${tabs}<div class="pt-body">${factsCard}${bioCard}${statsCard}${recordsCard}${honoursCard}</div>${foot}<button class="pt-up" id="pt-up" aria-label="${tr('Retour en haut')}" title="${tr('Retour en haut')}">${sfi('up')}</button></div>`;
 
   ptPaintColors();
@@ -9531,6 +9562,8 @@ async function renderSettings(page) {
   const colors = themeColors(settings.colors);
   const tabs = RG_TABS.filter(([id]) => state || id !== 'me');
   const tab = tabs.some(([id]) => id === view.rgTab) ? view.rgTab : 'save';
+  const npOv = state?.nationalPaperOverride || { mode: 'auto', presetId: '', customName: '' };
+  const npVal = npOv.mode === 'preset' && npOv.presetId ? `preset:${npOv.presetId}` : npOv.mode === 'custom' ? 'custom' : 'auto';
   const panel = (id, rows) => { const [, label, note] = RG_TABS.find(([x]) => x === id); return `<section class="rg-panel" data-rgpanel="${id}"${id === tab ? '' : ' hidden'}><div class="rg-panel-head"><h2>${tr(label)}</h2>${note ? `<p>${tr(note)}</p>` : ''}</div>${rows.join('')}</section>`; };
   page.innerHTML = `
     <div class="rg">${state ? '' : welcomeHtml(true)}
@@ -9573,6 +9606,13 @@ async function renderSettings(page) {
   ])}
     ${panel('world', [
     rgRow('rg-tone', tr('Le ton du monde'), `<p class="fineprint">${tr('Pas de réglage de ton : la pression médiatique suit la taille de ton club et de son championnat (et l’Europe, la sélection, ta notoriété), et le drame suit l’enjeu du moment (titre, maintien, coupe, fin de mercato, crise).')}</p>`),
+    ...(state ? [rgRow('rg-natpaper', tr('Journal national'), `<select id="natpaper-mode" aria-label="${tr('Journal national')}">
+        <option value="auto"${npVal === 'auto' ? ' selected' : ''}>${tr('Automatique selon le championnat')}</option>
+        ${ML_NATIONAL_PAPERS.map((p) => `<option value="preset:${esc(p.id)}"${npVal === `preset:${p.id}` ? ' selected' : ''}>${esc(p.name)} (${esc(p.country)})</option>`).join('')}
+        <option value="custom"${npVal === 'custom' ? ' selected' : ''}>${tr('Nom personnalisé…')}</option>
+      </select>
+      <label id="natpaper-custom-wrap" class="${npOv.mode === 'custom' ? '' : 'hidden'}">${tr('Nom du journal personnalisé')}<input id="natpaper-custom" maxlength="60" value="${esc(npOv.customName || '')}" placeholder="${tr('Ex. Le Quotidien du Foot')}"></label>
+      <p class="fineprint">${tr('En mode automatique, le quotidien national, sa rédaction et son débat télévisé s’adaptent automatiquement au pays de ton championnat (et changent si tu es transféré à l’étranger).')}</p>`)] : []),
     rgRow('rg-calmode', tr('Calendrier'), rgSwitch('calendarmode', settings.calendarMode === 'full', tr('Mode Calendrier Complet (jour par jour, anti-spoilers)'), tr('Si tu joues plusieurs matchs d’affilée dans le jeu avant de synchroniser, LifeLegend met les matchs en file d’attente et te laisse avancer jour par jour ou événement par événement sans te spoiler les résultats. Décoche pour revenir à la synchro directe classique.'))),
     rgRow('', tr('Supporters'), rgSwitch('fanvulgarity', settings.fanVulgarity !== false, tr('Supporters vulgaires après de très mauvais résultats'), tr('Le ton des supporters suit tes résultats, comme en vrai : après une soirée catastrophe, certains peuvent t’insulter et réclamer ta vente. Décoche pour qu’ils restent durs mais sans vulgarité.'))),
     rgRow('rg-replays', tr('Ralentis et vidéos'), rgSwitch('replays', settings.replays !== false, tr('Publier sur Kop les ralentis que je sauvegarde dans le jeu'), tr('La minute et le buteur du ralenti sont aussi donnés aux journalistes. Le ralenti du jeu n’est pas une vidéo : pour avoir les images, enregistre l’écran pendant que le jeu le montre avec la Xbox Game Bar ({keys} pour démarrer et arrêter). LifeLegend trouve la vidéo toute seule et l’ajoute au post du ralenti.', { keys: '<b>Win + Alt + R</b>' }))
@@ -9669,6 +9709,11 @@ async function renderSettings(page) {
     } catch (err) { toast(err.message, true); }
   };
   $('#save-settings').onclick = saveSettings;
+  if ($('#natpaper-mode')) {
+    $('#natpaper-mode').onchange = () => {
+      $('#natpaper-custom-wrap')?.classList.toggle('hidden', $('#natpaper-mode').value !== 'custom');
+    };
+  }
   const syncRealVisibility = (isReal) => {
     $('#bio')?.classList.toggle('hidden', isReal);
     $('#rg-mepersona')?.classList.toggle('hidden', isReal);
@@ -9764,6 +9809,15 @@ async function saveSettings() {
   if (key) update.apiKey = key;
   try {
     settings = await live.saveSettings(update);
+    if (state && $('#natpaper-mode')) {
+      const val = $('#natpaper-mode').value;
+      const npPayload = val === 'custom'
+        ? (() => { const n = ($('#natpaper-custom')?.value || '').trim(); return n ? { mode: 'custom', customName: n } : { mode: 'auto' }; })()
+        : val.startsWith('preset:')
+          ? { mode: 'preset', presetId: val.slice(7) }
+          : { mode: 'auto' };
+      state = await live.saveNationalPaper(npPayload);
+    }
     if (state && nextCalMode !== prevCalMode) {
       const r = await live.setCalendarMode(nextCalMode);
       if (r?.settings) settings = r.settings;
