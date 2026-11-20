@@ -9,11 +9,15 @@ const { decryptSave } = require('./pesCrypt');
 const { readPlayerProfile } = require('./playerProfile');
 const { readPhase } = require('./formations');
 const { readTraining } = require('./training');
-const { saveLayout } = require('./layout');
+const { saveLayout, plausibleId } = require('./layout');
 
 const TEAM_STRIDE = 0x690;      // bloc équipe : ref u32 à +0x50, nom à +0x54, sigle à +0x9A, stade à +0xA0
 const ROSTER_OFFSET = 0x19C;    // effectif : paires [u32 numéro interne][u32 id joueur], 40 places au plus
 const ROSTER_MAX = 40;
+const SHIRTS_OFFSET = 0x2EA;    // numéros de maillot : 40 × u16LE parallèles au roster
+const TACTICS_LINEUP = 544;     // ordre du onze de départ (slots de l'effectif, u8 × 40) depuis rec (= coach - 8)
+const TACTICS_SET_PIECES = 584; // tireurs : coup franc long, court, n°2, corner G, corner D, penalty
+const TACTICS_CAPTAIN = 593;    // capitaine (slot dans l'effectif ; 255 = aucun)
 const TACTIC_A = 0x4B0;         // tactiques A et B du club (+0x4B0, +0x550) : 3 phases de 33 octets puis 61 octets de réglages
 const COACH_TABLE = 0x133A38;   // nom de l'entraîneur de l'équipe 0 ; slot u32 à nom-8
 const COACH_STRIDE = 0x258;
@@ -93,17 +97,49 @@ function readTeams(d, L) {
     const slot = d.readUInt16LE(o + 0x2E8);
     team.emblemSlot = slot === 0xFFFF ? null : slot;
     team.roster = [];
+    team.shirts = {};
+    team.captainId = null;
+    team.penaltyTakerId = null;
+    team.freeKickTakerId = null;
+    team.setPieces = null;
+    team.startingXiIds = [];
     for (let r = 0; r < ROSTER_MAX; r++) {
       const e = o + ROSTER_OFFSET + 8 * r;
-      const slot = d.readUInt32LE(e) & 0xFFFF, pid = d.readUInt32LE(e + 4);
-      if (slot === 0xFFFF || pid < 1000 || pid > 1000000) break;
+      const rSlot = d.readUInt32LE(e) & 0xFFFF, pid = d.readUInt32LE(e + 4);
+      if (rSlot === 0xFFFF || !plausibleId(pid)) break;
       team.roster.push(pid);
+      const shirt = o + SHIRTS_OFFSET + 2 * r + 2 <= d.length ? d.readUInt16LE(o + SHIRTS_OFFSET + 2 * r) : 0;
+      if (shirt >= 1 && shirt <= 99) team.shirts[pid] = shirt;
     }
     team.index = k;
     // Formation de la tactique A (1re phase), celle du plan de jeu : voir formations.js.
     team.formation = readPhase(d, o + TACTIC_A);
     const c = L.coach == null ? -1 : L.coach + COACH_STRIDE * team.slot;
-    if (c >= 8 && c + 0x40 < d.length && d.readUInt32LE(c - 8) === team.slot) team.coach = prettyName(cstr(d, c, 0x40)) || null;
+    if (c >= 8 && c + 0x40 < d.length && d.readUInt32LE(c - 8) === team.slot) {
+      team.coach = prettyName(cstr(d, c, 0x40)) || null;
+      const rec = c - 8;
+      if (rec + COACH_STRIDE <= d.length) {
+        const slotPid = (idx) => (idx < team.roster.length ? team.roster[idx] : null);
+        team.captainId = slotPid(d[rec + TACTICS_CAPTAIN]);
+        team.setPieces = {
+          longFk: slotPid(d[rec + TACTICS_SET_PIECES]),
+          shortFk: slotPid(d[rec + TACTICS_SET_PIECES + 1]),
+          fk2: slotPid(d[rec + TACTICS_SET_PIECES + 2]),
+          leftCorner: slotPid(d[rec + TACTICS_SET_PIECES + 3]),
+          rightCorner: slotPid(d[rec + TACTICS_SET_PIECES + 4]),
+          penalty: slotPid(d[rec + TACTICS_SET_PIECES + 5]),
+        };
+        team.penaltyTakerId = team.setPieces.penalty;
+        team.freeKickTakerId = team.setPieces.shortFk || team.setPieces.longFk;
+        const seenXi = new Set();
+        for (let i = 0; i < ROSTER_MAX && team.startingXiIds.length < 11; i++) {
+          const idx = d[rec + TACTICS_LINEUP + i];
+          if (idx === 0xFF) break;
+          const pid = slotPid(idx);
+          if (pid && !seenXi.has(pid)) { seenXi.add(pid); team.startingXiIds.push(pid); }
+        }
+      }
+    }
     teams.set(ref, team);
   }
   return teams;
@@ -571,4 +607,4 @@ function peekSave(savePath) {
   return { fileType: file.fileType, game: file.gameVersion, ...readDescription(file.description) };
 }
 
-module.exports = { readCareer, peekSave, competitionMatches, leagueTable, scorers, prettyName, readPlayerOfYear, PLAYER_REC };
+module.exports = { readCareer, peekSave, readTeams, competitionMatches, leagueTable, scorers, prettyName, readPlayerOfYear, PLAYER_REC };

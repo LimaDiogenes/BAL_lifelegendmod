@@ -164,4 +164,4 @@ function assertStandard(d, playerName = null) {
   }
 }
 
-module.exports = { saveLayout, detectLayout, assertStandard, standardFits, STANDARD };
+module.exports = { saveLayout, detectLayout, assertStandard, standardFits, plausibleId, STANDARD };

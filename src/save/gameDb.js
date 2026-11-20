@@ -5,13 +5,19 @@
 const fs = require('fs');
 const path = require('path');
 const { listCpk, readCpkEntry, unwrapWesys } = require('./cpk');
+const { decryptSave } = require('./pesCrypt');
 
 const PESDB = 'common/etc/pesdb/';
 const PLAYER_STRIDE = 312;      // fiche joueur : id u32 à +0, nom affiché à +0xF3 (61 octets)
 const PLAYER_FIRST = 8;
 const NAME_OFFSET = 0xF3;
+const NAME_ALT_OFFSET = 0x3C;   // nom principal (+0x44 depuis le début du bloc de 312 octets) si +0xF3 est vide
+const NATIONALITY_OFFSET = 0x15; // 9 bits à +0x1D bits 1..9 (depuis le début du bloc ; 0x1D - 8 = 0x15)
 const POSITION_BYTE = 46;      // poste officiel (code PES 0-12, bits 2-5) : colle au poste joué dans 99 % des compositions
 const ASSIGN_STRIDE = 16;       // affectation : joueur u32 à +4, équipe u32 à +8
+const EDIT_COUNT = 96;
+const EDIT_FIRST = 0x7C;
+const EDIT_STRIDE = 0x138;
 
 function steamLibraries() {
   const roots = ['C:\\Program Files (x86)\\Steam', 'C:\\Program Files\\Steam'];
@@ -83,6 +89,68 @@ function findDbFile(gameDir, fileName, cpkCache) {
   return null;
 }
 
+const cstr = (buf, offset, len) => {
+  const raw = buf.subarray(offset, offset + len);
+  const end = raw.indexOf(0);
+  return raw.subarray(0, end < 0 ? raw.length : end).toString('utf8').trim();
+};
+
+function parsePlayerBin(d) {
+  const names = new Map(), positions = new Map(), nationalities = new Map();
+  if (!d) return { names, positions, nationalities };
+  for (let o = PLAYER_FIRST; o + NAME_OFFSET + 61 <= d.length; o += PLAYER_STRIDE) {
+    const id = d.readUInt32LE(o);
+    if (!id) continue;
+    const name = cstr(d, o + NAME_OFFSET, 61) || cstr(d, o + NAME_ALT_OFFSET, 61);
+    if (name) names.set(id, name);
+    positions.set(id, (d[o + POSITION_BYTE] >> 2) & 0xF);
+    const nat = (d.readUInt16LE(o + NATIONALITY_OFFSET) >> 1) & 0x1FF;
+    if (nat) nationalities.set(id, nat);
+  }
+  return { names, positions, nationalities };
+}
+
+function parseEditPlayers(data) {
+  if (!data || data.length < EDIT_FIRST) return [];
+  const count = data.readUInt16LE(EDIT_COUNT);
+  const list = [];
+  for (let i = 0; i < count && EDIT_FIRST + (i + 1) * EDIT_STRIDE <= data.length; i++) {
+    const r = data.subarray(EDIT_FIRST + i * EDIT_STRIDE, EDIT_FIRST + (i + 1) * EDIT_STRIDE);
+    const id = r.readUInt32LE(0);
+    if (!id) continue;
+    const nationality = r.readUInt16LE(8);
+    const pos = ((r[33] >> 5) | ((r[34] & 1) << 3)) & 0xF;
+    const name = cstr(r, 0x36, 61);
+    list.push({ id, name, position: pos <= 12 ? pos : null, nationality });
+  }
+  return list;
+}
+
+function loadEditPlayers(savePath) {
+  if (!savePath) return [];
+  const editPath = path.join(path.dirname(savePath), 'EDIT00000000');
+  if (!fs.existsSync(editPath)) return [];
+  try {
+    return parseEditPlayers(decryptSave(fs.readFileSync(editPath)).data);
+  } catch {
+    return [];
+  }
+}
+
+function mergeEditPlayers(db, edits = []) {
+  const names = new Map(db?.names || []);
+  const positions = new Map(db?.positions || []);
+  const nationalities = new Map(db?.nationalities || []);
+  const teams = db?.teams || new Map();
+  for (const e of edits || []) {
+    if (!e || !e.id) continue;
+    if (e.name) names.set(e.id, e.name);
+    if (e.position != null && e.position >= 0 && e.position <= 12) positions.set(e.id, e.position);
+    if (e.nationality > 0) nationalities.set(e.id, e.nationality);
+  }
+  return { source: db?.source || (edits?.length ? 'EDIT00000000' : null), names, positions, nationalities, teams };
+}
+
 let cached = null;
 
 function loadGameDb(gameDir) {
@@ -95,16 +163,7 @@ function loadGameDb(gameDir) {
   const assignFile = findDbFile(gameDir, 'PlayerAssignment.bin', cpkCache);
   if (!playerFile) return null;
 
-  const names = new Map(), positions = new Map();
-  const d = playerFile.data;
-  for (let o = PLAYER_FIRST; o + NAME_OFFSET + 61 <= d.length; o += PLAYER_STRIDE) {
-    const id = d.readUInt32LE(o);
-    const raw = d.subarray(o + NAME_OFFSET, o + NAME_OFFSET + 61);
-    const end = raw.indexOf(0);
-    const name = raw.subarray(0, end < 0 ? raw.length : end).toString('utf8').trim();
-    if (id && name) names.set(id, name);
-    if (id) positions.set(id, (d[o + POSITION_BYTE] >> 2) & 0xF);
-  }
+  const { names, positions, nationalities } = parsePlayerBin(playerFile.data);
   const teams = new Map();
   if (assignFile) {
     const a = assignFile.data;
@@ -114,7 +173,7 @@ function loadGameDb(gameDir) {
       teams.get(team).add(player);
     }
   }
-  const db = { source: playerFile.source, names, positions, teams };
+  const db = { source: playerFile.source, names, positions, nationalities, teams };
   cached = { gameDir, stamp, db };
   return db;
 }
@@ -145,4 +204,4 @@ function matchRate(career, db) {
   return total ? ok / total : 0;
 }
 
-module.exports = { detectGameFolders, isGameDir, loadGameDb, loadDbTable, matchRate, siderRoots };
+module.exports = { detectGameFolders, isGameDir, loadGameDb, loadDbTable, matchRate, siderRoots, parsePlayerBin, parseEditPlayers, loadEditPlayers, mergeEditPlayers };

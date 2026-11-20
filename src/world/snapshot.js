@@ -3,7 +3,7 @@
 // puis calcule ce qui a changé depuis la synchro précédente.
 
 const { competitionMatches, leagueTable, scorers, prettyName } = require('../save/blReader');
-const { abilityLabel, isGoalkeeper } = require('../save/playerProfile');
+const { abilityLabel, isGoalkeeper, POSITIONS } = require('../save/playerProfile');
 const { skillName } = require('../save/training');
 const { matchesOf, compAccount, realTeam } = require('./competitions');
 const COMP_DATA = require('../data/competitionAccounts.json');
@@ -197,8 +197,38 @@ function competitionsHub(career, { clubRef, leagueId, today }) {
   return out.sort((a, b) => a.rank - b.rank || (a.mine && b.mine ? firstDate(a).localeCompare(firstDate(b)) : 0)).map(({ rank, ...c }) => c);
 }
 
-// names : Map identifiant -> nom (base du jeu), ou null si elle ne correspond pas à la sauvegarde.
-function buildSnapshot(career, names = null) {
+// Déduit les noms de pays des codes nationaux (Player.bin 0x1D) à partir des sélections de 11+ joueurs connues dans la sauvegarde.
+function nationalitiesFromTeams(career, nationalities) {
+  const out = new Map();
+  if (!career?.teams || !nationalities?.size) return out;
+  const squadsOf = new Map();
+  for (const t of career.teams.values()) {
+    for (const id of t.roster || []) if (id) squadsOf.set(id, (squadsOf.get(id) || 0) + 1);
+  }
+  const best = new Map();
+  for (const t of career.teams.values()) {
+    const known = (t.roster || []).filter((id) => id && (id >>> 31) === 0);
+    if (known.length < 11 || known.some((id) => !nationalities.has(id))) continue;
+    const code = nationalities.get(known[0]);
+    if (!(code > 0) || known.some((id) => nationalities.get(id) !== code)) continue;
+    const elsewhere = known.filter((id) => (squadsOf.get(id) || 0) >= 2).length / known.length;
+    const prev = best.get(code);
+    if (!prev || elsewhere > prev.elsewhere || (elsewhere === prev.elsewhere && (t.index ?? 0) > prev.index)) {
+      best.set(code, { name: t.name, elsewhere, index: t.index ?? 0 });
+    }
+  }
+  for (const [code, entry] of best) if (entry.name) out.set(code, entry.name);
+  return out;
+}
+
+const POS_FAMILIES = [['AC', 'SA'], ['AG', 'AD', 'MG', 'MD'], ['MC', 'MDC', 'MOC'], ['DG', 'DD'], ['DC'], ['GB']];
+
+// namesOrDb : Map id -> nom OU objet { names, positions, nationalities } de gameDb (+ EDIT), ou null.
+function buildSnapshot(career, namesOrDb = null) {
+  const db = namesOrDb instanceof Map ? { names: namesOrDb } : (namesOrDb || {});
+  const names = db.names || null;
+  const positions = db.positions || null;
+  const nationalities = db.nationalities || null;
   const { matches, club, player } = career;
   const nameOf = (id) => (id === player.id ? player.name : (names?.has(id) ? prettyName(names.get(id)) : null));
   const ctx = { clubRef: club.ref, playerId: player.id, nameOf };
@@ -307,19 +337,85 @@ function buildSnapshot(career, names = null) {
     top: top.slice(0, 8).map((x) => ({ name: nameOf(x.playerId), team: x.team, goals: x.goals, mine: x.playerId === player.id })),
   };
 
-  // Effectif du club cette saison : les joueurs alignés, avec leurs stats.
+  // Effectif complet du club cette saison : joueurs alignés + coéquipiers non alignés du roster, avec maillot, poste, nationalité et rôles.
+  const natNames = nationalitiesFromTeams(career, nationalities);
   const squadMap = new Map();
   for (const m of clubMatches) {
     if (!m.played) continue;
     for (const e of m.home.ref === club.ref ? m.homeLineup : m.awayLineup) {
-      const r = squadMap.get(e.playerId) || { name: nameOf(e.playerId), me: e.playerId === player.id, apps: 0, starts: 0, minutes: 0, goals: 0, assists: 0, ratingSum: 0 };
+      const r = squadMap.get(e.playerId) || { id: e.playerId, name: nameOf(e.playerId), me: e.playerId === player.id, apps: 0, starts: 0, minutes: 0, goals: 0, assists: 0, ratingSum: 0 };
       r.apps++; r.starts += e.starter ? 1 : 0; r.minutes += e.minutes; r.goals += e.goals; r.assists += e.assists; r.ratingSum += ratingFromRaw(e.ratingRaw);
       squadMap.set(e.playerId, r);
     }
   }
+  for (const pid of club.roster || []) {
+    if (squadMap.has(pid)) continue;
+    const n = nameOf(pid);
+    if (!n && pid !== player.id) continue;
+    squadMap.set(pid, { id: pid, name: n, me: pid === player.id, apps: 0, starts: 0, minutes: 0, goals: 0, assists: 0, ratingSum: 0 });
+  }
+  const xiSet = new Set(club.startingXiIds || []);
+  const clubGames = Math.max(1, played.length);
+  const myProfilePos = POSITIONS.indexOf(player.profile?.position);
+  const posForId = (pid) => {
+    if (positions?.has(pid)) return positions.get(pid);
+    if (pid === player.id && myProfilePos >= 0) return myProfilePos;
+    return null;
+  };
+  const natForId = (pid) => natNames.get(nationalities?.get(pid)) || (pid === player.id ? player.nationality || null : null);
   const squad = [...squadMap.values()]
-    .map(({ ratingSum, ...r }) => ({ ...r, avgRating: Math.round((ratingSum / r.apps) * 100) / 100 }))
-    .sort((a, b) => b.minutes - a.minutes);
+    .map(({ ratingSum, ...r }) => {
+      const posCode = posForId(r.id);
+      const pos = posCode != null ? (POSITIONS[posCode] || null) : null;
+      const inStartingXi = xiSet.has(r.id);
+      const status = r.apps === 0 ? 'unused' : (inStartingXi || r.starts / clubGames >= 0.45) ? 'starter' : 'rotation';
+      return {
+        ...r,
+        avgRating: r.apps ? Math.round((ratingSum / r.apps) * 100) / 100 : null,
+        shirt: club.shirts?.[r.id] || null,
+        posCode,
+        pos,
+        nationality: natForId(r.id),
+        captain: Boolean(club.captainId && r.id === club.captainId),
+        penaltyTaker: Boolean(club.penaltyTakerId && r.id === club.penaltyTakerId),
+        freeKickTaker: Boolean(club.freeKickTakerId && r.id === club.freeKickTakerId),
+        inStartingXi,
+        status,
+      };
+    })
+    .sort((a, b) => (b.apps > 0) - (a.apps > 0) || b.minutes - a.minutes || Number(b.inStartingXi) - Number(a.inStartingXi) || (a.shirt ?? 999) - (b.shirt ?? 999) || String(a.name || '').localeCompare(String(b.name || '')));
+
+  const roleRef = (pid) => {
+    if (!pid) return null;
+    const found = squad.find((p) => p.id === pid);
+    const n = found?.name || nameOf(pid);
+    if (!n) return null;
+    const pc = found ? found.posCode : posForId(pid);
+    return { name: n, shirt: found?.shirt || club.shirts?.[pid] || null, pos: found?.pos || (pc != null ? POSITIONS[pc] || null : null), me: pid === player.id };
+  };
+  const myPos = squad.find((p) => p.me)?.pos || player.profile?.position || null;
+  const exactRivals = myPos ? squad.filter((p) => !p.me && p.name && p.pos === myPos) : [];
+  const family = myPos && !exactRivals.length ? POS_FAMILIES.find((g) => g.includes(myPos)) : null;
+  const rivalPool = exactRivals.length ? exactRivals : (family ? squad.filter((p) => !p.me && p.name && family.includes(p.pos)) : []);
+  const positionRivals = [...rivalPool]
+    .sort((a, b) => b.minutes - a.minutes || Number(b.inStartingXi) - Number(a.inStartingXi))
+    .slice(0, 4)
+    .map((p) => ({ name: p.name, pos: p.pos, shirt: p.shirt, apps: p.apps, minutes: p.minutes, inStartingXi: p.inStartingXi }));
+  const unusedBench = squad
+    .filter((p) => !p.me && p.name && p.apps === 0)
+    .slice(0, 10)
+    .map((p) => ({ name: p.name, shirt: p.shirt, pos: p.pos, nationality: p.nationality, inStartingXi: p.inStartingXi }));
+  const capInfo = roleRef(club.captainId);
+  const penInfo = roleRef(club.penaltyTakerId);
+  const fkInfo = roleRef(club.freeKickTakerId);
+  const squadIntel = {
+    captain: capInfo ? { name: capInfo.name, shirt: capInfo.shirt, pos: capInfo.pos, me: capInfo.me } : null,
+    penaltyTaker: penInfo ? { name: penInfo.name, me: penInfo.me } : null,
+    freeKickTaker: fkInfo ? { name: fkInfo.name, me: fkInfo.me } : null,
+    positionRivals,
+    unusedBench,
+    squadSize: (club.roster || []).length || squad.length,
+  };
 
   // Dernière journée jouée du championnat et prochaine journée (avec cotes).
   const playedRounds = leagueMatches.filter((m) => m.played).map((m) => m.round);
@@ -354,6 +450,7 @@ function buildSnapshot(career, names = null) {
     // Sigle du club (« OL », « PSV ») : les tendances de Kop le reconnaissent dans les messages.
     table: table.map(({ ref, ...r }) => ({ ...r, ref, short: career.teams.get(ref)?.short || undefined, mine: ref === club.ref })),
     squad,
+    squadIntel,
     // Numéro des joueurs par nom : deux joueurs peuvent porter le même nom, et leur visage dans le jeu n'est pas le même.
     playerIds: (() => {
       const oppRef = next ? (next.homeRef === club.ref ? next.awayRef : next.homeRef) : null;
@@ -492,4 +589,4 @@ function diffSnapshots(prev, cur) {
 // (fréquent avec la sauvegarde automatique du jeu) ne déclenche pas d'appel à l'IA.
 const hasNews = (c) => Boolean(c.firstSync || c.transfer || c.newSeason || c.newResults.length > 0 || c.matchday || c.contractSigned || c.injury || c.newTeamRole || c.skillLearned || c.ntResults.length > 0 || c.callUp || c.ntMatchday || c.window?.event === 'close' || c.plannedMove || c.seasonComplete);
 
-module.exports = { buildSnapshot, diffSnapshots, hasNews, ratingFromRaw, ratingWord, sameMatch };
+module.exports = { buildSnapshot, diffSnapshots, hasNews, ratingFromRaw, ratingWord, sameMatch, nationalitiesFromTeams };
