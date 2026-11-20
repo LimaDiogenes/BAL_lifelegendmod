@@ -13,6 +13,7 @@ const { normalizePersona, personaFacts } = require('./persona');
 const { estimateStartProfile, ensureLifeHub, calibrateLifeHub: applyCalibration, lifeHubTick, buyAsset, sellAsset, addSponsor, updateSponsor, removeSponsor, answerSponsorOffer, completeObligation, performAction, answerDilemma, lifeHubFacts, clearPendingSaveEffects } = require('./lifeHub');
 const { ensureCalendar, ingestSyncCalendar, advanceCalendar, flushCalendarToSave, addCustomCalendarEvent, removeCustomCalendarEvent } = require('./calendar');
 const { applyLifeEffects } = require('../save/lifeEffectsWrite');
+const { DEFAULT_PAPER_ID, normalizePaperOverride, resolveNationalPaper, paperDeskTemplate } = require('./nationalPaper');
 const { updateRival, rivalFacts, rivalInNews } = require('./rival');
 const { derbyFacts } = require('./derby');
 const { reunionFacts, formerClubs } = require('./reunion');
@@ -45,6 +46,19 @@ function savePersona({ store, persona }) {
   const state = store.activeCareer();
   if (!state) throw new Error('Synchronise ta sauvegarde une première fois.');
   state.persona = normalizePersona(persona);
+  store.saveCareer(state);
+  return state;
+}
+
+function saveNationalPaper({ store, payload }) {
+  const state = store.activeCareer();
+  if (!state) throw new Error('Synchronise ta sauvegarde une première fois.');
+  const ov = normalizePaperOverride(payload);
+  if (ov.mode === 'auto') delete state.nationalPaperOverride;
+  else state.nationalPaperOverride = ov;
+  const paper = paperForState(state, state.snapshot);
+  state.nationalPaper = paper;
+  transversaleDesk(state, paper);
   store.saveCareer(state);
   return state;
 }
@@ -739,6 +753,7 @@ function loadState(store) {
   if (state?.snapshot) {
     ensureLifeHub(state, state.snapshot);
     ensureCalendar(state, state.snapshot);
+    state.nationalPaper = paperForState(state, state.snapshot);
   }
   return state;
 }
@@ -1122,10 +1137,6 @@ async function writeDiscussions({ state, settings, apiKey, facts, fresh, people,
   return { threads, messages, quotes, renamed };
 }
 
-// La rédaction de La Transversale : le chroniqueur national (le nom déjà connu de la carrière, sinon celui-ci), cinq
-// plumes et, depuis que le journal couvre le football mondial (2026-11-09), quatre correspondants. Personnes fictives ;
-// la rédaction est fixée une fois pour toutes dans state.writers (une plume arrivée plus tard la rejoint). Une ligne de
-// caractère chacune : le caractère se voit dans ce que la plume regarde et juge, le style reste celui d'un quotidien factuel.
 const TRANSVERSALE_DESK = [
   { name: 'Marc Lhermitte', role: 'Chroniqueur national',
     voice: 'Senior writer: the big stories and the European nights. Sees what decided a match and what it means for the season; sober and exact, a dry wit now and then.' },
@@ -1151,18 +1162,32 @@ const TRANSVERSALE_DESK = [
 // Le correspondant de chaque grande compétition (place dans la rédaction) ; les autres vont à la rubrique compétitions.
 const BEATS = [[/champions league|world cup|coupe du monde|\beuro\b/i, 0], [/premier league|fa cup|championship/i, 6], [/laliga|copa del rey/i, 7], [/serie a\b|coppa italia/i, 8], [/bundesliga|dfb/i, 9]];
 const beatOf = (competition) => (BEATS.find(([re]) => re.test(String(competition || ''))) || [null, 5])[1];
-// La rédaction de la carrière (noms fixés une fois pour toutes) ; rôles et voix viennent toujours d'ici.
-function transversaleDesk(state) {
+
+function paperForState(state, snapshot = state?.snapshot) {
+  return resolveNationalPaper({ snapshot, override: state?.nationalPaperOverride });
+}
+
+// La rédaction du journal national : le chroniqueur national, cinq plumes et quatre correspondants. Personnes fictives ;
+// la rédaction suit le journal du pays et est gardée dans state.writers.
+function transversaleDesk(state, paper = null) {
   state.writers = state.writers || {};
-  if (!Array.isArray(state.writers.national_desk) || !state.writers.national_desk.length) {
-    const lead = state.writers.national_columnist || TRANSVERSALE_DESK[0].name;
+  const resolved = paper || state?.nationalPaper || (state?.snapshot ? paperForState(state, state.snapshot) : null);
+  const pid = resolved?.id || DEFAULT_PAPER_ID;
+  const tpl = resolved ? paperDeskTemplate(resolved, TRANSVERSALE_DESK) : TRANSVERSALE_DESK;
+  const prevCountry = state.writers.paperCountry || DEFAULT_PAPER_ID;
+  const countryChanged = Boolean(resolved && prevCountry !== pid);
+  if (!Array.isArray(state.writers.national_desk) || !state.writers.national_desk.length || countryChanged) {
+    const lead = (!countryChanged && state.writers.national_columnist) || tpl[0].name;
     state.writers.national_columnist = lead;
-    state.writers.national_desk = TRANSVERSALE_DESK.map((w, i) => ({ name: i === 0 ? lead : w.name, role: w.role }));
+    state.writers.national_desk = tpl.map((w, i) => ({ name: i === 0 ? lead : w.name, role: w.role }));
+    if (resolved) state.writers.paperCountry = pid;
+  } else {
+    // Une plume arrivée après le début de la carrière rejoint la rédaction déjà fixée.
+    if (resolved && !state.writers.paperCountry) state.writers.paperCountry = pid;
+    state.writers.national_desk = [...state.writers.national_desk, ...tpl.slice(state.writers.national_desk.length).map(({ name, role }) => ({ name, role }))];
+    state.writers.national_desk = state.writers.national_desk.map((w, i) => ({ name: w.name, role: tpl[i]?.role || w.role }));
   }
-  // Une plume arrivée après le début de la carrière rejoint la rédaction déjà fixée.
-  state.writers.national_desk = [...state.writers.national_desk, ...TRANSVERSALE_DESK.slice(state.writers.national_desk.length).map(({ name, role }) => ({ name, role }))];
-  state.writers.national_desk = state.writers.national_desk.map((w, i) => ({ name: w.name, role: TRANSVERSALE_DESK[i]?.role || w.role }));
-  return state.writers.national_desk.map((w, i) => ({ ...w, voice: TRANSVERSALE_DESK[i]?.voice || '' }));
+  return state.writers.national_desk.map((w, i) => ({ ...w, voice: tpl[i]?.voice || TRANSVERSALE_DESK[i]?.voice || '' }));
 }
 const wordCount = (text) => String(text || '').split(/\s+/).filter(Boolean).length;
 const firstSentence = (text) => (String(text || '').trim().match(/^.{20,240}?[.!?»](?=\s|$)/s) || [String(text || '').slice(0, 160)])[0];
@@ -1256,7 +1281,7 @@ function capExtras(list, max = 2) {
   for (const p of extras.slice(max)) list.splice(list.indexOf(p), 1);
   for (const p of extras.slice(0, max)) delete p.extra;
 }
-function worldPaperPlan(desk, press, kind, n, angles) {
+function worldPaperPlan(desk, press, kind, n, angles, showName = 'Le Débrief') {
   const w = (i) => desk[i]?.name || desk[0].name;
   const { after, before } = press;
   const special = SPECIAL_EDITION.test(kind);
@@ -1271,7 +1296,7 @@ function worldPaperPlan(desk, press, kind, n, angles) {
     // L'après-match tourne : l'analyse tactique, « Le Débrief » (le débat télévisé), le regard du consultant sur le vestiaire.
     club.push([
       { author: angles.world.awards?.player_of_the_year || angles.world.awards?.player_of_the_month ? w(3) : w(1), kind: 'analyse tactique', focus: 'club', competition: after.competition, subject: `how his club played in ${m}: the shape from last_match.clubLineup positions, the substitutions, the key battles` },
-      { author: w(3), kind: 'débat télévisé', focus: 'club', competition: after.competition, subject: `« Le Débrief », the post-match TV debate after ${m}: the host, two or three invented pundits and an invented guest argue about the match, his club and his own performance, then about the next match` },
+      { author: w(3), kind: 'débat télévisé', focus: 'club', competition: after.competition, subject: `« ${showName} », the post-match TV debate after ${m}: the host, two or three invented pundits and an invented guest argue about the match, his club and his own performance, then about the next match` },
       { author: w(3), kind: 'regard de consultant', focus: 'club', competition: after.competition, subject: ROOM_AFTER(m)[n % ROOM_AFTER(m).length] },
     ][n % 3]);
   } else if (before) {
@@ -1331,11 +1356,11 @@ function worldPaperPlan(desk, press, kind, n, angles) {
   return plan.slice(0, PAPER_MAX).map((p, i) => ({ ...p, lead: p.lead || leadOf(p.kind, n), size: sizes[i] }));
 }
 
-function transversalePlan(desk, press, kind, editions = 0, angles = {}) {
+function transversalePlan(desk, press, kind, editions = 0, angles = {}, showName = 'Le Débrief') {
   const w = (i) => desk[i]?.name || desk[0].name;
   const n = editions;
   const { after, before } = press;
-  if ((angles.world?.stories?.length || angles.world?.awards?.player_of_the_year) && !/^SEASON REVIEW/.test(kind)) return worldPaperPlan(desk, press, kind, n, angles);
+  if ((angles.world?.stories?.length || angles.world?.awards?.player_of_the_year) && !/^SEASON REVIEW/.test(kind)) return worldPaperPlan(desk, press, kind, n, angles, showName);
   const big = Boolean(angles.big) || SPECIAL_EDITION.test(kind);
   const debate = { author: w(2), kind: 'édito', focus: 'competition', subject: angles.debate || "ONE debate of the moment in his competitions, about other clubs or the competition as a whole (the title race, the relegation fight, a club on a run, a coach's choice elsewhere): take a side. An opinion piece, NOT a match report and NOT a preview" };
   const room = (m, topics) => { const list = m ? topics(m) : null; return { author: w(3), kind: 'regard de consultant', focus: 'club', subject: list ? `the dressing-room view: ${list[n % list.length]}` : "the mood of his club's dressing room right now, from what FACTS shows (results, form, playing time)" }; };
@@ -1366,7 +1391,7 @@ function transversalePlan(desk, press, kind, editions = 0, angles = {}) {
         { author: w(1), kind: 'analyse tactique', focus: 'club', subject: `how his club played in ${m}: the shape from last_match.clubLineup positions, the substitutions, the key battles${n % 8 === 4 ? ', in three short numbered parts' : ''}` },
         debate,
         room(m, ROOM_AFTER),
-        { author: w(3), kind: 'débat télévisé', focus: 'club', subject: `« Le Débrief », the post-match TV debate after ${m}: the host, two or three invented pundits and an invented guest argue about the match, his club and his own performance, then about the other results of the competition` },
+        { author: w(3), kind: 'débat télévisé', focus: 'club', subject: `« ${showName} », the post-match TV debate after ${m}: the host, two or three invented pundits and an invented guest argue about the match, his club and his own performance, then about the other results of the competition` },
       ][n % 4]);
     }
   } else if (before) {
@@ -1480,8 +1505,9 @@ function articleProblems(article, earlier = [], { nextOpponent = null, coverage 
 // et des brèves), chacun dans la voix de sa plume.
 // Les articles de l'édition de La Transversale, décidés par le code avant toute requête (auteur, genre, sujet,
 // format) : l'édition (blog, Kop, mails) les connaît ainsi pendant qu'ils s'écrivent.
-function transversaleOutline({ state, snapshot, rawChanges, kind, world = null, rumor = null }) {
-  const desk = transversaleDesk(state);
+function transversaleOutline({ state, snapshot, rawChanges, kind, world = null, rumor = null, paper = null }) {
+  const resolvedPaper = paper || paperForState(state, snapshot);
+  const desk = transversaleDesk(state, resolvedPaper);
   const press = pressMoments(snapshot, rawChanges);
   const stories = competitionStories(snapshot);
   const n = state.editions.length;
@@ -1493,7 +1519,7 @@ function transversaleOutline({ state, snapshot, rawChanges, kind, world = null, 
   const names = [...(world?.competitions || []).map((c) => c.competition), league].filter(Boolean);
   const rival = rivalInNews(state.rival, n, 5) ? state.rival : null;
   const angles = { rival, derby: derbyFacts(snapshot), reunion: reunionFacts(state, snapshot), rumour: rumor && rumor.reliability !== 'unverified' ? rumor : null, tour: tourAngle(snapshot, press, stories), story: longViewAngle(stories, n), debate, big: bigEdition(snapshot, rawChanges, press), world: stories2.length || world?.awards?.player_of_the_year ? { stories: stories2, debates: worldDebates(world, { recent: recentDebates(state, names, league), extra: own }), awards: world.awards || null } : null };
-  return { desk, press, plan: transversalePlan(desk, press, kind, n, angles) };
+  return { desk, press, paper: resolvedPaper, plan: transversalePlan(desk, press, kind, n, angles, resolvedPaper?.showName || 'Le Débrief') };
 }
 
 // Les championnats des éditos déjà parus, du plus récent au plus ancien : sa compétition ; pour un ancien édito qui n'en
@@ -1528,8 +1554,10 @@ function worldTeams(w) {
   return out;
 }
 
-async function writeTransversale({ state, settings, apiKey, facts, changes, rawChanges, snapshot, kind, outline = transversaleOutline({ state, snapshot, rawChanges, kind }), onProgress, log = () => {}, clock = null, privacyMap = null }) {
+async function writeTransversale({ state, settings, apiKey, facts, changes, rawChanges, snapshot, kind, outline = transversaleOutline({ state, snapshot, rawChanges, kind }), onProgress, log = () => {}, clock = null, privacyMap = null, paper = null }) {
   const { desk, press, plan } = outline;
+  const resolvedPaper = paper || outline.paper || paperForState(state, snapshot);
+  const pName = resolvedPaper?.name || PAPER_NAME;
   const m = memoryFor(state);
   const memory = {
     writers: { national_columnist: state.writers.national_columnist, local_beat_writer: state.writers.local_beat_writer || null },
@@ -1542,12 +1570,12 @@ async function writeTransversale({ state, settings, apiKey, facts, changes, rawC
   };
   const out = parseJson(await complete(settings, apiKey, {
     privacyMap,
-    system: prompts.transversaleSystem(settings),
+    system: prompts.transversaleSystem(settings, resolvedPaper),
     user: prompts.transversaleUser({ facts, changes, memory, desk: desk.filter((w) => plan.some((p) => p.author === w.name)), plan, press, settings: withTone(settings, state), kind }),
     maxTokens: 24000,
     onProgress,
   }));
-  clock?.lap('La Transversale : rédaction');
+  clock?.lap(`${pName} : rédaction`);
   // Le plan fait foi pour l'auteur et le genre, dans l'ordre ; un article de trop ou vide est écarté.
   const list = (Array.isArray(out.national) ? out.national : []).filter((a) => a && a.headline && a.body).slice(0, plan.length).map((a, i) => ({
     headline: String(a.headline), dek: String(a.dek || ''), author: plan[i].author, kind: plan[i].kind, size: plan[i].size, focus: plan[i].focus, ...(plan[i].competition ? { competition: plan[i].competition } : {}), ...(plan[i].teams ? { teams: plan[i].teams } : {}), ...(plan[i].rival ? { rival: plan[i].rival } : {}), body: String(a.body),
@@ -1568,11 +1596,11 @@ async function writeTransversale({ state, settings, apiKey, facts, changes, rawC
   const checks = list.map((a, i) => ({ i, ...judge(a, i) })).filter((c) => c.base.problems.length || (!factChecked && c.flags.length))
     .map((c) => ({ ...c, problems: [...c.base.problems, ...(c.flags.length ? [flagsProblem(c.flags)] : [])] }));
   if (!checks.length) return list;
-  log(`La Transversale : ${checks.length} article${checks.length > 1 ? 's' : ''} à retravailler (${checks.map((c) => list[c.i].author.split(' ')[0]).join(', ')})…`);
+  log(`${pName} : ${checks.length} article${checks.length > 1 ? 's' : ''} à retravailler (${checks.map((c) => list[c.i].author.split(' ')[0]).join(', ')})…`);
   try {
     const r = parseJson(await complete(settings, apiKey, {
       privacyMap,
-      system: prompts.transversaleRepairSystem(settings),
+      system: prompts.transversaleRepairSystem(settings, resolvedPaper),
       user: prompts.transversaleRepairUser({ facts, items: checks.map((c) => ({ id: c.i, writer: desk.find((w) => w.name === list[c.i].author), subject: plan[c.i].subject, size: plan[c.i].size, lead: plan[c.i].lead, article: list[c.i], problems: c.problems })) }),
       maxTokens: 14000,
       onProgress,
@@ -1588,9 +1616,9 @@ async function writeTransversale({ state, settings, apiKey, facts, changes, rawC
       if (after.score < c.score && wordCount(fixed.body) >= wordCount(a.body) * 0.9) Object.assign(a, { headline: fixed.headline, dek: fixed.dek, body: fixed.body });
     }
   } catch (err) {
-    log(`La Transversale : articles gardés tels quels (${err.message}).`);
+    log(`${pName} : articles gardés tels quels (${err.message}).`);
   }
-  clock?.lap(`La Transversale : reprise de ${checks.length} article${checks.length > 1 ? 's' : ''}`);
+  clock?.lap(`${pName} : reprise de ${checks.length} article${checks.length > 1 ? 's' : ''}`);
   return list;
 }
 
@@ -1734,6 +1762,7 @@ async function syncInner({ store, settings, log, t }) {
   const calIngest = ingestSyncCalendar(state, snapshot, { calendarMode: settings.calendarMode || 'basic' });
   if (calIngest.deferred) {
     ensureLifeHub(state, state.snapshot);
+    state.nationalPaper = paperForState(state, calIngest.visibleSnapshot || state.snapshot || snapshot);
     state.lastSync = { published: false, deferredCalendar: true, queuedMatches: calIngest.queuedCount, gameDate: calIngest.visibleSnapshot.gameDate, saveDate: snapshot.gameDate };
     store.saveCareer(state);
     log(`Calendrier complet : ${calIngest.queuedCount} match(s) en attente jusqu’au ${snapshot.gameDate}. Avance dans Ma vie › Calendrier.`);
@@ -2074,8 +2103,10 @@ async function syncInner({ store, settings, log, t }) {
   try { world = worldFootball(scoresNow(), { since: state.editions.at(-1)?.gameDate || null, today: snapshot.gameDate, seen: state.paperAwards || {}, league: snapshot.league?.name || null }); } catch (err) { log(`Le football mondial : scores illisibles (${err.message}).`); }
   const worldMarks = world?.marks;
   if (world) delete world.marks;
+  const paper = paperForState(state, snapshot);
+  state.nationalPaper = paper;
   const nationalFacts = { ...transversaleFacts(facts, snapshot), ...(world ? { world_football: world } : {}), ...(rumorFacts ? { transfer_rumour: rumorFacts } : {}) };
-  const outline = transversaleOutline({ state, snapshot, rawChanges: changes, kind, world, rumor: rumorFacts });
+  const outline = transversaleOutline({ state, snapshot, rawChanges: changes, kind, world, rumor: rumorFacts, paper });
   // Kop parle aussi du football mondial (demande d'un testeur) : un résumé court, dans la requête de l'édition, et trois
   // places dans le plan des posts. Gardé jusqu'à la synchro suivante pour les réponses à ses posts.
   const elsewhere = worldBrief(world);
@@ -2108,23 +2139,23 @@ async function syncInner({ store, settings, log, t }) {
     t.ai(p?.phase === 'writing' ? { ...p, chars: chars.national + chars.edition } : p);
   };
   const nationalTrack = clock.track(), editionTrack = clock.track();
-  const writeNational = () => writeTransversale({ state, settings, apiKey, facts: nationalFacts, changes: aiChanges, rawChanges: changes, snapshot, kind, outline, onProgress: progressOf(nationalTrack, 'national'), log, clock: nationalTrack, privacyMap });
+  const writeNational = () => writeTransversale({ state, settings, apiKey, facts: nationalFacts, changes: aiChanges, rawChanges: changes, snapshot, kind, outline, onProgress: progressOf(nationalTrack, 'national'), log, clock: nationalTrack, privacyMap, paper });
   const [nationalDone, editionDone] = await Promise.allSettled([
     writeNational().catch((err) => {
-      nationalTrack.lap('La Transversale (échec)');
-      log(`La Transversale : nouvel essai (${err.message})…`);
+      nationalTrack.lap(`${paper.name} (échec)`);
+      log(`${paper.name} : nouvel essai (${err.message})…`);
       return writeNational();
     }),
     complete(settings, apiKey, {
       privacyMap,
-      system: prompts.editionSystem(settings, { transversale: true, pantheon: chapterEvents.length > 0, huddle: Boolean(huddle), huddleNational: Boolean(ntHuddle), chant: Boolean(chant), interview: Boolean(interview) }),
+      system: prompts.editionSystem(settings, { transversale: true, pantheon: chapterEvents.length > 0, huddle: Boolean(huddle), huddleNational: Boolean(ntHuddle), chant: Boolean(chant), interview: Boolean(interview), paper }),
       user: prompts.editionUser({ facts, changes: aiChanges, memory, settings: withTone(settings, state), kind, plan }),
       maxTokens: 16000,
       log,
       onProgress: progressOf(editionTrack, 'edition'),
     }).finally(() => editionTrack.lap('édition (journal local, Kop, mails)')),
   ]);
-  if (nationalDone.status === 'rejected') nationalTrack.lap('La Transversale (échec)');
+  if (nationalDone.status === 'rejected') nationalTrack.lap(`${paper.name} (échec)`);
   clock.together([nationalTrack, editionTrack]);
   if (editionDone.status === 'rejected') {
     // Synchro de secours : l'IA ne répond plus pour aujourd'hui (quota du jour). Ce que le code fait sans elle est gardé
@@ -2145,9 +2176,9 @@ async function syncInner({ store, settings, log, t }) {
   const national = nationalDone.status === 'fulfilled' ? nationalDone.value : null;
   if (national) {
     const words = national.reduce((n, a) => n + wordCount(a.body), 0);
-    log(`La Transversale : ${national.length} article${national.length > 1 ? 's' : ''}, ${words} mots (${national.map((a) => `${a.author}, ${Math.max(1, Math.round(wordCount(a.body) / 220))} min`).join(' ; ')}).`);
+    log(`${paper.name} : ${national.length} article${national.length > 1 ? 's' : ''}, ${words} mots (${national.map((a) => `${a.author}, ${Math.max(1, Math.round(wordCount(a.body) / 220))} min`).join(' ; ')}).`);
   } else {
-    log(`La Transversale n’a pas pu être écrite (${nationalDone.reason?.message}) : l’édition paraît sans elle.`);
+    log(`${paper.name} n’a pas pu être écrit (${nationalDone.reason?.message}) : l’édition paraît sans lui.`);
   }
   const out = parseJson(editionDone.value);
   if (national) out.national = national;
@@ -2202,6 +2233,7 @@ async function syncInner({ store, settings, log, t }) {
     national: (out.national || []).map((a) => ({ ...article(a), ...(a.kind ? { kind: a.kind } : {}), ...(a.focus ? { focus: a.focus } : {}), ...(a.competition ? { competition: a.competition } : {}), ...(Array.isArray(a.teams) ? { teams: a.teams } : {}), ...(a.rival ? { rival: a.rival } : {}) })).filter(hasBody),
     local: (out.local || []).map(article).filter(hasBody),
     paper: state.localPaper ? { name: state.localPaper.name, city: state.localPaper.city } : null, // le journal change avec le club
+    ...(paper ? { paperName: paper.name, paperCountry: paper.country, paperSlug: paper.slug } : {}),
     factcheck,
     // Numéro spécial de fin de saison (bandeau sur la une de La Transversale).
     ...(/^SEASON REVIEW/.test(kind) ? { special: 'season_review', season: snapshot.season } : {}),
@@ -2256,7 +2288,7 @@ async function syncInner({ store, settings, log, t }) {
   }
   if (interview) { const asked = markInterview(state, interview, out.interview_questions, snapshot.gameDate); log(asked ? `Interview : ${interview.journalist} te demande un entretien (Mails).` : 'Interview : pas de demande cette fois.'); }
   // « Le brief du matin » de La Transversale, si le joueur s'y est abonné sur le site du journal (composé sans IA).
-  if (settings.transversaleBrief) state.mail.push(transversaleBrief(snapshot, state.editions.at(-1), settings.language));
+  if (settings.transversaleBrief) state.mail.push(transversaleBrief(snapshot, state.editions.at(-1), settings.language, paper));
   if (state.sponsor) state.sponsor.news = null;
   if (Array.isArray(out.storylines)) state.storylines = out.storylines.slice(0, 6);
   // Rapport de l'agent envoyé : il servira de référence pour les tendances suivantes.
@@ -2590,9 +2622,10 @@ async function replyMailInner({ store, settings, threadId, text, t }) {
 // journaliste le remercie. Une seule requête, celle de la réponse au mail.
 async function interviewReply({ store, settings, state, thread, text, apiKey, t, privacyMap = null }) {
   const gameDate = state.snapshot.gameDate;
+  const paper = state.nationalPaper || paperForState(state);
   const out = parseJson(await complete(settings, apiKey, {
     privacyMap: privacyMap || privacyMapFor(state, settings),
-    system: prompts.interviewSystem(settings),
+    system: prompts.interviewSystem(settings, paper),
     user: prompts.interviewUser({ facts: pressFacts(state), memory: memoryFor(state), interview: { journalist: thread.from, questions: thread.interview.questions, answers: text } }),
     maxTokens: 6000,
     onProgress: t.ai,
@@ -2789,9 +2822,10 @@ async function openPress({ store, settings, progress }) {
 // Qui pose les questions : ceux qui suivent la ligue, deux plumes de La Transversale et un confrère d'un autre média inventé
 // par l'IA. Une conférence sur quatre, le rédacteur du blog des supporters obtient la troisième question : lui seul tutoie.
 function pressPanel(state, press) {
-  const desk = transversaleDesk(state).slice(0, 6);
+  const paper = state.nationalPaper || paperForState(state);
+  const desk = transversaleDesk(state, paper).slice(0, 6);
   const seed = parseInt(String(press.id).slice(0, 6), 16) || 0;
-  const league = (w) => ({ name: w.name, outlet: 'La Transversale', role: w.role, address: 'formal' });
+  const league = (w) => ({ name: w.name, outlet: paper?.name || PAPER_NAME, role: w.role, address: 'formal' });
   const blogger = state.writers?.local_beat_writer, blog = state.localPaper?.name;
   const third = blogger && blog && seed % 4 === 0 ? { name: blogger, outlet: blog, role: "supporters' blog writer", address: 'familiar' } : { name: null, outlet: null, address: 'formal' };
   return [league(desk[seed % desk.length]), league(desk[(seed + 1) % desk.length]), third];
@@ -2863,11 +2897,12 @@ async function submitPressInner({ store, settings, answers, log, t }) {
   const apiKey = store.getKey(settings.provider);
   const privacyMap = privacyMapFor(state, settings);
   const facts = { ...pressFacts(state), press_conference: exchanges };
-  const desk = transversaleDesk(state);
+  const paper = state.nationalPaper || paperForState(state);
+  const desk = transversaleDesk(state, paper);
   const reporter = desk.find((w) => w.role === 'Reporter') || desk[0];
   const out = parseJson(await complete(settings, apiKey, {
     privacyMap,
-    system: prompts.pressWriteupSystem(settings),
+    system: prompts.pressWriteupSystem(settings, paper),
     user: prompts.pressWriteupUser({ facts, memory: memoryFor(state), conference: { match: pressMatch(state, press), exchanges, writer: reporter.name } }),
     maxTokens: 6000,
     log,
@@ -2932,8 +2967,10 @@ const AGENT_OCCASION_LOG = {
 
 // « Le brief du matin » (newsletter de La Transversale, réglage transversaleBrief) : dernier match du club, classement,
 // prochain match et titres de l'édition, tirés de la sauvegarde et de l'édition publiée. Pas de requête à l'IA.
-function transversaleBrief(snapshot, edition, language = 'fr') {
+function transversaleBrief(snapshot, edition, language = 'fr', paper = null) {
   const L = postTexts(language), B = L.brief;
+  const pName = paper?.name || edition?.paperName || PAPER_NAME;
+  const pSlug = paper?.slug || edition?.paperSlug || 'latransversale';
   const club = snapshot.club?.name || B.yourClub;
   const last = snapshot.last?.played && snapshot.last.score ? snapshot.last : null;
   const next = snapshot.next;
@@ -2944,7 +2981,7 @@ function transversaleBrief(snapshot, edition, language = 'fr') {
     next && B.next(`${next.home} - ${next.away}`, L.date(next.date, { weekday: 'long', day: 'numeric', month: 'long' }), next.hour),
   ].filter(Boolean);
   const heads = (edition?.national || []).map((a) => `• ${a.headline}${a.dek ? `\n  ${a.dek}` : ''}`);
-  const body = [
+  const rawBody = [
     B.hello,
     B.intro(L.date(snapshot.gameDate, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })),
     facts.join('\n'),
@@ -2952,7 +2989,10 @@ function transversaleBrief(snapshot, edition, language = 'fr') {
     B.signoff,
     B.footer,
   ].filter(Boolean).join('\n\n');
-  return { id: newId(), from: 'La Transversale', role: 'newsletter', subject: B.subject(L.date(snapshot.gameDate, { day: 'numeric', month: 'long' })), unread: true, closed: true, messages: [{ who: 'them', body, gameDate: snapshot.gameDate }] };
+  const body = pName === PAPER_NAME && pSlug === 'latransversale'
+    ? rawBody
+    : rawBody.replace(/La Transversale/g, pName).replace(/latransversale/g, pSlug);
+  return { id: newId(), from: pName, role: 'newsletter', subject: B.subject(L.date(snapshot.gameDate, { day: 'numeric', month: 'long' })), unread: true, closed: true, messages: [{ who: 'them', body, gameDate: snapshot.gameDate }] };
 }
 
 async function writeAgentMail({ store, state, snapshot, settings, log, t, occasion = 'offer' }) {
@@ -3340,4 +3380,4 @@ function loadScores({ store }) {
   return state ? store.loadAux(state.careerId, 'scores') : null;
 }
 
-module.exports = { savePrivacy, savePersona, saveClubAlias, saveLifeEvents, calibrateCareerLifeHub, buyLifeAsset, sellLifeAsset, addLifeSponsor, updateLifeSponsor, removeLifeSponsor, answerLifeSponsorOffer, completeLifeObligation, doLifeAction, answerLifeDilemma, ensureLifeHub, calendarAdvance, calendarSetMode, calendarAddEvent, calendarRemoveEvent, applyLifeSaveEffects, dismissLifeSaveEffects, noteKeyMemory, privacyMapFor, previewMasked, getAiAuditLog, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };
+module.exports = { savePrivacy, savePersona, saveNationalPaper, saveClubAlias, saveLifeEvents, calibrateCareerLifeHub, buyLifeAsset, sellLifeAsset, addLifeSponsor, updateLifeSponsor, removeLifeSponsor, answerLifeSponsorOffer, completeLifeObligation, doLifeAction, answerLifeDilemma, ensureLifeHub, calendarAdvance, calendarSetMode, calendarAddEvent, calendarRemoveEvent, applyLifeSaveEffects, dismissLifeSaveEffects, noteKeyMemory, privacyMapFor, previewMasked, getAiAuditLog, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };

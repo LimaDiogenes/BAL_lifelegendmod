@@ -73,6 +73,7 @@ contextBridge.exposeInMainWorld('live', {
   addCalendarEvent: (payload) => call('calendar:addEvent', payload),
   removeCalendarEvent: (id) => call('calendar:removeEvent', id),
   setClubAlias: (clubRef, name) => call('career:aliasClub', { clubRef, name }),
+  saveNationalPaper: (payload) => call('paper:save', payload),
   saveLifeEvents: (events) => call('lifeEvents:save', events),
   previewPrivacy: (arg) => call('privacy:preview', arg),
   auditPrivacy: () => call('privacy:audit'),
