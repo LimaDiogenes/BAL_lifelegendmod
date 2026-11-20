@@ -2334,4 +2334,11 @@ window.LL_I18N.de = {
   "Date et titre requis.": "Datum und Titel erforderlich.",
   "Les effets Ma vie sur la sauvegarde sont désactivés : active-les dans les réglages.": "Mein-Leben-Spielstandeffekte sind deaktiviert: Aktiviere sie in den Einstellungen.",
   "Aucun changement à écrire dans la sauvegarde.": "Keine Änderungen für den Spielstand vorhanden.",
+  "Activité": "Aktivität",
+  "Relation visée": "Zielwert",
+  "Modèle rapide": "Schnellvorlage",
+  "Titre": "Titel",
+  "Rôle": "Rolle",
+  "Bouclier": "Schutz",
+  "Libellé": "Bezeichnung",
 };

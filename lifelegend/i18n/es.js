@@ -2334,4 +2334,11 @@ window.LL_I18N.es = {
   "Date et titre requis.": "Fecha y título obligatorios.",
   "Les effets Ma vie sur la sauvegarde sont désactivés : active-les dans les réglages.": "Los efectos de Mi vida en el guardado están desactivados: actívalos en ajustes.",
   "Aucun changement à écrire dans la sauvegarde.": "No hay cambios para escribir en el guardado.",
+  "Activité": "Actividad",
+  "Relation visée": "Relación objetivo",
+  "Modèle rapide": "Plantilla rápida",
+  "Titre": "Título",
+  "Rôle": "Rol",
+  "Bouclier": "Escudo",
+  "Libellé": "Etiqueta",
 };

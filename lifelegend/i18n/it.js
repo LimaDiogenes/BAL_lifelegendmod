@@ -2334,4 +2334,11 @@ window.LL_I18N.it = {
   "Date et titre requis.": "Data e titolo obbligatori.",
   "Les effets Ma vie sur la sauvegarde sont désactivés : active-les dans les réglages.": "Effetti de La mia vita disattivati: attivali nelle impostazioni.",
   "Aucun changement à écrire dans la sauvegarde.": "Nessuna modifica da scrivere nel salvataggio.",
+  "Activité": "Attività",
+  "Relation visée": "Rapporto interessato",
+  "Modèle rapide": "Modello rapido",
+  "Titre": "Titolo",
+  "Rôle": "Ruolo",
+  "Bouclier": "Scudo",
+  "Libellé": "Etichetta",
 };

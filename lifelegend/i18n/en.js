@@ -2334,4 +2334,11 @@ window.LL_I18N.en = {
   "Date et titre requis.": "Date and title are required.",
   "Les effets Ma vie sur la sauvegarde sont désactivés : active-les dans les réglages.": "My Life save effects are disabled: turn them on in Settings.",
   "Aucun changement à écrire dans la sauvegarde.": "No changes to write to your save file.",
+  "Activité": "Activity",
+  "Relation visée": "Target meter",
+  "Modèle rapide": "Preset template",
+  "Titre": "Title",
+  "Rôle": "Role",
+  "Bouclier": "Shield",
+  "Libellé": "Label",
 };
