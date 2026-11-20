@@ -12,7 +12,7 @@ const { answerSponsor } = require('./src/world/sponsors');
 const { dmContacts, findDm } = require('./src/world/dms');
 const { setBio } = require('./src/world/pantheon');
 const { normalizePrivacy, previewMasked } = require('./src/ai/privacyShield');
-const { PROVIDERS, isDailyQuota } = require('./src/ai/providers');
+const { PROVIDERS, isDailyQuota, listModels } = require('./src/ai/providers');
 const { detectGameFolders, isGameDir } = require('./src/save/gameDb');
 const { defaultClipsDir } = require('./src/world/media');
 const world = require('./src/world/world');
@@ -261,6 +261,13 @@ app.whenReady().then(() => {
     const saved = store.saveSettings(update);
     setupAutoSync();
     return saved;
+  });
+  handle('ai:models', async (payload = {}) => {
+    const cur = store.getSettings();
+    const provider = payload.provider || cur.provider;
+    const baseUrl = payload.baseUrl !== undefined ? String(payload.baseUrl || '').trim() : cur.baseUrl;
+    const apiKey = String(payload.apiKey || '').trim() || store.getKey(provider);
+    return listModels({ ...cur, provider, baseUrl }, apiKey);
   });
   loadSaveKeys();
   handle('saves:detect', () => detectSaves());

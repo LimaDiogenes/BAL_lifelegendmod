@@ -1052,17 +1052,26 @@ function setupSaveHtml(su) {
     <div class="su-nav"><span></span><button class="btn primary big" id="su-next"${su.savePath ? '' : ' disabled'}>${tr('Suivant')}</button></div>`;
 }
 
+const aiKeyPlaceholder = (id, p) => (settings?.savedKeys?.includes(id)
+  ? tr('Clé enregistrée — colle une nouvelle clé pour la remplacer')
+  : p?.local ? tr('Optionnelle (aucune clé requise en local)') : (p?.keyHint || tr('Colle ta clé ici')));
+
 function setupAiHtml(su) {
   su.provider ||= settings.provider;
   const p = providers[su.provider] || {};
   const saved = settings.savedKeys.includes(su.provider);
+  const modelVal = su.model !== undefined ? su.model : (su.provider === settings.provider && settings.model ? settings.model : p.models?.[0] || '');
+  const baseVal = su.baseUrl !== undefined ? su.baseUrl : (su.provider === settings.provider && settings.baseUrl ? settings.baseUrl : p.baseUrl || '');
+  const modelsList = Array.isArray(su.liveModels) && su.liveModels.length ? su.liveModels : (p.models || []);
   return `<section class="card"><h3>${tr('L’IA qui écrit ton monde')}</h3>
       <label>${tr('Fournisseur')}<select id="su-provider">${Object.entries(providers).map(([id, x]) => `<option value="${id}"${id === su.provider ? ' selected' : ''}>${esc(tr(x.label))}</option>`).join('')}</select></label>
-      ${su.provider === 'custom' ? `<label>${tr('Adresse (Base URL)')}<input id="su-baseurl" value="${esc(settings.baseUrl || '')}" placeholder="https://…/v1"></label>` : ''}
-      <label>${tr('Clé API')}<input id="su-apikey" type="password" autocomplete="off" placeholder="${saved ? tr('Clé enregistrée — colle une nouvelle clé pour la remplacer') : esc(p.keyHint || tr('Colle ta clé ici'))}"></label>
-      <p class="fineprint">${tr('La clé est chiffrée avec ton compte Windows et n’est envoyée qu’au fournisseur choisi. Clés gratuites : Google AI Studio (aistudio.google.com) ou Groq (console.groq.com).')}</p>
+      ${p.editableBaseUrl ? `<label>${tr('Adresse (Base URL)')}<input id="su-baseurl" value="${esc(baseVal)}" placeholder="${esc(p.baseUrl || 'https://…/v1')}"></label>` : ''}
+      <label>${tr('Modèle')}<input id="su-model" list="su-models" aria-label="${tr('Modèle')}" value="${esc(modelVal)}"><datalist id="su-models">${modelsList.map((m) => `<option value="${esc(m)}">`).join('')}</datalist></label>
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button type="button" class="btn" id="su-refresh-models">${tr('Actualiser la liste')}</button><span class="fineprint" id="su-models-status" role="status">${esc(su.modelsStatus || '')}</span></div>
+      <label>${tr('Clé API')}<input id="su-apikey" type="password" autocomplete="off" placeholder="${esc(aiKeyPlaceholder(su.provider, p))}"></label>
+      <p class="fineprint">${tr('La clé est chiffrée avec ton compte Windows et n’est envoyée qu’au fournisseur choisi. Gratuits : Google AI Studio, Groq, Cerebras, Mistral, GitHub Models — ou 100 % local sans clé avec Ollama / LM Studio.')}</p>
     </section>
-    <div class="su-nav"><button class="btn big" id="su-back">${tr('Retour')}</button><button class="btn primary big" id="su-next"${saved || su.provider === 'custom' ? '' : ' disabled'}>${tr('Suivant')}</button></div>`;
+    <div class="su-nav"><button class="btn big" id="su-back">${tr('Retour')}</button><button class="btn primary big" id="su-next"${saved || p.optionalKey ? '' : ' disabled'}>${tr('Suivant')}</button></div>`;
 }
 
 // Joueur créé ou réel : deux cases qui s'excluent, facultatives.
@@ -1164,13 +1173,58 @@ function renderSetup(page) {
     };
     $('#su-next').onclick = () => { su.step = 2; render(); viewScrollTo(0); };
   } else if (su.step === 2) {
-    $('#su-provider').onchange = (ev) => { su.provider = ev.target.value; render(); };
+    const p = providers[su.provider] || {};
     const key = $('#su-apikey');
-    const saved = settings.savedKeys.includes(su.provider) || su.provider === 'custom';
-    key.oninput = () => { $('#su-next').disabled = !saved && !key.value.trim(); };
+    const saved = settings.savedKeys.includes(su.provider) || Boolean(p.optionalKey);
+    const canProceed = () => Boolean(saved || key.value.trim());
+    $('#su-provider').onchange = (ev) => {
+      su.provider = ev.target.value;
+      delete su.model;
+      delete su.baseUrl;
+      su.liveModels = null;
+      su.modelsStatus = '';
+      render();
+    };
+    if ($('#su-baseurl')) $('#su-baseurl').oninput = (ev) => { su.baseUrl = ev.target.value; };
+    if ($('#su-model')) $('#su-model').oninput = (ev) => { su.model = ev.target.value; };
+    key.oninput = () => { $('#su-next').disabled = !canProceed(); };
+    const refreshBtn = $('#su-refresh-models');
+    if (refreshBtn) {
+      refreshBtn.onclick = async () => {
+        const status = $('#su-models-status');
+        refreshBtn.disabled = true;
+        if (status) status.textContent = tr('Chargement des modèles…');
+        try {
+          const res = await live.listModels({
+            provider: su.provider,
+            baseUrl: $('#su-baseurl') ? $('#su-baseurl').value.trim() : '',
+            apiKey: key.value.trim(),
+          });
+          const list = res?.models || [];
+          su.liveModels = list;
+          if (list.length && (!$('#su-model').value.trim() || $('#su-model').value.trim() === 'local-model')) {
+            $('#su-model').value = list[0];
+            su.model = list[0];
+          }
+          $('#su-models').innerHTML = list.map((m) => `<option value="${esc(m)}">`).join('');
+          su.modelsStatus = list.length ? trn(list.length, '{n} modèle trouvé', '{n} modèles trouvés') : tr('Aucun modèle trouvé.');
+          if (status) status.textContent = su.modelsStatus;
+        } catch (err) {
+          su.modelsStatus = err.message;
+          if (status) status.textContent = err.message;
+        }
+        refreshBtn.disabled = false;
+      };
+    }
     $('#su-next').onclick = async () => {
-      const p = providers[su.provider] || {};
-      const update = { provider: su.provider, model: su.provider === settings.provider ? settings.model : p.models?.[0] || '', ...($('#su-baseurl') ? { baseUrl: $('#su-baseurl').value.trim() } : {}), ...(key.value.trim() ? { apiKey: key.value.trim() } : {}) };
+      const typedModel = ($('#su-model')?.value || '').trim();
+      const modelVal = typedModel || p.models?.[0] || '';
+      const update = {
+        provider: su.provider,
+        model: modelVal,
+        baseUrl: p.editableBaseUrl && $('#su-baseurl') ? $('#su-baseurl').value.trim() : '',
+        ...(key.value.trim() ? { apiKey: key.value.trim() } : {}),
+      };
       try {
         settings = await live.saveSettings(update);
         su.step = 3;
@@ -9589,9 +9643,10 @@ async function renderSettings(page) {
     ${panel('ai', [
     rgRow('rg-ai', tr('Fournisseur'), `<select id="provider" aria-label="${tr('Fournisseur')}">${Object.entries(providers).map(([id, p]) => `<option value="${id}"${id === settings.provider ? ' selected' : ''}>${esc(tr(p.label))}</option>`).join('')}</select>`),
     rgRow('', tr('Modèle'), `<input id="model" list="models" aria-label="${tr('Modèle')}" value="${esc(settings.model)}"><datalist id="models">${(prov.models || []).map((m) => `<option value="${esc(m)}">`).join('')}</datalist>
-      <label id="baseurl-wrap" class="${settings.provider === 'custom' ? '' : 'hidden'}">${tr('Adresse (Base URL)')}<input id="baseurl" value="${esc(settings.baseUrl)}" placeholder="https://…/v1"></label>`),
-    rgRow('', tr('Clé API'), `<input id="apikey" type="password" aria-label="${tr('Clé API')}" placeholder="${settings.savedKeys.includes(settings.provider) ? tr('Clé enregistrée — colle une nouvelle clé pour la remplacer') : esc(prov.keyHint || tr('Colle ta clé ici'))}">
-      <p class="fineprint">${tr('La clé est chiffrée avec ton compte Windows et n’est envoyée qu’au fournisseur choisi. Clés gratuites : Google AI Studio (aistudio.google.com) ou Groq (console.groq.com).')}</p>`),
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button type="button" class="btn" id="refresh-models">${tr('Actualiser la liste')}</button><span class="fineprint" id="models-status" role="status"></span></div>
+      <label id="baseurl-wrap" class="${prov.editableBaseUrl ? '' : 'hidden'}">${tr('Adresse (Base URL)')}<input id="baseurl" value="${esc(prov.editableBaseUrl ? (settings.baseUrl || prov.baseUrl || '') : '')}" placeholder="${esc(prov.baseUrl || 'https://…/v1')}"></label>`),
+    rgRow('', tr('Clé API'), `<input id="apikey" type="password" aria-label="${tr('Clé API')}" placeholder="${esc(aiKeyPlaceholder(settings.provider, prov))}">
+      <p class="fineprint">${tr('La clé est chiffrée avec ton compte Windows et n’est envoyée qu’au fournisseur choisi. Gratuits : Google AI Studio, Groq, Cerebras, Mistral, GitHub Models — ou 100 % local sans clé avec Ollama / LM Studio.')}</p>`),
     rgRow('', tr('Vérification des faits'), rgSwitch('factcheck', settings.factCheck !== false, tr('Vérifier les faits avant de publier chaque édition'), tr('Une 2e requête relit l’édition face à ta sauvegarde (scores, points, classement, minutes, buteurs) et corrige les erreurs avant publication.'))),
     rgRow('', tr('Discussions sur Kop'), rgSwitch('tribunethreads', settings.tribuneThreads !== false, tr('Faire discuter les internautes entre eux sur Kop'), tr('Après chaque édition, une requête de plus écrit les échanges sous les posts : réponses entre supporters, désaccords, l’auteur qui réplique.'))),
   ])}
@@ -9696,12 +9751,40 @@ async function renderSettings(page) {
   page.querySelectorAll('[data-rgcolor]').forEach((i) => { i.oninput = () => { syncPalette(); rgPreview(); }; });
 
   $('#provider').onchange = () => {
-    const p = providers[$('#provider').value];
+    const id = $('#provider').value;
+    const p = providers[id] || {};
     $('#models').innerHTML = (p.models || []).map((m) => `<option value="${esc(m)}">`).join('');
-    $('#model').value = p.models?.[0] || '';
-    $('#baseurl-wrap').classList.toggle('hidden', $('#provider').value !== 'custom');
-    $('#apikey').placeholder = settings.savedKeys.includes($('#provider').value) ? tr('Clé enregistrée — colle une nouvelle clé pour la remplacer') : (p.keyHint || tr('Colle ta clé ici'));
+    $('#model').value = id === settings.provider && settings.model ? settings.model : p.models?.[0] || '';
+    $('#baseurl-wrap').classList.toggle('hidden', !p.editableBaseUrl);
+    $('#baseurl').placeholder = p.baseUrl || 'https://…/v1';
+    $('#baseurl').value = p.editableBaseUrl ? (id === settings.provider && settings.baseUrl ? settings.baseUrl : p.baseUrl || '') : '';
+    $('#apikey').placeholder = aiKeyPlaceholder(id, p);
+    if ($('#models-status')) $('#models-status').textContent = '';
   };
+  if ($('#refresh-models')) {
+    $('#refresh-models').onclick = async () => {
+      const btn = $('#refresh-models');
+      const status = $('#models-status');
+      btn.disabled = true;
+      if (status) status.textContent = tr('Chargement des modèles…');
+      try {
+        const res = await live.listModels({
+          provider: $('#provider').value,
+          baseUrl: $('#baseurl').value.trim(),
+          apiKey: $('#apikey').value.trim(),
+        });
+        const list = res?.models || [];
+        $('#models').innerHTML = list.map((m) => `<option value="${esc(m)}">`).join('');
+        if (list.length && (!$('#model').value.trim() || $('#model').value.trim() === 'local-model')) {
+          $('#model').value = list[0];
+        }
+        if (status) status.textContent = list.length ? trn(list.length, '{n} modèle trouvé', '{n} modèles trouvés') : tr('Aucun modèle trouvé.');
+      } catch (err) {
+        if (status) status.textContent = err.message;
+      }
+      btn.disabled = false;
+    };
+  }
   $('#browse').onclick = async () => {
     try {
       const r = await live.browseSave();
@@ -9790,7 +9873,7 @@ async function saveSettings() {
     gameDir: pendingGameDir || settings.gameDir,
     provider: $('#provider').value,
     model: $('#model').value.trim(),
-    baseUrl: $('#baseurl').value.trim(),
+    baseUrl: providers[$('#provider').value]?.editableBaseUrl ? $('#baseurl').value.trim() : '',
     autoSync: $('#autosync').checked,
     offerRedirect: $('#offerredirect').checked,
     influenceWrites: $('#influencewrites').checked,

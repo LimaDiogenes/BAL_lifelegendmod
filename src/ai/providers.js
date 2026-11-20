@@ -29,20 +29,82 @@ const PROVIDERS = {
     label: 'Groq — gratuit',
     keyHint: 'gsk_…',
     baseUrl: 'https://api.groq.com/openai/v1',
-    models: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b'],
+    models: ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile', 'openai/gpt-oss-20b', 'llama-3.1-8b-instant'],
+  },
+  cerebras: {
+    label: 'Cerebras — gratuit',
+    keyHint: 'csk-…',
+    baseUrl: 'https://api.cerebras.ai/v1',
+    models: ['llama-3.3-70b', 'qwen-3-32b', 'llama3.1-8b'],
+  },
+  sambanova: {
+    label: 'SambaNova — gratuit',
+    keyHint: '…',
+    baseUrl: 'https://api.sambanova.ai/v1',
+    models: ['Meta-Llama-3.3-70B-Instruct', 'DeepSeek-V3-0324', 'Meta-Llama-3.1-8B-Instruct'],
+  },
+  mistral: {
+    label: 'Mistral AI — gratuit',
+    keyHint: '…',
+    baseUrl: 'https://api.mistral.ai/v1',
+    models: ['mistral-large-latest', 'mistral-medium-latest', 'mistral-small-latest'],
+  },
+  github: {
+    label: 'GitHub Models — gratuit',
+    keyHint: 'github_pat_…',
+    baseUrl: 'https://models.inference.ai.azure.com',
+    models: ['gpt-4.1', 'Llama-3.3-70B-Instruct', 'gpt-4.1-mini'],
+  },
+  deepseek: {
+    label: 'DeepSeek',
+    keyHint: 'sk-…',
+    baseUrl: 'https://api.deepseek.com/v1',
+    models: ['deepseek-chat', 'deepseek-reasoner'],
   },
   openrouter: {
     label: 'OpenRouter',
     keyHint: 'sk-or-…',
     baseUrl: 'https://openrouter.ai/api/v1',
-    models: [],
+    models: ['meta-llama/llama-3.3-70b-instruct:free', 'google/gemma-3-27b-it:free', 'deepseek/deepseek-r1:free'],
+  },
+  ollama: {
+    label: 'Ollama — local (gratuit, sans clé)',
+    keyHint: '',
+    baseUrl: 'http://127.0.0.1:11434/v1',
+    local: true,
+    optionalKey: true,
+    editableBaseUrl: true,
+    models: ['llama3.3', 'qwen2.5:14b', 'gemma3:12b', 'mistral-nemo', 'llama3.2'],
+  },
+  lmstudio: {
+    label: 'LM Studio — local (gratuit, sans clé)',
+    keyHint: '',
+    baseUrl: 'http://127.0.0.1:1234/v1',
+    local: true,
+    optionalKey: true,
+    editableBaseUrl: true,
+    models: ['local-model'],
   },
   custom: {
     label: 'Autre (compatible OpenAI)',
     keyHint: '',
+    optionalKey: true,
+    editableBaseUrl: true,
     models: [],
   },
 };
+
+const providerNeedsKey = (provider) => !PROVIDERS[provider]?.optionalKey;
+const providerDisplayName = (provider) => (provider === 'lmstudio' ? 'LM Studio' : PROVIDERS[provider]?.label.split(' ')[0] || 'Le fournisseur');
+
+function effectiveBaseUrl(settings = {}) {
+  const { provider, baseUrl } = settings;
+  const p = PROVIDERS[provider];
+  const raw = String(baseUrl || '').trim();
+  if (provider === 'custom') return raw;
+  if (p?.editableBaseUrl) return raw || p.baseUrl || '';
+  return p?.baseUrl || '';
+}
 
 class AIError extends Error {
   constructor(message, { retryable = false, network = false, retryAfter = null, limit = false } = {}) {
@@ -193,15 +255,15 @@ async function callGemini({ apiKey, model, system, user, maxTokens, progress }) 
   return text;
 }
 
-async function callOpenAICompatible({ apiKey, model, system, user, baseUrl, providerName, progress }) {
+async function callOpenAICompatible({ apiKey, model, system, user, baseUrl, providerName, extraHeaders = {}, progress }) {
   const body = {
     model,
     messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
     response_format: { type: 'json_object' },
     stream: true,
   };
-  const headers = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
-  const url = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
+  const headers = { ...extraHeaders, ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) };
+  const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
   let text = '';
   const onEvent = (event) => {
     text += event.choices?.[0]?.delta?.content || '';
@@ -212,7 +274,7 @@ async function callOpenAICompatible({ apiKey, model, system, user, baseUrl, prov
     full = await postStream(url, headers, body, providerName, onEvent);
   } catch (err) {
     // Certains serveurs compatibles ne connaissent pas response_format : on réessaie sans.
-    if (!/response_format/i.test(err.message)) throw err;
+    if (!/response_format|json_object/i.test(err.message)) throw err;
     delete body.response_format;
     text = '';
     full = await postStream(url, headers, body, providerName, onEvent);
@@ -222,9 +284,11 @@ async function callOpenAICompatible({ apiKey, model, system, user, baseUrl, prov
 }
 
 // Modèle léger du fournisseur (le dernier proposé : flash-lite, haiku, mini…), pour les tâches courtes comme les
-// discussions sur Kop : il ménage le quota du modèle choisi. Le modèle choisi quand le fournisseur n'en propose pas.
+// discussions sur Kop : il ménage le quota du modèle choisi. En local, on garde le modèle chargé pour éviter de recharger un autre GGUF.
 function lightModel(settings) {
-  const list = PROVIDERS[settings.provider]?.models || [];
+  const p = PROVIDERS[settings.provider];
+  if (p?.local) return settings.model;
+  const list = p?.models || [];
   return list.length > 1 ? list[list.length - 1] : settings.model;
 }
 
@@ -240,19 +304,22 @@ const isDailyQuota = (err) => Boolean(err?.limit) && !(err.retryAfter > 0 && err
 function noModelLeft(provider, failed) {
   const refused = failed.filter((e) => e.retryable);
   if (failed.length < 2 || !refused.length) return failed[0];
-  const who = PROVIDERS[provider]?.label.split(' ')[0] || 'Le fournisseur';
+  const who = providerDisplayName(provider);
   if (refused.every(isDailyQuota)) return new AIError(`Quota du jour épuisé chez ${who} : ${failed.length} modèles essayés.`, { retryable: true, limit: true });
   return new AIError(`${who} ne répond pas pour le moment : ${failed.length} modèles essayés, tous surchargés ou limités.`, { retryable: true });
 }
 
 async function complete(settings, apiKey, { system, user, maxTokens = 16000, log, onProgress, light = false }) {
   const { provider } = settings;
+  const p = PROVIDERS[provider];
   const first = light ? lightModel(settings) : settings.model;
   // Le modèle voulu, puis les autres proposés pour ce fournisseur (modèle surchargé ou limité) ; ceux dont le quota
-  // du jour est épuisé passent en dernier.
-  const order = [first, settings.model, ...(PROVIDERS[provider]?.models || []), ...(PROVIDERS[provider]?.backups || [])].filter((m, i, all) => m && all.indexOf(m) === i);
+  // du jour est épuisé passent en dernier. En local, on n'essaie pas d'autres modèles non téléchargés.
+  const order = p?.local
+    ? [first].filter(Boolean)
+    : [first, settings.model, ...(p?.models || []), ...(p?.backups || [])].filter((m, i, all) => m && all.indexOf(m) === i);
   const models = [...order.filter((m) => !isExhausted(provider, m)), ...order.filter((m) => isExhausted(provider, m))];
-  if (models[0] !== first) log?.(`Quota du jour de ${first} épuisé : ${models[0]} répond à sa place.`);
+  if (models.length && models[0] !== first) log?.(`Quota du jour de ${first} épuisé : ${models[0]} répond à sa place.`);
   let firstErr = null;
   const failed = [];
   for (const [i, model] of models.entries()) {
@@ -271,25 +338,31 @@ async function complete(settings, apiKey, { system, user, maxTokens = 16000, log
       firstErr ??= err;
     }
   }
+  if (!models.length) return completeWith(settings, first, apiKey, { system, user, maxTokens, onProgress, log });
   throw noModelLeft(provider, failed);
 }
 
 async function completeWith(settings, model, apiKey, { system, user, maxTokens, onProgress, log }) {
   const { provider } = settings;
   if (!model) throw new AIError('Aucun modèle choisi dans les réglages.');
-  if (!apiKey && provider !== 'custom') throw new AIError("Aucune clé d'IA enregistrée. Ajoute-la dans les réglages.");
+  if (!apiKey && providerNeedsKey(provider)) throw new AIError("Aucune clé d'IA enregistrée. Ajoute-la dans les réglages.");
   const progress = throttled(onProgress, model);
   const run = () => {
     switch (provider) {
       case 'anthropic': return callAnthropic({ apiKey, model, system, user, maxTokens: Math.max(maxTokens, 32000), progress });
       case 'google': return callGemini({ apiKey, model, system, user, maxTokens, progress });
-      case 'custom':
-        if (!settings.baseUrl) throw new AIError("Renseigne l'adresse (Base URL) du fournisseur personnalisé.");
-        return callOpenAICompatible({ apiKey, model, system, user, baseUrl: settings.baseUrl, providerName: 'le fournisseur', progress });
+      case 'custom': {
+        const url = effectiveBaseUrl(settings);
+        if (!url) throw new AIError("Renseigne l'adresse (Base URL) du fournisseur personnalisé.");
+        return callOpenAICompatible({ apiKey, model, system, user, baseUrl: url, providerName: 'le fournisseur', progress });
+      }
       default: {
         const p = PROVIDERS[provider];
         if (!p) throw new AIError(`Fournisseur inconnu : ${provider}`);
-        return callOpenAICompatible({ apiKey, model, system, user, baseUrl: p.baseUrl, providerName: p.label.split(' ')[0], progress });
+        const url = effectiveBaseUrl(settings);
+        if (!url) throw new AIError("Renseigne l'adresse (Base URL) du fournisseur personnalisé.");
+        const extraHeaders = provider === 'openrouter' ? { 'X-Title': 'LifeLegend' } : {};
+        return callOpenAICompatible({ apiKey, model, system, user, baseUrl: url, providerName: providerDisplayName(provider), extraHeaders, progress });
       }
     }
   };
@@ -347,9 +420,10 @@ async function transcribe(settings, apiKey, { audio, prompt, mimeType = 'audio/w
   throw firstErr;
 }
 
-// Extrait le premier objet JSON de la réponse (certains modèles ajoutent du texte ou des ```).
+// Extrait le premier objet JSON de la réponse (certains modèles ajoutent <think>...</think>, du texte ou des ```).
 function parseJson(text) {
-  const cleaned = text.replace(/^\s*```(?:json)?/i, '').replace(/```\s*$/, '');
+  const stripped = String(text || '').replace(/<think>[\s\S]*?<\/think>/gi, '');
+  const cleaned = stripped.replace(/^\s*```(?:json)?/i, '').replace(/```\s*$/, '');
   try { return JSON.parse(cleaned); } catch { /* on cherche l'objet */ }
   const start = cleaned.indexOf('{'), end = cleaned.lastIndexOf('}');
   if (start >= 0 && end > start) {
@@ -358,4 +432,63 @@ function parseJson(text) {
   throw new AIError("La réponse de l'IA n'était pas lisible (JSON invalide). Relance la synchro.", { retryable: true });
 }
 
-module.exports = { PROVIDERS, AIError, complete, transcribe, parseJson, isDailyQuota };
+async function fetchJson(url, headers, providerName) {
+  let res;
+  try {
+    res = await fetch(url, { method: 'GET', headers, signal: AbortSignal.timeout(10000) });
+  } catch {
+    throw new AIError(`Impossible de joindre ${providerName}. Vérifie ta connexion.`, { retryable: true, network: true });
+  }
+  const text = await res.text();
+  if (!res.ok) throw httpError(res.status, text, providerName, res.headers?.get?.('retry-after'));
+  try { return JSON.parse(text); } catch {
+    throw new AIError(`Réponse vide de ${providerName} (souvent une limite de requêtes). Réessaie.`, { retryable: true });
+  }
+}
+
+async function listModels(settings = {}, apiKey = '') {
+  const provider = settings.provider;
+  const p = PROVIDERS[provider];
+  if (!p) throw new AIError(`Fournisseur inconnu : ${provider}`);
+  if (!apiKey && providerNeedsKey(provider)) throw new AIError("Aucune clé d'IA enregistrée. Ajoute-la dans les réglages.");
+  const uniqSort = (arr) => [...new Set(arr.map((x) => String(x || '').trim()).filter(Boolean))].sort();
+
+  if (provider === 'google') {
+    const json = await fetchJson(`${PROVIDERS.google.baseUrl}/models`, { 'x-goog-api-key': apiKey }, 'Google');
+    const models = (json.models || [])
+      .filter((m) => !m.supportedGenerationMethods || m.supportedGenerationMethods.includes('generateContent'))
+      .map((m) => String(m.name || '').replace(/^models\//, ''));
+    return { models: uniqSort(models), source: 'live' };
+  }
+  if (provider === 'anthropic') {
+    const json = await fetchJson('https://api.anthropic.com/v1/models', { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }, 'Anthropic');
+    return { models: uniqSort((json.data || []).map((m) => m?.id)), source: 'live' };
+  }
+
+  const url = effectiveBaseUrl(settings).replace(/\/+$/, '');
+  if (!url) throw new AIError("Renseigne l'adresse (Base URL) du fournisseur personnalisé.");
+  const name = provider === 'custom' ? 'le fournisseur' : providerDisplayName(provider);
+  const headers = {
+    ...(provider === 'openrouter' ? { 'X-Title': 'LifeLegend' } : {}),
+    ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+  };
+  const extractOpenAi = (j) => {
+    const list = Array.isArray(j) ? j : Array.isArray(j?.data) ? j.data : [];
+    return uniqSort(list.map((m) => m?.id || m?.name));
+  };
+
+  if (provider === 'ollama') {
+    try {
+      const models = extractOpenAi(await fetchJson(`${url}/models`, headers, name));
+      if (models.length) return { models, source: 'live' };
+    } catch { /* repli vers /api/tags d'Ollama ci-dessous */ }
+    const rootUrl = url.replace(/\/v1$/i, '');
+    const json = await fetchJson(`${rootUrl}/api/tags`, headers, name);
+    return { models: uniqSort((json.models || []).map((m) => m?.name || m?.model)), source: 'live' };
+  }
+
+  const models = extractOpenAi(await fetchJson(`${url}/models`, headers, name));
+  return { models, source: 'live' };
+}
+
+module.exports = { PROVIDERS, AIError, complete, transcribe, parseJson, isDailyQuota, listModels, effectiveBaseUrl, providerNeedsKey };
