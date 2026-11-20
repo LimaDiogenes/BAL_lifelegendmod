@@ -10,7 +10,9 @@ const { buildSnapshot, diffSnapshots, hasNews, sameMatch } = require('./snapshot
 const { complete: completeRaw, transcribe, parseJson, isDailyQuota } = require('../ai/providers');
 const { normalizePrivacy, buildPrivacyMap, maskText, unmaskText, previewMasked } = require('../ai/privacyShield');
 const { normalizePersona, personaFacts } = require('./persona');
-const { estimateStartProfile, ensureLifeHub, calibrateLifeHub: applyCalibration, lifeHubTick, buyAsset, sellAsset, addSponsor, updateSponsor, removeSponsor, answerSponsorOffer, completeObligation, performAction, answerDilemma, lifeHubFacts, clearPendingSaveEffects } = require('./lifeHub');
+const { ASSET_CATALOG, estimateStartProfile, ensureLifeHub, calibrateLifeHub: applyCalibration, lifeHubTick, buyAsset, sellAsset, addSponsor, updateSponsor, removeSponsor, answerSponsorOffer, completeObligation, performAction, answerDilemma, lifeHubFacts, clearPendingSaveEffects } = require('./lifeHub');
+const { saveLifeImage, removeLifeImage } = require('./lifeMedia');
+const { buildSceneAndReactions } = require('./lifeScenes');
 const { ensureCalendar, ingestSyncCalendar, advanceCalendar, flushCalendarToSave, addCustomCalendarEvent, removeCustomCalendarEvent } = require('./calendar');
 const { applyLifeEffects } = require('../save/lifeEffectsWrite');
 const { DEFAULT_PAPER_ID, normalizePaperOverride, resolveNationalPaper, paperDeskTemplate } = require('./nationalPaper');
@@ -102,16 +104,63 @@ function withCareer(store, fn) {
   return state;
 }
 
+function lifeMediaDir(store, state) {
+  return path.join(store.dir, 'careers', state.careerId, 'life-media');
+}
+
+function isLifeMediaReferenced(hub, file) {
+  if (!hub || !file) return false;
+  if (hub.heroImage === file) return true;
+  if (Object.values(hub.catalogImages || {}).includes(file)) return true;
+  if ((hub.assets || []).some((a) => a.customImage === file)) return true;
+  if ((hub.sponsors || []).some((s) => s.customImage === file)) return true;
+  return false;
+}
+
+const langOfStore = (store) => store.getSettings?.()?.language || 'en';
+
 const calibrateCareerLifeHub = ({ store, payload }) => withCareer(store, (state) => {
   applyCalibration(state, state.snapshot, payload, newId);
 });
 
 const buyLifeAsset = ({ store, payload }) => withCareer(store, (state) => {
-  buyAsset(state, payload, state.snapshot?.gameDate || '', newId);
+  const dir = lifeMediaDir(store, state);
+  const uploadedFile = payload?.imageDataUrl
+    ? saveLifeImage({ dir, prefix: payload.custom ? 'asset-custom' : `asset-${payload.catalogId || 'item'}`, dataUrl: payload.imageDataUrl })
+    : null;
+  try {
+    buyAsset(state, { ...payload, ...(uploadedFile ? { customImage: uploadedFile } : {}) }, state.snapshot?.gameDate || '', newId);
+  } catch (err) {
+    if (uploadedFile) removeLifeImage(dir, uploadedFile);
+    throw err;
+  }
+  const hub = state.lifeHub;
+  const added = hub.assets[hub.assets.length - 1];
+  if (added) {
+    if (uploadedFile && added.catalogId) hub.catalogImages[added.catalogId] = uploadedFile;
+    const img = added.customImage || (added.catalogId && hub.catalogImages?.[added.catalogId]) || null;
+    const scene = buildSceneAndReactions(state, state.snapshot, {
+      kind: 'purchase',
+      refId: added.catalogId || added.id,
+      category: added.category,
+      asset: added,
+      image: img,
+      deltas: { meters: { ...(added.perks || {}) }, cost: added.price || 0 },
+    }, { language: langOfStore(store), newId });
+    if (scene && ((added.price || 0) >= 50000 || added.category === 'charity' || added.custom)) {
+      noteKeyMemory(state, scene.headline, state.snapshot?.gameDate || '');
+    }
+  }
 });
 
 const sellLifeAsset = ({ store, assetId }) => withCareer(store, (state) => {
+  const hub = ensureLifeHub(state, state.snapshot);
+  const target = hub.assets.find((a) => a.id === assetId);
+  const oldImg = target?.customImage || null;
   sellAsset(state, assetId, state.snapshot?.gameDate || '');
+  if (oldImg && !isLifeMediaReferenced(state.lifeHub, oldImg)) {
+    removeLifeImage(lifeMediaDir(store, state), oldImg);
+  }
 });
 
 const addLifeSponsor = ({ store, payload }) => withCareer(store, (state) => {
@@ -123,7 +172,13 @@ const updateLifeSponsor = ({ store, payload }) => withCareer(store, (state) => {
 });
 
 const removeLifeSponsor = ({ store, id }) => withCareer(store, (state) => {
+  const hub = ensureLifeHub(state, state.snapshot);
+  const target = hub.sponsors.find((s) => s.id === id);
+  const oldImg = target?.customImage || null;
   removeSponsor(state, id, state.snapshot?.gameDate || '');
+  if (oldImg && !isLifeMediaReferenced(state.lifeHub, oldImg)) {
+    removeLifeImage(lifeMediaDir(store, state), oldImg);
+  }
 });
 
 const answerLifeSponsorOffer = ({ store, offerId, choice }) => withCareer(store, (state) => {
@@ -131,17 +186,94 @@ const answerLifeSponsorOffer = ({ store, offerId, choice }) => withCareer(store,
 });
 
 const completeLifeObligation = ({ store, obligationId, skip }) => withCareer(store, (state) => {
-  completeObligation(state, obligationId, { skip: Boolean(skip) }, state.snapshot?.gameDate || '');
+  const ob = completeObligation(state, obligationId, { skip: Boolean(skip) }, state.snapshot?.gameDate || '');
+  if (!skip && ob) {
+    buildSceneAndReactions(state, state.snapshot, {
+      kind: 'obligation',
+      refId: ob.id,
+      category: 'sponsor',
+      brand: ob.brand,
+      deltas: { meters: { sponsors: 5, media: 2 }, bonusCash: ob.rewardCash || 0 },
+    }, { language: langOfStore(store), newId });
+  }
 });
 
 const doLifeAction = ({ store, payload }) => withCareer(store, (state) => {
-  const { memoryLine } = performAction(state, state.snapshot, payload, newId);
-  if (memoryLine) noteKeyMemory(state, memoryLine, state.snapshot?.gameDate || '');
+  const res = performAction(state, state.snapshot, payload, newId);
+  if (res.memoryLine) noteKeyMemory(state, res.memoryLine, state.snapshot?.gameDate || '');
+  buildSceneAndReactions(state, state.snapshot, {
+    kind: 'action',
+    refId: payload?.custom ? 'custom' : payload?.actionId,
+    category: payload?.custom ? (payload.focus || 'life') : payload?.actionId,
+    customTitle: payload?.custom ? payload.title : '',
+    focus: payload?.custom ? payload.focus : '',
+    companion: res.companion || '',
+    deltas: res.deltas || {},
+  }, { language: langOfStore(store), newId });
 });
 
 const answerLifeDilemma = ({ store, dilemmaId, choiceId }) => withCareer(store, (state) => {
-  const { memoryLine } = answerDilemma(state, dilemmaId, choiceId, state.snapshot?.gameDate || '');
-  if (memoryLine) noteKeyMemory(state, memoryLine, state.snapshot?.gameDate || '');
+  const res = answerDilemma(state, dilemmaId, choiceId, state.snapshot?.gameDate || '');
+  if (res.memoryLine) noteKeyMemory(state, res.memoryLine, state.snapshot?.gameDate || '');
+  buildSceneAndReactions(state, state.snapshot, {
+    kind: 'dilemma',
+    refId: res.dilemmaId,
+    dilemmaId: res.dilemmaId,
+    choiceId: res.choiceId,
+    category: 'dilemma',
+    deltas: res.deltas || {},
+  }, { language: langOfStore(store), newId });
+});
+
+const setLifeMedia = ({ store, payload = {} }) => withCareer(store, (state) => {
+  const hub = ensureLifeHub(state, state.snapshot);
+  const dir = lifeMediaDir(store, state);
+  const target = String(payload.target || '');
+  const id = String(payload.id || '');
+  if (!['hero', 'asset', 'sponsor'].includes(target)) throw new Error('Choix inconnu.');
+
+  const isClear = payload.dataUrl === null;
+  const saved = isClear ? null : saveLifeImage({ dir, prefix: `${target}-${id || 'cover'}`, dataUrl: payload.dataUrl });
+  let prevFiles = [];
+
+  if (target === 'hero') {
+    if (hub.heroImage) prevFiles.push(hub.heroImage);
+    hub.heroImage = saved;
+  } else if (target === 'asset') {
+    const owned = hub.assets.find((a) => a.id === id || a.catalogId === id);
+    const catalogId = owned?.catalogId || (ASSET_CATALOG.some((a) => a.id === id) ? id : null);
+    if (!owned && !catalogId) {
+      if (saved) removeLifeImage(dir, saved);
+      throw new Error('Élément introuvable.');
+    }
+    if (catalogId) {
+      if (hub.catalogImages[catalogId]) prevFiles.push(hub.catalogImages[catalogId]);
+      if (saved) hub.catalogImages[catalogId] = saved;
+      else delete hub.catalogImages[catalogId];
+    }
+    for (const a of hub.assets) {
+      if (a.id === id || (catalogId && a.catalogId === catalogId)) {
+        if (a.customImage) prevFiles.push(a.customImage);
+        if (saved) a.customImage = saved;
+        else delete a.customImage;
+      }
+    }
+  } else if (target === 'sponsor') {
+    const sp = hub.sponsors.find((s) => s.id === id);
+    if (!sp) {
+      if (saved) removeLifeImage(dir, saved);
+      throw new Error('Élément introuvable.');
+    }
+    if (sp.customImage) prevFiles.push(sp.customImage);
+    if (saved) sp.customImage = saved;
+    else delete sp.customImage;
+  }
+
+  for (const prev of [...new Set(prevFiles)]) {
+    if (prev && prev !== saved && !isLifeMediaReferenced(hub, prev)) {
+      removeLifeImage(dir, prev);
+    }
+  }
 });
 
 function noteKeyMemory(state, line, gameDate = '') {
@@ -235,6 +367,7 @@ const { barLabel, skillForAi } = require('../save/training');
 const { redirectOfferInSave } = require('../save/offerRedirect');
 const { officialAuthor, clubAccountsRev, realClubHandle } = require('./clubAccounts');
 const { ensureEmblems, ensureCompetitionLogos } = require('../save/emblems');
+const { ensureClubStadium } = require('../save/stadiums');
 const { fanMood } = require('./fanMood');
 const { toneContext } = require('./toneContext');
 const { postLikes, repostsFor, replyLikes } = require('./engagement');
@@ -679,6 +812,12 @@ function refreshEmblems({ state, career, settings, store }) {
   for (const [h, c] of compList) {
     state.clubPages[h] = { kind: 'competition', handle: c.handle, name: c.name, emblem: logoFiles[c.logo] || null, teams: c.teams.size, clubs: compClubs.get(h) || [] };
   }
+  try {
+    const clubId = career.club?.id ?? (state.snapshot?.club?.ref != null ? state.snapshot.club.ref >>> 14 : null);
+    const stadiumName = career.club?.stadium || state.snapshot?.club?.stadium || '';
+    const stOut = path.join(store.dir, 'careers', state.careerId, 'stadiums');
+    state.clubStadiumImage = ensureClubStadium({ gameDir, teamId: clubId, stadiumName, outDir: stOut });
+  } catch { /* vignette du stade indisponible : illustration par défaut conservée */ }
 }
 
 // État de la carrière pour l'interface, mis à jour au besoin.
@@ -3409,4 +3548,4 @@ function loadScores({ store }) {
   return state ? store.loadAux(state.careerId, 'scores') : null;
 }
 
-module.exports = { savePrivacy, savePersona, saveNationalPaper, saveClubAlias, saveLifeEvents, calibrateCareerLifeHub, buyLifeAsset, sellLifeAsset, addLifeSponsor, updateLifeSponsor, removeLifeSponsor, answerLifeSponsorOffer, completeLifeObligation, doLifeAction, answerLifeDilemma, ensureLifeHub, calendarAdvance, calendarSetMode, calendarAddEvent, calendarRemoveEvent, applyLifeSaveEffects, dismissLifeSaveEffects, noteKeyMemory, privacyMapFor, previewMasked, getAiAuditLog, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };
+module.exports = { savePrivacy, savePersona, saveNationalPaper, saveClubAlias, saveLifeEvents, calibrateCareerLifeHub, buyLifeAsset, sellLifeAsset, addLifeSponsor, updateLifeSponsor, removeLifeSponsor, answerLifeSponsorOffer, completeLifeObligation, doLifeAction, answerLifeDilemma, setLifeMedia, ensureLifeHub, calendarAdvance, calendarSetMode, calendarAddEvent, calendarRemoveEvent, applyLifeSaveEffects, dismissLifeSaveEffects, noteKeyMemory, privacyMapFor, previewMasked, getAiAuditLog, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };
