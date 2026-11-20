@@ -1,0 +1,904 @@
+'use strict';
+// Scènes narratives immersives et réactions croisées (Kop & Vestiaire) pour « Ma vie » :
+// aucun appel IA supplémentaire, textes localisés en 6 langues et noms lisibles (sans variables internes).
+
+const { activeHuddle, addMessage } = require('./huddle');
+
+const CATALOG_NAMES = {
+  fr: {
+    rented_studio: 'Studio loué',
+    city_apartment: 'Appartement en ville',
+    penthouse: 'Penthouse panoramique',
+    luxury_villa: 'Villa de standing',
+    sport_coupe: 'Coupé sport',
+    luxury_gt: 'GT de luxe',
+    exotic_supercar: 'Supercar exclusive',
+    personal_chef: 'Chef nutritionniste privé',
+    personal_physio: 'Kiné / Préparateur privé',
+    pr_manager: 'Conseiller image & RP',
+    social_team: 'Équipe réseaux sociaux',
+    youth_academy_fund: 'Fonds jeunes & terrains',
+    brand_portfolio: 'Portfolio marques & participations',
+    real_estate_fund: 'Société immobilière',
+    local_clinic_gift: 'Don à un hôpital local',
+    foundation_launch: 'Fondation pour la jeunesse',
+  },
+  en: {
+    rented_studio: 'Rented studio',
+    city_apartment: 'City apartment',
+    penthouse: 'Panoramic penthouse',
+    luxury_villa: 'Luxury villa',
+    sport_coupe: 'Sport coupe',
+    luxury_gt: 'Luxury GT',
+    exotic_supercar: 'Exotic supercar',
+    personal_chef: 'Private nutritionist chef',
+    personal_physio: 'Private physio / trainer',
+    pr_manager: 'Image & PR manager',
+    social_team: 'Social media team',
+    youth_academy_fund: 'Youth & pitches fund',
+    brand_portfolio: 'Brand & equity portfolio',
+    real_estate_fund: 'Real estate fund',
+    local_clinic_gift: 'Local hospital donation',
+    foundation_launch: 'Youth foundation',
+  },
+  pt: {
+    rented_studio: 'Estúdio alugado',
+    city_apartment: 'Apartamento na cidade',
+    penthouse: 'Cobertura panorâmica',
+    luxury_villa: 'Mansão de luxo',
+    sport_coupe: 'Cupê esportivo',
+    luxury_gt: 'GT de luxo',
+    exotic_supercar: 'Supercar exclusivo',
+    personal_chef: 'Chef nutricionista particular',
+    personal_physio: 'Fisioterapeuta / preparador particular',
+    pr_manager: 'Assessor de imagem e RP',
+    social_team: 'Equipe de redes sociais',
+    youth_academy_fund: 'Fundo para base e campos',
+    brand_portfolio: 'Portfólio de marcas e cotas',
+    real_estate_fund: 'Fundo imobiliário',
+    local_clinic_gift: 'Doação para hospital local',
+    foundation_launch: 'Fundação para a juventude',
+  },
+  es: {
+    rented_studio: 'Estudio alquilado',
+    city_apartment: 'Apartamento en la ciudad',
+    penthouse: 'Ático panorámico',
+    luxury_villa: 'Villa de lujo',
+    sport_coupe: 'Cupé deportivo',
+    luxury_gt: 'GT de lujo',
+    exotic_supercar: 'Superdeportivo exclusivo',
+    personal_chef: 'Chef nutricionista privado',
+    personal_physio: 'Fisioterapeuta / preparador privado',
+    pr_manager: 'Asesor de imagen y RRPP',
+    social_team: 'Equipo de redes sociales',
+    youth_academy_fund: 'Fondo de cantera y campos',
+    brand_portfolio: 'Cartera de marcas y participaciones',
+    real_estate_fund: 'Sociedad inmobiliaria',
+    local_clinic_gift: 'Donación a un hospital local',
+    foundation_launch: 'Fundación para la juventud',
+  },
+  it: {
+    rented_studio: 'Monolocale in affitto',
+    city_apartment: 'Appartamento in città',
+    penthouse: 'Attico panoramico',
+    luxury_villa: 'Villa di lusso',
+    sport_coupe: 'Coupé sportiva',
+    luxury_gt: 'GT di lusso',
+    exotic_supercar: 'Supercar esclusiva',
+    personal_chef: 'Chef nutrizionista privato',
+    personal_physio: 'Fisioterapista / preparatore privato',
+    pr_manager: 'Consulente immagine e PR',
+    social_team: 'Team social media',
+    youth_academy_fund: 'Fondo giovani e campetti',
+    brand_portfolio: 'Portafoglio marchi e quote',
+    real_estate_fund: 'Fondo immobiliare',
+    local_clinic_gift: 'Donazione a un ospedale locale',
+    foundation_launch: 'Fondazione per i giovani',
+  },
+  de: {
+    rented_studio: 'Mietstudio',
+    city_apartment: 'Stadtwohnung',
+    penthouse: 'Panoramapenthouse',
+    luxury_villa: 'Luxusvilla',
+    sport_coupe: 'Sportcoupé',
+    luxury_gt: 'Luxus-GT',
+    exotic_supercar: 'Exklusiver Supersportwagen',
+    personal_chef: 'Privater Ernährungskoch',
+    personal_physio: 'Privater Physio / Athletiktrainer',
+    pr_manager: 'Image- & PR-Berater',
+    social_team: 'Social-Media-Team',
+    youth_academy_fund: 'Jugend- & Bolzplatz-Fonds',
+    brand_portfolio: 'Marken- & Beteiligungsportfolio',
+    real_estate_fund: 'Immobiliengesellschaft',
+    local_clinic_gift: 'Spende an lokales Krankenhaus',
+    foundation_launch: 'Jugendstiftung',
+  },
+};
+
+const CATALOG_ENGLISH_NAMES = CATALOG_NAMES.en;
+
+function normLang(lang) {
+  return CATALOG_NAMES[lang] ? lang : 'en';
+}
+
+function humanizeFallback(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  if (/^[a-z0-9]+(_[a-z0-9]+)+$/i.test(s)) {
+    const clean = s.replace(/_/g, ' ');
+    return clean.charAt(0).toUpperCase() + clean.slice(1);
+  }
+  return s;
+}
+
+function catalogDisplayName(assetOrId, language = 'en') {
+  const l = normLang(language);
+  if (assetOrId && typeof assetOrId === 'object') {
+    if (assetOrId.custom && assetOrId.name) return String(assetOrId.name);
+    const id = assetOrId.catalogId || assetOrId.id || assetOrId.name;
+    return CATALOG_NAMES[l]?.[id] || CATALOG_NAMES.en[id] || humanizeFallback(assetOrId.name || id);
+  }
+  const id = String(assetOrId || '');
+  return CATALOG_NAMES[l]?.[id] || CATALOG_NAMES.en[id] || humanizeFallback(id);
+}
+
+const hashStr = (s) => {
+  let h = 2166136261;
+  for (const ch of String(s || '')) {
+    h ^= ch.charCodeAt(0);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+};
+
+function pickInnerCircle(state, seed) {
+  const circle = state?.persona?.circle;
+  if (!circle || typeof circle !== 'object') return null;
+  const list = [];
+  for (const group of ['family', 'friends', 'roots', 'business']) {
+    for (const p of Array.isArray(circle[group]) ? circle[group] : []) {
+      if (p?.name) list.push({ name: p.name, role: p.role || group });
+    }
+  }
+  if (!list.length) return null;
+  return list[hashStr(seed) % list.length];
+}
+
+function resolveContext(state, snapshot, event, language) {
+  const l = normLang(language);
+  const player = snapshot?.player?.name || state?.profile?.displayName || (l === 'fr' ? 'Le joueur' : 'The player');
+  const club = snapshot?.club?.name || (l === 'fr' ? 'le club' : 'the club');
+  const stadium = snapshot?.club?.stadium || '';
+  const captain = snapshot?.squadIntel?.captain && !snapshot.squadIntel.captain.me ? snapshot.squadIntel.captain.name : '';
+  const group = activeHuddle(state);
+  const pool = [...new Set([
+    ...(Array.isArray(group?.players) ? group.players : []),
+    ...((snapshot?.squad || []).filter((p) => p?.name && !p.me).map((p) => p.name)),
+  ])].filter((n) => n && n.toLowerCase() !== player.toLowerCase());
+  const seed = `${snapshot?.gameDate || ''}|${event?.kind || ''}|${event?.refId || ''}|${(state?.lifeHub?.scenes || []).length}`;
+  const explicitComp = String(event?.companion || '').trim();
+  const teammate = explicitComp || captain || (pool.length ? pool[hashStr(seed) % pool.length] : '');
+  const inner = pickInnerCircle(state, seed);
+  const hometown = state?.persona?.roots?.hometown || '';
+  const sponsors = state?.lifeHub?.sponsors || [];
+  const topSponsor = sponsors.find((s) => s?.brand)?.brand || '';
+  const owned = state?.lifeHub?.assets || [];
+  const hasChef = owned.some((a) => a.catalogId === 'personal_chef');
+  const hasPhysio = owned.some((a) => a.catalogId === 'personal_physio');
+  return { l, player, club, stadium, captain, teammate, inner, hometown, topSponsor, hasChef, hasPhysio, seed };
+}
+
+const FAN_PERSONAS = {
+  fr: (slug, club) => ({ handle: `${slug}Tribune` || 'SupporterClub', name: club && club !== 'le club' ? `${club} Tribune` : 'Tribune Supporters' }),
+  en: (slug, club) => ({ handle: `${slug}FanZone` || 'MatchdayVoice', name: club && club !== 'the club' ? `${club} Fan Zone` : 'Matchday Voice' }),
+  pt: (slug, club) => ({ handle: `${slug}Torcida` || 'VozDaArquibancada', name: club && club !== 'the club' ? `Torcida ${club}` : 'Voz da Arquibancada' }),
+  es: (slug, club) => ({ handle: `${slug}Grada` || 'VozDeLaGrada', name: club && club !== 'the club' ? `Grada ${club}` : 'Voz de la Grada' }),
+  it: (slug, club) => ({ handle: `${slug}Curva` || 'VoceDellaCurva', name: club && club !== 'the club' ? `Curva ${club}` : 'Voce della Curva' }),
+  de: (slug, club) => ({ handle: `${slug}Fankurve` || 'KurvenEcho', name: club && club !== 'the club' ? `${club} Fankurve` : 'Kurven Echo' }),
+};
+
+function findOrCreateFanAuthor(state, club, language) {
+  const myHandle = String(state?.profile?.handle || '').toLowerCase();
+  const accounts = state.accounts || {};
+  const existing = Object.entries(accounts).filter(([h, v]) => {
+    if (!h || h.toLowerCase() === myHandle) return false;
+    return v && v.type === 'fan' && (!v.supports || !club || v.supports === club);
+  });
+  if (existing.length) {
+    const pick = existing[hashStr(`${club}|${(state.feed || []).length}`) % existing.length];
+    return { handle: pick[0], name: pick[1].name || pick[0], type: 'fan', verified: false };
+  }
+  const slug = String(club || 'Club').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]/g, '').slice(0, 12) || 'Club';
+  const gen = (FAN_PERSONAS[normLang(language)] || FAN_PERSONAS.en)(slug, club);
+  let handle = gen.handle.replace(/[^A-Za-z0-9_]/g, '').slice(0, 20) || 'MatchdayFan';
+  if (handle.toLowerCase() === myHandle) handle = `${handle.slice(0, 17)}Fan`;
+  state.accounts = state.accounts || {};
+  if (!state.accounts[handle]) {
+    state.accounts[handle] = { name: gen.name, type: 'fan', ...(club ? { supports: club } : {}) };
+  }
+  return { handle, name: state.accounts[handle].name || gen.name, type: 'fan', verified: false };
+}
+
+function pushKopReaction(state, { club, gameDate, language, newId }, text) {
+  if (!text) return null;
+  state.feed = state.feed || [];
+  const author = findOrCreateFanAuthor(state, club, language);
+  const fol = Math.max(400, Number(state?.profile?.followers) || 4200);
+  const scale = Math.min(25, Math.max(0.4, Math.sqrt(fol / 4200)));
+  const h = hashStr(`${text}|${gameDate}|${state.feed.length}`);
+  const likes = Math.max(12, Math.round((35 + (h % 140)) * scale));
+  const reposts = Math.max(2, Math.round(likes * 0.14));
+  const post = {
+    id: newId(),
+    author,
+    text,
+    gameDate: gameDate || '',
+    createdAt: Date.now(),
+    aboutPost: null,
+    replies: [],
+    likes,
+    reposts,
+    lifeScene: true,
+  };
+  state.feed.push(post);
+  return { channel: 'kop', from: `@${author.handle}`, authorName: author.name, text };
+}
+
+function pushHuddleReaction(state, { gameDate, teammate, captain }, text, preferredRole = null, reactions = [['😂', 3]]) {
+  const group = activeHuddle(state);
+  if (!group || !text) return null;
+  let from = '';
+  let role = null;
+  if (preferredRole && Array.isArray(group.staff)) {
+    const st = group.staff.find((p) => p.role === preferredRole);
+    if (st) { from = st.name; role = st.role; }
+  }
+  if (!from && Array.isArray(group.players) && group.players.length) {
+    from = [teammate, captain].find((n) => n && group.players.some((p) => p.toLowerCase() === n.toLowerCase()));
+    if (!from) from = group.players[hashStr(`${text}|${group.messages.length}`) % group.players.length];
+    const exact = group.players.find((p) => p.toLowerCase() === from.toLowerCase());
+    if (exact) from = exact;
+  }
+  if (!from && group.coach && preferredRole === 'coach') {
+    from = group.coach;
+    role = 'coach';
+  }
+  if (!from) return null;
+  addMessage(group, { who: 'them', from, ...(role ? { role } : {}), gameDate: gameDate || '', text, reactions });
+  return { channel: 'huddle', from, groupName: group.club || '', text };
+}
+
+// ---------- Modèles narratifs localisés (6 langues) ----------
+
+function trScene(lang, table, vars = {}) {
+  const str = (table[lang] || table.en || '').replace(/\{(\w+)\}/g, (_, k) => (vars[k] !== undefined ? String(vars[k]) : ''));
+  return str.replace(/\s+/g, ' ').trim();
+}
+
+function renderPurchaseScene(ctx, asset, handleTag) {
+  const { l, player, club, teammate, inner } = ctx;
+  const item = catalogDisplayName(asset, l);
+  const price = Number(asset?.price) || 0;
+  const cat = asset?.category || 'custom';
+  const cid = asset?.catalogId || '';
+
+  if (cid === 'exotic_supercar' || cid === 'luxury_gt' || (cat === 'car' && price >= 40000)) {
+    const headline = trScene(l, {
+      fr: `Arrivée remarquée : ${item}`,
+      en: `Heads turn at the gates: ${item}`,
+      pt: `Chegada de cinema ao CT: ${item}`,
+      es: `Todas las miradas en el parking: ${item}`,
+      it: `Tutti gli sguardi al cancello: ${item}`,
+      de: `Aufsehen vor dem Trainingsgelände: ${item}`,
+    });
+    const narrative = trScene(l, {
+      fr: `Dès l'arrivée au parking de ${club}, le bruit du moteur attire tout le monde autour du ${item}. {mate} sort son téléphone en riant pendant que les premiers supporters filment devant les grilles.`,
+      en: `Pulling into the ${club} training ground in the ${item} stops conversation immediately. {mate} reaches for a phone laughing while supporters outside the gates record the arrival.`,
+      pt: `Ao estacionar o ${item} no CT do ${club}, o ronco do motor paralisa a resenha. {mate} já saca o celular rindo enquanto torcedores filmam do lado de fora do portão.`,
+      es: `Nada más aparcar el ${item} en la ciudad deportiva de ${club}, las cámaras y las miradas se giran al instante. {mate} saca el móvil entre risas mientras algunos aficionados graban en la puerta.`,
+      it: `Appena la ${item} entra al centro sportivo del ${club}, si girano tutti. {mate} tira fuori il telefono ridendo mentre i tifosi fuori dai cancelli riprendono la scena.`,
+      de: `Als der ${item} auf den Parkplatz von ${club} rollt, drehen sich sofort alle Köpfe. {mate} zückt lachend das Handy, während draußen am Tor bereits die ersten Fans filmen.`,
+    }, { mate: teammate || (l === 'fr' ? 'Le vestiaire' : 'The squad') });
+    const kop = trScene(l, {
+      fr: `Vu devant le centre de ${club} ce matin : ${handleTag} vient de sortir le ${item} 👀🔥 Les primes de match travaillent fort !`,
+      en: `Spotted outside ${club}'s training ground this morning — ${handleTag} just rolled in with a ${item} 👀🔥`,
+      pt: `Flagra na porta do CT do ${club} hoje cedo: ${handleTag} chegou simplesmente de ${item} 👀🔥 A fase tá boa demais!`,
+      es: `Cazado esta mañana en la puerta de ${club}: ${handleTag} ha llegado con un ${item} 👀🔥`,
+      it: `Avvistato stamattina fuori dal centro del ${club}: ${handleTag} è arrivato con ${item} 👀🔥`,
+      de: `Heute Morgen vor dem ${club}-Gelände gesichtet: ${handleTag} kommt einfach im ${item} vorgefahren 👀🔥`,
+    });
+    const huddle = trScene(l, {
+      fr: `Euh chef, personne n'ose garer sa voiture à côté de ton ${item} aujourd'hui 😂 Tu paies un tour après l'entraînement ?`,
+      en: `Nobody dares park next to your ${item} today mate 😂 taking the lads for a spin after training?`,
+      pt: `Ninguém teve coragem de estacionar perto do teu ${item} hoje 😂 vai pagar uma volta pra rapaziada depois do treino?`,
+      es: `Nadie se atreve a aparcar al lado de tu ${item} hoy 😂 ¿nos das una vuelta después del entreno?`,
+      it: `Nessuno ha il coraggio di parcheggiare vicino alla tua ${item} oggi 😂 ci offri un giro dopo l'allenamento?`,
+      de: `Heute traut sich keiner neben deinem ${item} zu parken 😂 gibt's nach dem Training eine Spritztour?`,
+    });
+    return { headline, narrative, kop, huddle, hudEmoji: [['😂', 4], ['🔥', 3]] };
+  }
+
+  if (cid === 'luxury_villa' || cid === 'penthouse' || (cat === 'home' && price >= 450000)) {
+    const headline = trScene(l, {
+      fr: `Nouveau repaire : ${item}`,
+      en: `Keys to a new chapter: ${item}`,
+      pt: `Casa nova no mapa: ${item}`,
+      es: `Estrenando hogar: ${item}`,
+      it: `Nuova casa: ${item}`,
+      de: `Neues Zuhause: ${item}`,
+    });
+    const narrative = trScene(l, {
+      fr: `${player} installe ses affaires dans son nouveau ${item}, un vrai saut de statut pour ${inner ? `accueillir ${inner.name} dans les meilleures conditions` : 'trouver le calme loin de la pression du week-end'}. Dans le vestiaire de ${club}, tout le monde réclame déjà la pendaison de crémaillère.`,
+      en: `${player} settles into the ${item}${inner ? `, creating real space to host ${inner.name} away from the matchday noise` : ', building a quiet sanctuary away from the matchday spotlight'}. Back at ${club}, the dressing room is already demanding a housewarming barbecue.`,
+      pt: `${player} se muda para ${item}${inner ? `, agora com conforto de sobra para receber ${inner.name} longe do barulho dos estádios` : ', garantindo paz e privacidade entre um jogo e outro'}. No vestiário do ${club}, a resenha já cobra o churrasco de inauguração.`,
+      es: `${player} se instala en ${item}${inner ? `, por fin con sitio de sobra para recibir a ${inner.name} lejos del ruido` : ', ganando calma lejos de los focos del fin de semana'}. En el vestuario de ${club} ya reclaman cena de inauguración.`,
+      it: `${player} prende casa in ${item}${inner ? `, finalmente con spazio per accogliere ${inner.name} lontano dalla pressione` : ', trovando quiete lontano dai riflettori del weekend'}. Nello spogliatoio del ${club} chiedono già la festa di inaugurazione.`,
+      de: `${player} bezieht ${item}${inner ? ` und schafft endlich Raum für Besuche von ${inner.name} abseits des Trubels` : ' – ein ruhiger Rückzugsort abseits des Stadionlärms'}. In der Kabine von ${club} fordern schon alle die Einweihungsparty.`,
+    });
+    const kop = trScene(l, {
+      fr: `Apparemment ${handleTag} vient de poser ses valises dans un ${item} en ville 🏡 Signe qu'il compte s'inscrire dans la durée à ${club} ?`,
+      en: `Word around ${club} is ${handleTag} just picked up a ${item} in town 🏡 Looks like someone plans on staying a while!`,
+      pt: `Dizem que ${handleTag} acabou de fechar um(a) ${item} na cidade 🏡 Será sinal de vida longa no ${club}?`,
+      es: `Cuentan cerca de ${club} que ${handleTag} estrena ${item} en la ciudad 🏡 ¡Parece que viene para quedarse!`,
+      it: `Si dice che ${handleTag} abbia appena preso ${item} in città 🏡 Segno che vuole restare a lungo al ${club}?`,
+      de: `Man hört rund um ${club}, dass ${handleTag} sich ein(e) ${item} gesichert hat 🏡 Sieht nach längerem Verbleib aus!`,
+    });
+    const huddle = trScene(l, {
+      fr: `Félicitations pour le ${item} ! On ramène les boissons quand pour la crémaillère ? 😄🏠`,
+      en: `Congrats on the ${item}! When are we all coming round for dinner? 😄🏠`,
+      pt: `Parabéns pelo novo ${item}! Quando vai rolar aquele churrasco pro elenco? 😄🏠`,
+      es: `¡Enhorabuena por el ${item}! ¿Cuándo nos invitas a cenar a todos? 😄🏠`,
+      it: `Complimenti per ${item}! Quando inviti tutta la squadra a cena? 😄🏠`,
+      de: `Glückwunsch zum ${item}! Wann steigt der Mannschaftsabend bei dir? 😄🏠`,
+    });
+    return { headline, narrative, kop, huddle, hudEmoji: [['🔥', 4], ['👏', 3]] };
+  }
+
+  if (cat === 'charity' || cid === 'local_clinic_gift' || cid === 'foundation_launch') {
+    const headline = trScene(l, {
+      fr: `Un geste qui dépasse le terrain : ${item}`,
+      en: `Impact beyond the pitch: ${item}`,
+      pt: `Gol de placa fora de campo: ${item}`,
+      es: `Un gesto que trasciende el fútbol: ${item}`,
+      it: `Un gesto oltre il campo: ${item}`,
+      de: `Einsatz über den Platz hinaus: ${item}`,
+    });
+    const narrative = trScene(l, {
+      fr: `L'annonce du projet « ${item} » fait vite le tour de la ville et touche profondément les supporters de ${club}. Au centre d'entraînement, le capitaine et les cadres saluent une initiative qui donne une vraie épaisseur à ta carrière.`,
+      en: `News of the ${item} spreads quickly through the city and resonates deeply with ${club} supporters. Inside the dressing room, senior teammates quietly tip their hats to a gesture that reaches far beyond football.`,
+      pt: `A iniciativa "${item}" ganha destaque na cidade e emociona a torcida do ${club}. No CT, os líderes do elenco elogiam a postura de quem usa o sucesso para mudar realidades.`,
+      es: `La noticia de "${item}" recorre rápido la ciudad y emociona a la afición de ${club}. En el vestuario, los capitanes aplauden un gesto que habla muy bien de ti fuera del campo.`,
+      it: `La notizia di "${item}" fa presto il giro della città e conquista i tifosi del ${club}. Nello spogliatoio i compagni applaudono un gesto che va ben oltre i 90 minuti.`,
+      de: `Die Nachricht über "${item}" macht schnell die Runde in der Stadt und berührt die Fans von ${club}. Auch in der Kabine zollen dir die Führungsspieler echten Respekt.`,
+    });
+    const kop = trScene(l, {
+      fr: `Immense respect pour ${handleTag} 🙏 Ce geste pour « ${item} » montre l'humain derrière le maillot de ${club}. ❤️👏`,
+      en: `Massive respect to ${handleTag} 🙏 Stepping up with the ${item} shows what kind of person wears the ${club} shirt. ❤️👏`,
+      pt: `Respeito máximo por ${handleTag} 🙏 A ação "${item}" mostra o tamanho do caráter além da camisa do ${club}. ❤️👏`,
+      es: `Enorme respeto por ${handleTag} 🙏 Lo de "${item}" demuestra la clase humana que hay detrás de la camiseta de ${club}. ❤️👏`,
+      it: `Rispetto enorme per ${handleTag} 🙏 L'iniziativa "${item}" dimostra che uomo c'è dietro la maglia del ${club}. ❤️👏`,
+      de: `Großer Respekt vor ${handleTag} 🙏 Dieses Engagement (${item}) zeigt echte Größe abseits des Rasens. ❤️👏`,
+    });
+    const huddle = trScene(l, {
+      fr: `Chapeau pour ce que tu viens de faire (${item}), ça rend tout le groupe fier 👏❤️`,
+      en: `Class act with the ${item} mate — whole dressing room is proud of that 👏❤️`,
+      pt: `Atitude gigante com a ação "${item}", o grupo inteiro tira o chapéu pra ti 👏❤️`,
+      es: `Gestazo enorme lo de "${item}", todo el vestuario está orgulloso 👏❤️`,
+      it: `Gran gesto quello per "${item}", tutto lo spogliatoio ti fa i complimenti 👏❤️`,
+      de: `Ganz starkes Zeichen mit "${item}", die ganze Kabine zieht den Hut 👏❤️`,
+    });
+    return { headline, narrative, kop, huddle, hudEmoji: [['❤️', 5], ['👏', 4]] };
+  }
+
+  if (cat === 'staff') {
+    const headline = trScene(l, {
+      fr: `Équipe resserrée autour de ${item}`,
+      en: `Stepping up off the pitch: ${item}`,
+      pt: `Estrutura profissional: ${item}`,
+      es: `Equipo de apoyo ampliado: ${item}`,
+      it: `Staff personale potenziato: ${item}`,
+      de: `Profi-Support im Hintergrund: ${item}`,
+    });
+    const narrative = trScene(l, {
+      fr: `Tu intègres un ${item} à ton quotidien entre les matchs de ${club}. Moins d'imprévus, une préparation millimétrée : tes coéquipiers remarquent vite la différence au vestiaire.`,
+      en: `Bringing in a ${item} raises your day-to-day standards around ${club}. Between sessions, sharper routines and better recovery quickly catch teammates' attention.`,
+      pt: `Ao contratar um ${item}, tua rotina fora do ${club} sobe de patamar. Menos improviso e foco total em cada detalhe — coisa que o elenco logo percebe no dia a dia.`,
+      es: `Sumar un ${item} eleva tu día a día en ${club}. Con todo medido al milímetro entre partidos, tus compañeros notan rápido ese salto de exigencia.`,
+      it: `Inserire ${item} nella routine quotidiana cambia il ritmo tra una partita e l'altra al ${club}. I compagni notano subito la cura dei dettagli.`,
+      de: `Mit dem ${item} hebst du deinen Alltag rund um ${club} auf das nächste Level – professionellere Abläufe, die auch in der Kabine schnell auffallen.`,
+    });
+    const huddle = (cid === 'personal_chef' || cid === 'personal_physio') ? trScene(l, {
+      fr: `Alors comme ça on prend un ${item} ? Faudra nous filer quelques recettes / astuces à la cantine 😄💪`,
+      en: `Hear you've got a ${item} now — share some tips with the rest of us at the training ground! 😄💪`,
+      pt: `Fiquei sabendo que fechou com ${item}! Vai ter que passar os segredos pra galera no CT 😄💪`,
+      es: `¿Así que ahora con ${item}? ¡Tendrás que pasarnos algún truco en el vestuario! 😄💪`,
+      it: `Abbiamo saputo del ${item} — passa qualche segreto anche a noi al centro sportivo! 😄💪`,
+      de: `Hab gehört, du hast jetzt einen ${item} – rück beim Essen mal ein paar Tipps raus! 😄💪`,
+    }) : null;
+    const kop = (cid === 'pr_manager' || cid === 'social_team') ? trScene(l, {
+      fr: `Ça se sent que ${handleTag} passe un cap côté image et com' cette saison 📈🔥`,
+      en: `You can tell ${handleTag} has serious backing behind the scenes now — everything looks sharper this season 📈`,
+      pt: `Dá pra notar que ${handleTag} profissionalizou de vez a imagem fora de campo 📈🔥`,
+      es: `Se nota que ${handleTag} ha dado un salto enorme cuidando su imagen esta temporada 📈`,
+      it: `Si vede che ${handleTag} ha alzato il livello anche fuori dal campo quest'anno 📈`,
+      de: `Man merkt sofort, wie professionell ${handleTag} jetzt auch neben dem Platz aufgestellt ist 📈`,
+    }) : null;
+    return { headline, narrative, kop, huddle, hudEmoji: [['💪', 4], ['😄', 2]] };
+  }
+
+  if (cat === 'investment') {
+    const headline = trScene(l, {
+      fr: `Nouveau placement : ${item}`,
+      en: `Building for tomorrow: ${item}`,
+      pt: `Visão de futuro: ${item}`,
+      es: `Inversión estratégica: ${item}`,
+      it: `Investimento per il futuro: ${item}`,
+      de: `Langfristiges Investment: ${item}`,
+    });
+    const narrative = trScene(l, {
+      fr: `${player} diversifie son patrimoine avec « ${item} ». Entre deux séances à ${club}, ton nom commence aussi à circuler dans les pages économiques et sportives.`,
+      en: `${player} puts earnings to work with ${item}. Away from matchdays at ${club}, smart long-term moves are quietly building security beyond playing boots.`,
+      pt: `${player} diversifica os investimentos com "${item}". Enquanto brilha pelo ${club}, constrói uma base sólida para muito além dos gramados.`,
+      es: `${player} apuesta a largo plazo con "${item}". Entre entrenamientos con ${club}, construye un patrimonio sólido más allá del césped.`,
+      it: `${player} guarda al futuro con "${item}". Tra una gara e l'altra col ${club}, costruisce solidità ben oltre la carriera da calciatore.`,
+      de: `${player} investiert vorausschauend in "${item}". Neben dem Alltag bei ${club} wächst so ein solides Fundament für die Zeit nach der Karriere.`,
+    });
+    const kop = trScene(l, {
+      fr: `Pas mal l'initiative de ${handleTag} dans « ${item} » 👀 Un footballeur qui prépare déjà l'avenir, c'est fort.`,
+      en: `Smart move by ${handleTag} backing the ${item} 👀 Love seeing players invest smartly for the future.`,
+      pt: `Boa jogada do ${handleTag} investindo em "${item}" 👀 Inteligência dentro e fora das quatro linhas.`,
+      es: `Muy inteligente ${handleTag} apostando por "${item}" 👀 Pensando en el futuro desde ya.`,
+      it: `Ottima mossa di ${handleTag} con "${item}" 👀 Testa sulle spalle dentro e fuori dal campo.`,
+      de: `Cleverer Schritt von ${handleTag} mit "${item}" 👀 Stark, wenn Spieler langfristig denken.`,
+    });
+    return { headline, narrative, kop, huddle: null, hudEmoji: [['👍', 3]] };
+  }
+
+  // Generic / custom asset
+  const headline = trScene(l, {
+    fr: `Nouvelle acquisition : ${item}`,
+    en: `New milestone: ${item}`,
+    pt: `Nova conquista: ${item}`,
+    es: `Nueva adquisición: ${item}`,
+    it: `Nuovo acquisto: ${item}`,
+    de: `Neuerwerbung: ${item}`,
+  });
+  const narrative = trScene(l, {
+    fr: `${player} marque un nouveau repère personnel avec « ${item} ». Une touche personnelle de plus qui raconte qui tu es en dehors de ${club}.`,
+    en: `${player} adds ${item} to life off the pitch — another personal marker shaping your story outside ${club}.`,
+    pt: `${player} adiciona "${item}" ao seu patrimônio fora das quatro linhas — mais um capítulo pessoal longe da rotina do ${club}.`,
+    es: `${player} suma "${item}" a su historia personal fuera de ${club}.`,
+    it: `${player} aggiunge "${item}" alla sua vita fuori dal ${club}.`,
+    de: `${player} holt sich "${item}" – ein weiteres persönliches Kapitel abseits von ${club}.`,
+  });
+  const kop = price >= 25000 ? trScene(l, {
+    fr: `${handleTag} s'offre « ${item} » 👀 Toujours stylé même hors des stades !`,
+    en: `${handleTag} just picked up ${item} 👀 Moving different off the pitch too!`,
+    pt: `${handleTag} garantiu "${item}" 👀 Mandando bem até fora de campo!`,
+    es: `${handleTag} estrena "${item}" 👀 Con clase también fuera del césped.`,
+    it: `${handleTag} si concede "${item}" 👀 Stile anche fuori dal campo!`,
+    de: `${handleTag} gönnt sich "${item}" 👀 Läuft auch neben dem Platz!`,
+  }) : null;
+  const huddle = price >= 25000 ? trScene(l, {
+    fr: `Pas mal « ${item} » ! Tu nous montres ça demain au centre 😉`,
+    en: `Nice pick-up with the ${item}! Show us tomorrow at training 😉`,
+    pt: `Da hora esse "${item}"! Mostra pra galera amanhã no treino 😉`,
+    es: `¡Qué bueno lo de "${item}"! Ya lo enseñarás mañana en el entreno 😉`,
+    it: `Bello "${item}"! Ce lo fai vedere domani al campo 😉`,
+    de: `Stark mit "${item}"! Zeigst du uns morgen beim Training 😉`,
+  }) : null;
+  return { headline, narrative, kop, huddle, hudEmoji: [['🔥', 2], ['👍', 2]] };
+}
+
+function renderActionScene(ctx, actId, customTitle, focus, handleTag) {
+  const { l, player, club, teammate, inner, hometown, topSponsor, hasChef, hasPhysio } = ctx;
+  const mate = teammate || (l === 'fr' ? 'le groupe' : 'the squad');
+  const sponsorTxt = topSponsor || (l === 'fr' ? 'ton partenaire' : 'your partner');
+  const personTxt = inner ? `${inner.name}` : (l === 'fr' ? 'tes proches' : 'family and close friends');
+  const townTxt = hometown ? (l === 'fr' ? ` autour de ${hometown}` : l === 'pt' ? ` em ${hometown}` : l === 'es' ? ` en ${hometown}` : l === 'it' ? ` verso ${hometown}` : l === 'de' ? ` aus ${hometown}` : ` back in ${hometown}`) : '';
+
+  if (actId === 'recovery') {
+    const headline = trScene(l, { fr: 'Journée récupération & soins', en: 'Recovery & cryo reset', pt: 'Recuperação & crioterapia', es: 'Recuperación y crioterapia', it: 'Recupero e crioterapia', de: 'Regeneration & Kältekammer' });
+    const narrative = trScene(l, {
+      fr: `Bain glacé, mobilité et silence total pour recharger les jambes avant les prochaines échéances avec ${club}.${hasPhysio ? ' Ton kiné privé ajuste chaque étirement.' : ''}${hasChef ? ' Le chef prépare ensuite un dîner calibré.' : ''}`,
+      en: `Ice bath, mobility work, and total quiet to flush the legs before ${club}'s next test.${hasPhysio ? ' Your private physio dials in every recovery block.' : ''}${hasChef ? ' A tailored recovery meal closes the evening.' : ''}`,
+      pt: `Banho de gelo, mobilidade e descanso total para deixar as pernas voando para o próximo desafio do ${club}.${hasPhysio ? ' Teu fisioterapeuta particular ajusta cada detalhe.' : ''}${hasChef ? ' O chef fecha o dia com um jantar sob medida.' : ''}`,
+      es: `Baño de hielo, movilidad y calma absoluta para recargar las piernas antes del próximo reto con ${club}.${hasPhysio ? ' Tu fisioterapeuta privado cuida cada detalle.' : ''}${hasChef ? ' Una cena medida cierra el día.' : ''}`,
+      it: `Ghiaccio, mobilità e riposo per ricaricare le gambe in vista del prossimo impegno col ${club}.${hasPhysio ? ' Il tuo fisioterapista privato calibra ogni seduta.' : ''}${hasChef ? ' Poi cena su misura preparata dallo chef.' : ''}`,
+      de: `Eisbad, Mobility und volle Ruhe vor der nächsten Aufgabe mit ${club}.${hasPhysio ? ' Dein privater Physio stimmt jede Einheit exakt ab.' : ''}${hasChef ? ' Danach wartet ein maßgeschneidertes Menü.' : ''}`,
+    });
+    const huddle = (hasPhysio || hasChef) ? trScene(l, {
+      fr: `Séance récup validée aujourd'hui — on va avoir besoin de tes jambes ce week-end 💪`,
+      en: `Smart recovery session today — going to need those fresh legs this weekend 💪`,
+      pt: `Trabalho sério de recuperação hoje — vamos precisar desse gás no fim de semana 💪`,
+      es: `Buena sesión de recuperación hoy — vamos a necesitar esas piernas el fin de semana 💪`,
+      it: `Ottimo lavoro di recupero oggi — ci serviranno gambe fresche nel weekend 💪`,
+      de: `Starke Regeneration heute – am Wochenende brauchen wir deine frischen Beine 💪`,
+    }) : null;
+    return { headline, narrative, kop: null, huddle, huddleRole: hasPhysio ? 'physio' : null, hudEmoji: [['💪', 3]] };
+  }
+
+  if (actId === 'extra_training') {
+    const headline = trScene(l, { fr: `Séance supplémentaire avec ${mate}`, en: `Extra finishing after training`, pt: `Treino extra após o expediente`, es: `Sesión extra tras el entrenamiento`, it: `Allenamento extra dopo la seduta`, de: `Extraschicht auf dem Platz` });
+    const narrative = trScene(l, {
+      fr: `Une heure après le départ du reste du groupe, ${player} et ${mate} restent seuls face au gardien à enchaîner frappes enroulées et coups francs sous la bruine. Le staff technique prend bonne note de cet engagement.`,
+      en: `Long after the rest of the squad heads inside, ${player} stays out with ${mate} hitting free kicks and first-time finishes under fading light. The ${club} coaching staff watches quietly from the touchline.`,
+      pt: `Muito depois de o elenco ir para o vestiário, ${player} e ${mate} ficam no gramado batendo faltas e finalizações. A comissão do ${club} acompanha tudo de longe com aprovação.`,
+      es: `Cuando todos ya están en la ducha, ${player} se queda con ${mate} ensayando faltas y remates al borde del área. El cuerpo técnico de ${club} toma buena nota desde la banda.`,
+      it: `Quando tutti rientrano negli spogliatoi, ${player} resta con ${mate} a provare punizioni e tiri al volo. Lo staff del ${club} osserva e apprezza.`,
+      de: `Lange nach Trainingsende bleibt ${player} mit ${mate} draußen und feilt an Freistößen und Abschlüssen. Das Trainerteam von ${club} registriert den Extraeinsatz sehr genau.`,
+    });
+    const huddle = trScene(l, {
+      fr: `Costaud la séance de finition en rab tout à l'heure 🔥 Tu vas en planter une pleine lucarne au prochain match !`,
+      en: `Top extra finishing session out there today 🔥 One of those free kicks is flying top bins on matchday!`,
+      pt: `Treino absurdo de falta agora há pouco 🔥 No próximo jogo vai cair uma lá na gaveta!`,
+      es: `Brutal la sesión extra de faltas de hoy 🔥 ¡En el próximo partido va una a la escuadra!`,
+      it: `Grande sessione extra poco fa 🔥 Domenica ne metti una all'incrocio!`,
+      de: `Starke Extraschicht eben 🔥 Am Spieltag zirkelst du genau so einen in den Winkel!`,
+    });
+    return { headline, narrative, kop: null, huddle, hudEmoji: [['🔥', 4], ['💪', 3]] };
+  }
+
+  if (actId === 'team_dinner') {
+    const headline = trScene(l, { fr: `Dîner soudé avec ${mate} & le vestiaire`, en: `Team dinner with the ${club} lads`, pt: `Jantar de grupo com o elenco do ${club}`, es: `Cena de equipo lejos de las cámaras`, it: `Cena di squadra col gruppo`, de: `Teamdinner abseits der Kameras` });
+    const narrative = trScene(l, {
+      fr: `Grande table privée en centre-ville, aucun téléphone ni caméra : ${player}, ${mate} et le groupe refont la saison entre éclats de rire et promesses de vestiaire. L'ambiance monte d'un cran avant le week-end.`,
+      en: `Private room downtown, phones tucked away: ${player}, ${mate}, and teammates trade stories and laughs over a long dinner. Exactly the kind of chemistry that shows up in tight matches.`,
+      pt: `Mesa reservada longe das câmeras: ${player}, ${mate} e vários companheiros dão muita risada e fecham o grupo antes da sequência pesada da temporada.`,
+      es: `Mesa privada sin cámaras ni focos: ${player}, ${mate} y los compañeros comparten risas y confidencias. De esas noches que unen al vestuario cuando toca sufrir en el campo.`,
+      it: `Tavolata privata lontano dai flash: ${player}, ${mate} e il gruppo tra risate e compattezza prima della prossima battaglia.`,
+      de: `Langer Abend ohne Kameras mit ${mate} und den Teamkollegen – genau die Stimmung, die eine Mannschaft in engen Spielen zusammenhält.`,
+    });
+    const huddle = trScene(l, {
+      fr: `Merci pour le dîner chef 🍽️🔥 On a jamais autant rigolé, même ambiance samedi sur le terrain !`,
+      en: `Top night out lads 🍽️🔥 Thanks for sorting dinner — let's carry that energy into Saturday!`,
+      pt: `Valeu pelo jantar hoje 🍽️🔥 Resenha pesada, agora é levar essa sintonia pra dentro de campo!`,
+      es: `¡Gracias por la cena de hoy 🍽️🔥 Ambiente top, el sábado a salir a por todas!`,
+      it: `Grazie per la cena ragazzi 🍽️🔥 Gruppo unitissimo, portiamolo in campo sabato!`,
+      de: `Danke für das starke Essen heute 🍽️🔥 Top Stimmung – genau so am Wochenende auf den Platz!`,
+    });
+    return { headline, narrative, kop: null, huddle, hudEmoji: [['🔥', 5], ['❤️', 3]] };
+  }
+
+  if (actId === 'inner_circle') {
+    const headline = trScene(l, { fr: `Parenthèse avec ${personTxt}`, en: `Quiet time with ${personTxt}`, pt: `Momento em família com ${personTxt}`, es: `Tiempo en familia con ${personTxt}`, it: `Pausa privata con ${personTxt}`, de: `Auszeit mit ${personTxt}` });
+    const narrative = trScene(l, {
+      fr: `Loin des stades et des notifications, ${player} passe l'après-midi avec ${personTxt}${townTxt}. Une soirée simple, les pieds sur terre, pour souffler entre deux matchs intenses.`,
+      en: `Phones on silent, zero cameras: ${player} spends the day catching up with ${personTxt}${townTxt}. Grounded energy that resets everything away from the ${club} pressure cooker.`,
+      pt: `Longe dos holofotes e do celular, ${player} passa o dia com ${personTxt}${townTxt}. Energia simples e verdadeira para recarregar a mente.`,
+      es: `Móvil en silencio y lejos del ruido: ${player} disfruta de una tarde tranquila junto a ${personTxt}${townTxt}. Cable a tierra necesario para volver con la mente despejada.`,
+      it: `Lontano da notifiche e pressioni, ${player} dedica la giornata a ${personTxt}${townTxt}. Semplicità preziosa tra una gara e l'altra.`,
+      de: `Abseits von Medien und Termindruck verbringt ${player} einen ruhigen Tag mit ${personTxt}${townTxt} – genau die Erdung zwischen den englischen Wochen.`,
+    });
+    return { headline, narrative, kop: null, huddle: null }; // Strict privacy: no Kop post
+  }
+
+  if (actId === 'sponsor_shoot') {
+    const headline = trScene(l, { fr: `Journée studio avec ${sponsorTxt}`, en: `Commercial shoot for ${sponsorTxt}`, pt: `Dia de gravação com ${sponsorTxt}`, es: `Rodaje comercial con ${sponsorTxt}`, it: `Shooting sul set con ${sponsorTxt}`, de: `Werbedreh mit ${sponsorTxt}` });
+    const narrative = trScene(l, {
+      fr: `Projecteurs, stylistes et trois tenues enchaînées en studio pour ${sponsorTxt}. ${player} enchaîne les prises avec décontraction et repart avec une prime bien méritée.`,
+      en: `Studio lights, cameras rolling, and sharp timing on set for ${sponsorTxt}. ${player} nails every take and walks out with a tidy bonus and happier commercial partners.`,
+      pt: `Luzes de estúdio e produção pesada para a campanha da ${sponsorTxt}. ${player} manda bem em cada tomada e ainda volta para casa com o bônus garantido.`,
+      es: `Focos, cámaras y varias tomas en estudio para ${sponsorTxt}. ${player} resuelve la sesión con soltura y refuerza el vínculo comercial.`,
+      it: `Luci da set e ritmo serrato per la campagna di ${sponsorTxt}. ${player} convince davanti alle telecamere e porta a casa il cachet.`,
+      de: `Scheinwerfer und Studio-Set für ${sponsorTxt}: ${player} liefert souverän ab und stärkt die Partnerschaft samt Bonus.`,
+    });
+    const kop = trScene(l, {
+      fr: `${handleTag} sur le plateau de ${sponsorTxt} aujourd'hui 📸🔥 Hâte de voir le spot sortir !`,
+      en: `Behind-the-scenes clips of ${handleTag} shooting with ${sponsorTxt} today 📸🔥 Campaign is going to look clean!`,
+      pt: `Bastidores de ${handleTag} gravando campanha pesada com ${sponsorTxt} 📸🔥 Vem comercial brabo por aí!`,
+      es: `${handleTag} en pleno rodaje hoy con ${sponsorTxt} 📸🔥 ¡Ganas de ver el anuncio!`,
+      it: `Dietro le quinte di ${handleTag} sul set con ${sponsorTxt} 📸🔥 Che stile!`,
+      de: `Einblicke vom Dreh mit ${handleTag} und ${sponsorTxt} 📸🔥 Der Spot wird stark!`,
+    });
+    return { headline, narrative, kop, huddle: null };
+  }
+
+  if (actId === 'charity_visit') {
+    const headline = trScene(l, { fr: `Rencontre associative en ville`, en: `Community & youth visit`, pt: `Visita a projeto social local`, es: `Visita solidaria con jóvenes aficionados`, it: `Incontro solidale con i giovani tifosi`, de: `Besuch bei einem Jugendprojekt` });
+    const narrative = trScene(l, {
+      fr: `Sourires, maillots signés et petit match improvisé sur le bitume avec les jeunes supporters de ${club}. Une après-midi qui rappelle pourquoi ce sport rassemble toute une ville.`,
+      en: `Signed shirts, wide smiles, and a kickabout with young ${club} fans in the local neighbourhood. The kind of afternoon that turns a good player into a crowd favourite.`,
+      pt: `Camisas autografadas, fotos e um bate-bola improvisado com a garotada apaixonada pelo ${club}. Tarde inesquecível que conquista a cidade inteira.`,
+      es: `Camisetas firmadas, sonrisas y un partidillo improvisado con chavales de la ciudad. Tardes así explican por qué la grada quiere tanto a ${player}.`,
+      it: `Maglie autografate, sorrisi e qualche palleggio coi ragazzi del quartiere. Un pomeriggio che lega per sempre ${player} alla gente del ${club}.`,
+      de: `Signierte Trikots, strahlende Gesichter und ein kurzer Kick mit dem Nachwuchs aus der Stadt – genau solche Nachmittage machen Fans glücklich.`,
+    });
+    const kop = trScene(l, {
+      fr: `Des gestes simples qui veulent tout dire ❤️ Bravo ${handleTag} pour la visite auprès des jeunes de ${club} aujourd'hui !`,
+      en: `Class moments off the pitch ❤️ Huge shoutout to ${handleTag} for spending the afternoon with young ${club} supporters!`,
+      pt: `Isso é futebol raiz ❤️ Parabéns ${handleTag} pela humildade na visita à garotada do ${club} hoje!`,
+      es: `Esto vale más que mil goles ❤️ Grande ${handleTag} pasando la tarde con los chicos de ${club} hoy.`,
+      it: `Cose semplici che restano ❤️ Bravo ${handleTag} con i piccoli tifosi del ${club} oggi!`,
+      de: `Echte Größe ❤️ Stark von ${handleTag}, den Nachmittag mit den Jugendkids von ${club} zu verbringen!`,
+    });
+    return { headline, narrative, kop, huddle: null };
+  }
+
+  if (actId === 'media_feature') {
+    const headline = trScene(l, { fr: `Grand entretien portrait`, en: `Long-form media feature`, pt: `Entrevista especial & ensaio`, es: `Gran reportaje y entrevista`, it: 'Speciale intervista ritratto', de: `Großes Porträt-Interview` });
+    const narrative = trScene(l, {
+      fr: `${player} se confie longuement sur son parcours, ses ambitions avec ${club} et sa vie hors terrain. Les premiers extraits mettent déjà Kop en ébullition.`,
+      en: `${player} sits down for a candid long-form feature covering ambition, ${club}'s dressing room, and life beyond football. Preview clips are already sparking debate on Kop.`,
+      pt: `${player} abre o jogo em entrevista longa sobre ambições no ${club}, bastidores e vida pessoal. Os primeiros trechos já estão bombando no Kop.`,
+      es: `${player} repasa en profundidad su momento en ${club}, sus metas y su vida lejos del fútbol. Los adelantos ya encienden el debate en Kop.`,
+      it: `${player} si racconta tra ambizioni al ${club} e vita privata. Le prime anticipazioni accendono già Kop.`,
+      de: `${player} spricht im ausführlichen Porträt über Ziele bei ${club} und das Leben abseits des Rasens. Erste Ausschnitte sorgen auf Kop direkt für Gesprächsstoff.`,
+    });
+    const kop = trScene(l, {
+      fr: `Solide l'entretien de ${handleTag} qui vient de sortir 👀 Beaucoup de personnalité, hâte de voir la suite sur le terrain !`,
+      en: `Really enjoyed ${handleTag}'s new feature interview 👀 Hungry mindset and loads of personality!`,
+      pt: `Que entrevista forte do ${handleTag} que acabou de sair 👀 Mentalidade gigante!`,
+      es: `Muy buena la entrevista que acaba de publicar ${handleTag} 👀 Mentalidad ambiciosa y con carácter.`,
+      it: `Bella intervista di ${handleTag} uscita oggi 👀 Idee chiarissime e personalità!`,
+      de: `Starkes Porträt-Interview von ${handleTag} heute 👀 Klare Kante und viel Ausstrahlung!`,
+    });
+    return { headline, narrative, kop, huddle: null };
+  }
+
+  if (actId === 'vip_night') {
+    const headline = trScene(l, { fr: `Apparition remarquée en soirée VIP`, en: `Flashbulbs at an exclusive gala`, pt: `Noite VIP sob os holofotes`, es: `Noche VIP bajo los flashes`, it: `Serata VIP sotto i flash`, de: `VIP-Gala im Blitzlichtgewitter` });
+    const narrative = trScene(l, {
+      fr: `Tapis rouge, tenues de soirée et flashs à l'entrée du gala privé. Les photos font grimper ta notoriété instantanément sur Kop, même si le coach espère te voir frais demain matin.`,
+      en: `Tailored suit, velvet rope, and camera flashes outside an exclusive city gala. Clips hit Kop within minutes — though the gaffer will be watching how sharp you look tomorrow morning.`,
+      pt: `Terno alinhado, tapete vermelho e dezenas de flashes na festa exclusiva da cidade. O hype no Kop dispara na hora — só resta saber o que o técnico vai achar amanhã cedo.`,
+      es: `Traje de gala y lluvia de flashes en la fiesta privada de la ciudad. Las fotos corren rápido por Kop, aunque el míster mirará mañana si llegas fresco al entreno.`,
+      it: `Abito su misura e flash alla serata di gala esclusiva. Le foto volano su Kop, anche se il mister controllerà la freschezza domani mattina.`,
+      de: `Maßanzug und Blitzlicht auf der exklusiven Gala: Auf Kop trenden die Bilder sofort – solange morgen früh im Training nichts durchhängt.`,
+    });
+    const kop = trScene(l, {
+      fr: `${handleTag} de sortie au gala de la ville hier soir ✨📸 Classe mondiale même en costume !`,
+      en: `${handleTag} stepping out at last night's gala ✨📸 World class on and off the pitch!`,
+      pt: `${handleTag} roubando a cena no evento VIP ontem à noite ✨📸 Estilo puro!`,
+      es: `${handleTag} anoche en la gala de la ciudad ✨📸 Elegancia total también de traje.`,
+      it: `${handleTag} alla serata di gala ieri sera ✨📸 Classe pura anche in smoking!`,
+      de: `${handleTag} gestern Abend auf der Stadt-Gala ✨📸 Auch im Anzug Weltklasse!`,
+    });
+    const huddle = trScene(l, {
+      fr: `Vu les photos en smoking ce matin 😂 Prêt à courir 12 km quand même aujourd'hui ?`,
+      en: `Saw the red-carpet pics already 😂 Hope those dancing shoes turn back into boots by 9am!`,
+      pt: `Vi as fotos todo elegante ontem 😂 Hoje às 9h quero ver esse pique todo no treino hein!`,
+      es: `Ya vimos las fotos de gala de anoche 😂 Hoy toca sudar el doble en el entreno eh!`,
+      it: `Viste le foto in smoking 😂 Stamattina però si corre come sempre eh!`,
+      de: `Schicke Gala-Fotos gestern 😂 Heute Vormittag wird trotzdem wieder voll marschiert!`,
+    });
+    return { headline, narrative, kop, huddle, hudEmoji: [['😂', 4], ['✨', 2]] };
+  }
+
+  // Custom action
+  const title = customTitle || (l === 'fr' ? 'Activité personnelle' : 'Personal activity');
+  const headline = title;
+  const narrative = trScene(l, {
+    fr: `${player} consacre sa journée libre à : « ${title} ». Un choix personnel qui pèse concrètement sur ton équilibre autour de ${club}.`,
+    en: `${player} spends a valuable day off on: "${title}" — a personal choice that shapes relationships around ${club}.`,
+    pt: `${player} dedica o dia livre a "${title}" — uma escolha pessoal com impacto real no ambiente ao redor do ${club}.`,
+    es: `${player} dedica su día libre a "${title}", marcando huella en el entorno de ${club}.`,
+    it: `${player} dedica il giorno libero a "${title}", lasciando un segnale concreto attorno al ${club}.`,
+    de: `${player} nutzt den freien Tag für "${title}" – eine persönliche Entscheidung rund um ${club}.`,
+  });
+  const huddle = focus === 'squad' ? trScene(l, {
+    fr: `Bien joué pour « ${title} », le groupe apprécie vraiment ce genre de moment 👍`,
+    en: `Fair play with "${title}" today — squad really appreciates it 👍`,
+    pt: `Massa demais "${title}" hoje, o grupo curtiu muito 👍`,
+    es: `Bien ahí con "${title}", el vestuario lo valora mucho 👍`,
+    it: `Bella iniziativa "${title}", il gruppo apprezza 👍`,
+    de: `Starke Aktion mit "${title}", kommt in der Kabine richtig gut an 👍`,
+  }) : null;
+  const kop = ['fans', 'media', 'sponsors'].includes(focus) ? trScene(l, {
+    fr: `${handleTag} actif aujourd'hui : « ${title} » 👏 Ça bosse sur tous les fronts !`,
+    en: `${handleTag} spotted today: "${title}" 👏 Active on every front!`,
+    pt: `${handleTag} em atividade hoje: "${title}" 👏 Presente dentro e fora de campo!`,
+    es: `${handleTag} muy activo hoy: "${title}" 👏`,
+    it: `${handleTag} attivo anche fuori dal campo: "${title}" 👏`,
+    de: `${handleTag} heute abseits des Platzes aktiv: "${title}" 👏`,
+  }) : null;
+  return { headline, narrative, kop, huddle, hudEmoji: [['👍', 3]] };
+}
+
+function renderDilemmaScene(ctx, dilemmaId, choiceId, handleTag) {
+  const { l, club, teammate } = ctx;
+  const key = `${dilemmaId}:${choiceId}`;
+  const headline = trScene(l, {
+    fr: 'Choix décisif hors terrain',
+    en: 'Off-pitch crossroads settled',
+    pt: 'Decisão tomada fora de campo',
+    es: 'Decisión tomada fuera del campo',
+    it: 'Scelta presa fuori dal campo',
+    de: 'Entscheidung abseits des Platzes',
+  });
+  const narrative = trScene(l, {
+    fr: `Ta décision dans cette situation fait immédiatement réagir autour de ${club}. Chaque prise de position laisse une trace sur ta réputation et sur les attentes du vestiaire.`,
+    en: `Your call spreads fast around ${club}. Off the pitch just as much as on it, every stance shapes how teammates, supporters, and the dressing room read your character.`,
+    pt: `Sua escolha corre rápido pelos bastidores do ${club}. Fora das quatro linhas, cada decisão molda sua reputação diante do elenco e da torcida.`,
+    es: `Tu decisión no pasa desapercibida en ${club}. Cada postura fuera del campo deja huella en la grada y en el vestuario.`,
+    it: `La tua scelta fa subito il giro dell'ambiente ${club}. Ogni presa di posizione conta nello spogliatoio e tra i tifosi.`,
+    de: `Deine Entscheidung spricht sich bei ${club} sofort herum – jede Haltung prägt dein Standing in Kabine und Umfeld.`,
+  });
+  const publicChoices = {
+    'tabloid_deal:a': {
+      fr: `La nouvelle couverture lifestyle de ${handleTag} enflamme déjà les réseaux 👀📸`,
+      en: `${handleTag}'s glossy magazine spread just dropped everywhere 👀📸`,
+      pt: `A capa de revista do ${handleTag} já está em todos os feeds 👀📸`,
+      es: `La portada de revista de ${handleTag} ya da la vuelta a las redes 👀📸`,
+      it: `La copertina patinata di ${handleTag} sta già spopolando ovunque 👀📸`,
+      de: `Das neue Hochglanz-Cover mit ${handleTag} sorgt gerade überall für Aufsehen 👀📸`,
+    },
+    'youth_club_plea:a': {
+      fr: `${handleTag} vient de financer un terrain neuf pour son club d'enfance 👏❤️ La classe pure.`,
+      en: `${handleTag} just funded a brand-new pitch for his boyhood club 👏❤️ Unbelievable gesture.`,
+      pt: `${handleTag} financiou um campo novinho para o clube formador 👏❤️ Respeito eterno.`,
+      es: `${handleTag} acaba de pagar un campo nuevo para su primer club 👏❤️ Enorme corazón.`,
+      it: `${handleTag} ha finanziato un nuovo campo per il suo club d'infanzia 👏❤️ Gesto meraviglioso.`,
+      de: `${handleTag} finanziert seinem Jugendverein einfach einen komplett neuen Platz 👏❤️ Wahnsinns-Geste!`,
+    },
+    'youth_club_plea:b': {
+      fr: `Beau clin d'œil de ${handleTag} avec des maillots dédicacés pour les jeunes de ses débuts 🙌`,
+      en: `Nice touch from ${handleTag} sending signed shirts back to his boyhood academy 🙌`,
+      pt: `Bela atitude de ${handleTag} mandando camisas autografadas pra base 🙌`,
+      es: `Bonito detalle de ${handleTag} enviando camisetas firmadas a su primer club 🙌`,
+      it: `Bel gesto di ${handleTag} con le maglie autografate per i ragazzi del suo vecchio club 🙌`,
+      de: `Feiner Zug von ${handleTag}: signierte Trikots für seinen Ausbildungsverein 🙌`,
+    },
+    'training_gate:a': {
+      fr: `Sous la pluie battante, ${handleTag} est resté une heure à signer des autographes après l'entraînement à ${club} 🌧️❤️`,
+      en: `Pouring rain at ${club} and ${handleTag} still stayed an hour signing every last shirt at the gate 🌧️❤️`,
+      pt: `Debaixo de chuva no CT do ${club}, ${handleTag} ficou quase uma hora atendendo a torcida 🌧️❤️`,
+      es: `Bajo la lluvia en ${club}, ${handleTag} se quedó una hora firmando a todos los chavales 🌧️❤️`,
+      it: `Sotto il diluvio al ${club}, ${handleTag} è rimasto un'ora a firmare autografi ai ragazzi 🌧️❤️`,
+      de: `Bei strömendem Regen blieb ${handleTag} noch eine Stunde für alle Kids am Trainingszaun 🌧️❤️`,
+    },
+    'training_gate:c': {
+      fr: `Moment magique : ${handleTag} a ouvert la pelouse aux gamins venus sous la pluie aujourd'hui 🥹⚽`,
+      en: `Magical scenes: ${handleTag} invited the kids right onto the pitch today 🥹⚽`,
+      pt: `Cena inesquecível: ${handleTag} chamou as crianças para o gramado mesmo na chuva 🥹⚽`,
+      es: `Escena preciosa: ${handleTag} invitó hoy a los chavales al césped 🥹⚽`,
+      it: `Momento magico: ${handleTag} ha portato i ragazzi sul campo oggi 🥹⚽`,
+      de: `Gänsehautmoment: ${handleTag} hat die Kids heute direkt mit auf den Rasen geholt 🥹⚽`,
+    },
+    'agent_leak:b': {
+      fr: `${handleTag} vient de couper court aux rumeurs — engagement total envers ${club} ! 💪🔵`,
+      en: `${handleTag} shutting down the transfer noise loud and clear — all in for ${club}! 💪`,
+      pt: `${handleTag} colocou ponto final nos boatos de transferência — foco total no ${club}! 💪`,
+      es: `${handleTag} zanja los rumores de golpe: compromiso total con ${club} 💪`,
+      it: `${handleTag} spegne subito le voci di mercato: testa solo al ${club}! 💪`,
+      de: `${handleTag} schiebt den Wechselgerüchten klar den Riegel vor – voller Fokus auf ${club}! 💪`,
+    },
+    'docu_crew:a': {
+      fr: `Des caméras toute la semaine avec ${handleTag} à ${club} 👀🎬 Le documentaire promet !`,
+      en: `Full behind-the-scenes docu crew following ${handleTag} this week 👀🎬 Can't wait to watch this!`,
+      pt: `Equipe de documentário acompanhando a semana do ${handleTag} 👀🎬 Vai dar o que falar!`,
+      es: `Cámaras siguiendo toda la semana a ${handleTag} 👀🎬 ¡Pintaza de documental!`,
+      it: `Telecamere dietro le quinte tutta la settimana con ${handleTag} 👀🎬 Non vediamo l'ora!`,
+      de: `Doku-Kameras begleiten ${handleTag} diese Woche auf Schritt und Tritt 👀🎬`,
+    },
+  };
+  const huddleChoices = {
+    'late_party:b': {
+      fr: `Belle soirée d'après-match hier 😂 Juste, mets un gros réveil pour demain !`,
+      en: `Top night out with the boys 😂 Just make sure two alarms are set for tomorrow!`,
+      pt: `Que resenha ontem depois da vitória 😂 Só bota o despertador bem alto pra amanhã!`,
+      es: `Menuda noche ayer con el grupo 😂 ¡Pon doble alarma para mañana!`,
+      it: `Gran serata ieri 😂 Metti la doppia sveglia per domani mattina eh!`,
+      de: `Starke Siegesfeier gestern 😂 Stell dir für morgen besser zwei Wecker!`,
+    },
+    'late_party:c': {
+      fr: `Top le dîner calme entre nous hier soir 🤝 L'esprit pro ça paie.`,
+      en: `Class quiet dinner last night instead of going out late 🤝 Smart head on you.`,
+      pt: `Jantar tranquilo bem melhor do que madrugada fora 🤝 Cabeça no lugar.`,
+      es: `Qué acierto la cena tranquila de ayer en lugar de salir hasta tarde 🤝`,
+      it: `Ottima scelta la cena tranquilla di ieri sera 🤝 Testa giusta.`,
+      de: `Richtig guter, ruhiger Abend statt langer Partynacht 🤝 Genau die richtige Einstellung.`,
+    },
+    'teammate_vent:a': {
+      fr: `Merci d'avoir pris le temps de m'écouter tout à l'heure, ça compte vraiment dans ce vestiaire 🙏`,
+      en: `Appreciate you backing me up privately earlier — means a lot in this dressing room 🙏`,
+      pt: `Valeu por me ouvir e apoiar mais cedo, faz toda diferença no grupo 🙏`,
+      es: `Gracias por escucharme antes en privado, dice mucho de ti como compañero 🙏`,
+      it: `Grazie per avermi ascoltato prima nello spogliatoio, vuol dire molto 🙏`,
+      de: `Danke für dein offenes Ohr vorhin in der Kabine, das bedeutet mir echt viel 🙏`,
+    },
+    'teammate_vent:c': {
+      fr: `Bien joué d'avoir calmé tout le monde avant la séance 👏 C'est comme ça qu'un groupe avance.`,
+      en: `Top leadership calming tensions before training 👏 Keeps everyone pulling together.`,
+      pt: `Mandou muito bem apaziguando o clima antes do treino 👏 Grupo fechado!`,
+      es: `Bien mediado antes del entreno 👏 Así se mantiene unido un vestuario.`,
+      it: `Grande equilibrio nel calmare gli animi prima della seduta 👏 Così si vince insieme.`,
+      de: `Stark moderiert vor dem Training 👏 So hält man eine Kabine zusammen.`,
+    },
+    'docu_crew:c': {
+      fr: `Bien vu d'avoir dit non aux caméras dans le vestiaire — nos affaires restent entre nous 💪`,
+      en: `Respect for keeping the cameras out of our dressing room — our space stays ours 💪`,
+      pt: `Acertou em barrar as câmeras no vestiário — nossa intimidade não está à venda 💪`,
+      es: `Bien hecho frenando las cámaras en el vestuario — lo nuestro se queda aquí dentro 💪`,
+      it: `Ottima scelta tenere le telecamere fuori dallo spogliatoio — le nostre cose restano nostre 💪`,
+      de: `Stark, dass du die Kameras aus unserer Kabine gehalten hast – was hier passiert, bleibt unter uns 💪`,
+    },
+  };
+  if (dilemmaId === 'teammate_vent' && teammate) {
+    // Keep attribution natural in huddle if teammate spoke
+  }
+  const kop = publicChoices[key] ? trScene(l, publicChoices[key]) : null;
+  const huddle = huddleChoices[key] ? trScene(l, huddleChoices[key]) : null;
+  return { headline, narrative, kop, huddle, hudEmoji: [['💪', 3], ['🤝', 2]] };
+}
+
+function renderObligationScene(ctx, brand, handleTag) {
+  const { l } = ctx;
+  const headline = trScene(l, {
+    fr: `Événement partenaire honoré : ${brand}`,
+    en: `Partner spotlight with ${brand}`,
+    pt: `Compromisso cumprido com ${brand}`,
+    es: `Evento oficial completado con ${brand}`,
+    it: `Evento partner completato con ${brand}`,
+    de: `Partner-Auftritt für ${brand}`,
+  });
+  const narrative = trScene(l, {
+    fr: `Apparition officielle bouclée pour ${brand} devant partenaires et médias. Contrat respecté au millimètre, prime encaissée et relation au beau fixe.`,
+    en: `Public appearance wrapped smoothly for ${brand}. Contract obligations ticked off in style, partner trust climbs, and a fresh bonus lands in the account.`,
+    pt: `Presença oficial cumprida com categoria para ${brand}. Parceria fortalecida, moral lá em cima com o patrocinador e bônus na conta.`,
+    es: `Aparición oficial completada con éxito para ${brand}. Compromiso cumplido, patrocinador encantado y prima ingresada.`,
+    it: `Apparizione ufficiale riuscita alla grande per ${brand}. Sponsor soddisfatto e bonus subito accreditato.`,
+    de: `Souveräner Auftritt für ${brand}: Pflichttermin mit Bravour erfüllt, starkes Feedback vom Partner und Prämie direkt verbucht.`,
+  });
+  const kop = trScene(l, {
+    fr: `${handleTag} présent avec ${brand} aujourd'hui 🤝🔥 Belle image de marque !`,
+    en: `${handleTag} linking up with ${brand} today 🤝🔥 Clean partnership!`,
+    pt: `${handleTag} marcando presença no evento da ${brand} hoje 🤝🔥 Parceria de respeito!`,
+    es: `${handleTag} brillando hoy en el evento de ${brand} 🤝🔥`,
+    it: `${handleTag} protagonista oggi all'evento ${brand} 🤝🔥`,
+    de: `${handleTag} heute beim offiziellen Termin von ${brand} 🤝🔥 Starkes Duo!`,
+  });
+  return { headline, narrative, kop, huddle: null };
+}
+
+function buildSceneAndReactions(state, snapshot, event = {}, { language = 'en', newId = () => `sc_${Date.now()}` } = {}) {
+  const hub = state?.lifeHub;
+  if (!hub) return null;
+  hub.scenes = hub.scenes || [];
+  const gameDate = event.date || snapshot?.gameDate || hub.lastTickDate || '';
+  const ctx = resolveContext(state, snapshot, event, language);
+  const myHandle = state?.profile?.handle ? `@${state.profile.handle}` : ctx.player;
+
+  let built;
+  if (event.kind === 'purchase') built = renderPurchaseScene(ctx, event.asset, myHandle);
+  else if (event.kind === 'action') built = renderActionScene(ctx, event.refId, event.customTitle, event.focus, myHandle);
+  else if (event.kind === 'dilemma') built = renderDilemmaScene(ctx, event.dilemmaId, event.choiceId, myHandle);
+  else if (event.kind === 'obligation') built = renderObligationScene(ctx, event.brand || 'Partner', myHandle);
+  else return null;
+
+  const reactions = [];
+  if (built.kop) {
+    const k = pushKopReaction(state, { club: ctx.club, gameDate, language: ctx.l, newId }, built.kop);
+    if (k) reactions.push(k);
+  }
+  if (built.huddle) {
+    const h = pushHuddleReaction(state, { gameDate, teammate: ctx.teammate, captain: ctx.captain }, built.huddle, built.huddleRole || null, built.hudEmoji);
+    if (h) reactions.push(h);
+  }
+
+  const scene = {
+    id: newId(),
+    date: gameDate,
+    kind: event.kind || 'life',
+    refId: event.refId || '',
+    category: event.category || 'life',
+    title: event.kind === 'purchase' ? catalogDisplayName(event.asset, ctx.l) : '',
+    headline: built.headline,
+    narrative: built.narrative,
+    companion: ctx.teammate || ctx.inner?.name || '',
+    deltas: event.deltas || {},
+    reactions,
+    image: event.image || null,
+  };
+
+  hub.scenes.unshift(scene);
+  if (hub.scenes.length > 10) hub.scenes.length = 10;
+  return scene;
+}
+
+module.exports = {
+  CATALOG_NAMES,
+  CATALOG_ENGLISH_NAMES,
+  catalogDisplayName,
+  buildSceneAndReactions,
+};

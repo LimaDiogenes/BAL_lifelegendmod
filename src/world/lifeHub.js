@@ -4,6 +4,7 @@
 // Aucune requête d'IA supplémentaire : tout tourne localement à partir de la sauvegarde.
 
 const { PERSONA_PRESETS } = require('./persona');
+const { CATALOG_ENGLISH_NAMES } = require('./lifeScenes');
 
 const SPONSOR_CATEGORIES = [
   'boots', 'apparel', 'beverage', 'automotive', 'watches',
@@ -356,6 +357,9 @@ function ensureLifeHub(state, snapshot = state?.snapshot) {
       obligations: [],
       ledger: [],
       recentEvents: [],
+      scenes: [],
+      catalogImages: {},
+      heroImage: null,
       pendingDilemma: null,
       dilemmaCooldownUntil: null,
       offerCooldownUntil: null,
@@ -377,6 +381,9 @@ function ensureLifeHub(state, snapshot = state?.snapshot) {
   hub.obligations ||= [];
   hub.ledger ||= [];
   hub.recentEvents ||= [];
+  hub.scenes ||= [];
+  hub.catalogImages ||= {};
+  if (hub.heroImage === undefined) hub.heroImage = null;
   hub.matchCountedIds ||= [];
   hub.pendingSaveEffects ||= { affectionDelta: 0, formArrowDelta: 0, reasons: [] };
   hub.pendingSaveEffects.reasons ||= [];
@@ -767,14 +774,16 @@ function buyAsset(state, payload = {}, gameDate = '', newId = () => `id_${Date.n
     }
     const price = Math.max(0, Math.round(Number(payload.price) || 0));
     const monthlyCost = Math.max(0, Math.round(Number(payload.monthlyCost) || 0));
-    item = { id: newId(), catalogId: null, category, ...(customCategory ? { customCategory } : {}), name, price, resaleValue: price, monthlyCost, passiveReturn: 0, perks: { fans: category === 'charity' ? 4 : 1, media: 1 }, custom: true };
+    const customImage = payload.customImage ? cleanText(payload.customImage, 120) : '';
+    item = { id: newId(), catalogId: null, category, ...(customCategory ? { customCategory } : {}), ...(customImage ? { customImage } : {}), name, price, resaleValue: price, monthlyCost, passiveReturn: 0, perks: { fans: category === 'charity' ? 4 : 1, media: 1 }, custom: true };
   } else {
     const cat = ASSET_CATALOG.find((a) => a.id === payload.catalogId);
     if (!cat) throw new Error('Élément introuvable.');
     if (cat.category !== 'charity' && hub.assets.some((a) => a.catalogId === cat.id)) {
       throw new Error('Élément déjà possédé.');
     }
-    item = { id: cat.category === 'charity' ? newId() : cat.id, catalogId: cat.id, category: cat.category, name: cat.id, price: cat.price, resaleValue: cat.price, monthlyCost: cat.monthlyCost, passiveReturn: cat.passiveReturn, perks: { ...cat.perks }, custom: false };
+    const savedImg = cleanText(payload.customImage || hub.catalogImages?.[cat.id], 120);
+    item = { id: cat.category === 'charity' ? newId() : cat.id, catalogId: cat.id, category: cat.category, name: cat.id, price: cat.price, resaleValue: cat.price, monthlyCost: cat.monthlyCost, passiveReturn: cat.passiveReturn, perks: { ...cat.perks }, ...(savedImg ? { customImage: savedImg } : {}), custom: false };
   }
 
   if (hub.cash < item.price) throw new Error('Fonds insuffisants.');
@@ -943,6 +952,8 @@ function performAction(state, snapshot, payload = {}, newId = () => `id_${Date.n
   if ((hub.ap || 0) < 1) throw new Error('Plus de points d’action disponibles : synchronise après un match ou quelques jours en jeu.');
 
   let memoryLine = '';
+  let companion = '';
+  let deltas = { meters: {}, cost: 0, bonusCash: 0, followerDelta: 0, saveEffects: null };
   if (payload.custom) {
     const title = cleanText(payload.title, 80);
     if (!title) throw new Error('Nom de l’élément requis.');
@@ -951,6 +962,7 @@ function performAction(state, snapshot, payload = {}, newId = () => `id_${Date.n
     if (hub.cash < cost) throw new Error('Fonds insuffisants.');
     hub.ap -= 1;
     applyEffects(state, hub, { [focus]: 5 }, { cost }, today, title);
+    deltas = { meters: { [focus]: 5 }, cost, bonusCash: 0, followerDelta: 0, saveEffects: null };
     memoryLine = title;
     pushRecent(hub, { date: today, kind: 'action', text: title });
   } else {
@@ -959,13 +971,14 @@ function performAction(state, snapshot, payload = {}, newId = () => `id_${Date.n
     const cost = act.cost || 0;
     if (hub.cash < cost) throw new Error('Fonds insuffisants.');
     hub.ap -= act.ap || 1;
-    const companion = cleanText(payload.companion, 60) || pickCompanionName(state, snapshot, act.id);
+    companion = cleanText(payload.companion, 60) || pickCompanionName(state, snapshot, act.id);
     applyEffects(state, hub, act.effects, { cost, bonusCash: act.bonusCash || 0, followerDelta: act.followerDelta || 0 }, today, act.id);
     queueSaveEffects(hub, act.saveEffects, act.id);
+    deltas = { meters: { ...(act.effects || {}) }, cost, bonusCash: act.bonusCash || 0, followerDelta: act.followerDelta || 0, saveEffects: act.saveEffects ? { ...act.saveEffects } : null };
     memoryLine = companion ? `${act.memory} (${companion})` : act.memory;
     pushRecent(hub, { date: today, kind: 'action', text: memoryLine });
   }
-  return { hub, memoryLine };
+  return { hub, memoryLine, companion, deltas };
 }
 
 function answerDilemma(state, dilemmaId, choiceId, gameDate = '') {
@@ -982,7 +995,8 @@ function answerDilemma(state, dilemmaId, choiceId, gameDate = '') {
   queueSaveEffects(hub, ch.saveEffects, cur.dilemmaId);
   hub.pendingDilemma = null;
   pushRecent(hub, { date: gameDate, kind: 'dilemma', text: ch.memory });
-  return { hub, memoryLine: ch.memory };
+  const deltas = { meters: { ...(ch.effects || {}) }, cost, bonusCash: ch.bonusCash || 0, followerDelta: ch.followerDelta || 0, saveEffects: ch.saveEffects ? { ...ch.saveEffects } : null };
+  return { hub, memoryLine: ch.memory, dilemmaId: cur.dilemmaId, choiceId, deltas };
 }
 
 function lifeHubFacts(state) {
@@ -992,7 +1006,11 @@ function lifeHubFacts(state) {
     .filter((s) => s?.brand)
     .slice(0, 8)
     .map((s) => `${s.brand} (${normalizeSponsorCategories(s).join(', ')})`);
-  const notableAssets = (hub.assets || []).filter((a) => a.category === 'home' || a.category === 'charity' || a.custom).map((a) => a.name).slice(0, 5);
+  const notableAssets = (hub.assets || [])
+    .filter((a) => ['home', 'car', 'charity', 'staff'].includes(a.category) || a.custom)
+    .map((a) => (a.custom ? a.name : (CATALOG_ENGLISH_NAMES[a.catalogId || a.name] || a.name)))
+    .filter(Boolean)
+    .slice(0, 6);
   const recent = (hub.recentEvents || []).slice(0, 3).map((e) => e.text);
   return {
     career_stage: hub.stage || 'rookie',

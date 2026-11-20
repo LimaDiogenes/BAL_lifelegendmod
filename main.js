@@ -393,6 +393,7 @@ app.whenReady().then(() => {
   handle('lifeHub:completeObligation', ({ obligationId, skip }) => world.completeLifeObligation({ store, obligationId, skip }));
   handle('lifeHub:action', (payload) => world.doLifeAction({ store, payload }));
   handle('lifeHub:dilemma', ({ dilemmaId, choiceId }) => world.answerLifeDilemma({ store, dilemmaId, choiceId }));
+  handle('lifeHub:setMedia', (payload) => world.setLifeMedia({ store, payload }));
   handle('lifeHub:applySaveEffects', () => {
     const r = world.applyLifeSaveEffects({ store, settings: store.getSettings() });
     logActivity(`effets Ma vie écrits dans la sauvegarde : ${r.result.changes.join(', ')}`);

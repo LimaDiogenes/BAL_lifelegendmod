@@ -138,6 +138,8 @@ const profileImg = (f) => (!f ? null : String(f).startsWith('data:') ? f : appPa
 // Fiche d'un compte de club (écusson lu dans les fichiers du jeu, stade, championnat), d'après son pseudo.
 const clubPage = (handle) => (handle && state?.clubPages?.[String(handle).toLowerCase()]) || null;
 const emblemUrl = (f) => (!f ? null : String(f).startsWith('data:') ? f : appPaths.careersDir && state ? fileUrl(`${appPaths.careersDir}\\${state.careerId}\\emblems\\${f}`) : null);
+const lifeMediaUrl = (f) => (!f ? null : String(f).startsWith('data:') ? f : appPaths.careersDir && state ? fileUrl(`${appPaths.careersDir}\\${state.careerId}\\life-media\\${f}`) : null);
+const stadiumUrl = (f) => (!f ? null : String(f).startsWith('data:') ? f : appPaths.careersDir && state ? fileUrl(`${appPaths.careersDir}\\${state.careerId}\\stadiums\\${f}`) : null);
 // Les visages des joueurs et des entraîneurs, lus dans les fichiers du jeu, seulement pour ceux qu'une page affiche : { nom : fichier }.
 let faceFiles = {}, faceAsked = new Set(), faceWanted = new Set(), faceTimer = null, faceCareer = null, faceScope = null;
 const faceFileUrl = (f) => (appPaths.careersDir && state ? fileUrl(`${appPaths.careersDir}\\${state.careerId}\\faces\\${f}`) : null);
@@ -8714,6 +8716,213 @@ function mlAgendaItems(s, hub, cal, monthIso) {
   return { month: ref, items };
 }
 
+function mlPickImageDataUrl({ maxW = 960, maxH = 600, keepAlpha = false } = {}) {
+  return new Promise((resolve) => {
+    const inp = Object.assign(document.createElement('input'), { type: 'file', accept: 'image/jpeg,image/png,image/webp' });
+    inp.onchange = () => {
+      const f = inp.files?.[0];
+      if (!f) { resolve(null); return; }
+      if (!/^image\/(jpeg|png|webp)$/.test(f.type)) { toast(tr('Choisis une image JPEG, PNG ou WebP.'), true); resolve(null); return; }
+      if (f.size > 20 * 1024 * 1024) { toast(tr('Image trop lourde (20 Mo au plus).'), true); resolve(null); return; }
+      const reader = new FileReader();
+      reader.onerror = () => { toast(tr('Image illisible.'), true); resolve(null); };
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = () => { toast(tr('Image illisible.'), true); resolve(null); };
+        img.onload = () => {
+          const nw = img.naturalWidth || maxW;
+          const nh = img.naturalHeight || maxH;
+          const scale = Math.min(1, maxW / nw, maxH / nh);
+          const w = Math.max(1, Math.round(nw * scale));
+          const h = Math.max(1, Math.round(nh * scale));
+          const c = Object.assign(document.createElement('canvas'), { width: w, height: h });
+          c.getContext('2d').drawImage(img, 0, 0, w, h);
+          const outMime = keepAlpha && f.type === 'image/png' ? 'image/png' : 'image/jpeg';
+          resolve(c.toDataURL(outMime, 0.86));
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(f);
+    };
+    inp.click();
+  });
+}
+
+function mlHeroStadiumSvg() {
+  return `<svg class="ml-art-svg ml-art-svg--hero" viewBox="0 0 800 220" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    <defs>
+      <linearGradient id="mlStSky" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#0f172a"/><stop offset="55%" stop-color="#172554"/><stop offset="100%" stop-color="#14532d"/></linearGradient>
+      <radialGradient id="mlStGlow1" cx="22%" cy="18%" r="42%"><stop offset="0%" stop-color="#fef08a" stop-opacity=".42"/><stop offset="100%" stop-color="#fef08a" stop-opacity="0"/></radialGradient>
+      <radialGradient id="mlStGlow2" cx="78%" cy="18%" r="42%"><stop offset="0%" stop-color="#93c5fd" stop-opacity=".35"/><stop offset="100%" stop-color="#93c5fd" stop-opacity="0"/></radialGradient>
+    </defs>
+    <rect width="800" height="220" fill="url(#mlStSky)"/>
+    <rect width="800" height="220" fill="url(#mlStGlow1)"/>
+    <rect width="800" height="220" fill="url(#mlStGlow2)"/>
+    <path d="M-20 190 Q400 72 820 190 L820 220 L-20 220 Z" fill="#0b1220" opacity=".78"/>
+    <path d="M55 152 Q400 76 745 152 L765 186 Q400 124 35 186 Z" fill="#1e293b" stroke="#64748b" stroke-opacity=".35" stroke-width="1.5"/>
+    <ellipse cx="400" cy="212" rx="340" ry="44" fill="#166534" stroke="#86efac" stroke-opacity=".35" stroke-width="1.5"/>
+    <line x1="400" y1="168" x2="400" y2="220" stroke="#dcfce7" stroke-opacity=".35" stroke-width="1.5"/>
+    <ellipse cx="400" cy="196" rx="52" ry="13" fill="none" stroke="#dcfce7" stroke-opacity=".35" stroke-width="1.5"/>
+    <rect x="132" y="28" width="6" height="44" fill="#334155"/><rect x="122" y="24" width="26" height="8" rx="2" fill="#fef9c3" opacity=".88"/>
+    <rect x="662" y="28" width="6" height="44" fill="#334155"/><rect x="652" y="24" width="26" height="8" rx="2" fill="#fef9c3" opacity=".88"/>
+  </svg>`;
+}
+
+const ML_ART_PALETTES = {
+  home: ['#1e3a8a', '#0f172a', '#93c5fd'],
+  car: ['#7f1d1d', '#18181b', '#fca5a5'],
+  staff: ['#065f46', '#0f172a', '#6ee7b7'],
+  investment: ['#14532d', '#111827', '#fde047'],
+  charity: ['#831843', '#1f2937', '#fbcfe8'],
+  custom: ['#4c1d95', '#111827', '#ddd6fe'],
+  life: ['#334155', '#0f172a', '#facc15'],
+  sponsor: ['#1e293b', '#090d16', '#f59e0b'],
+  dilemma: ['#78350f', '#1c1917', '#fcd34d'],
+};
+
+function mlAssetGlyph(id, category, accent) {
+  if (id === 'rented_studio') return `<rect x="108" y="64" width="104" height="76" rx="4" fill="#ffffff18" stroke="${accent}" stroke-width="2.2"/><path d="M98 66 L160 34 L222 66" fill="none" stroke="${accent}" stroke-width="2.5"/><rect x="126" y="84" width="26" height="22" fill="#fde68a88"/><rect x="168" y="84" width="26" height="56" rx="2" fill="#ffffff28"/>`;
+  if (id === 'city_apartment') return `<rect x="86" y="42" width="58" height="106" rx="3" fill="#ffffff14" stroke="${accent}" stroke-width="1.8"/><rect x="150" y="28" width="84" height="120" rx="3" fill="#ffffff20" stroke="${accent}" stroke-width="2.2"/><rect x="164" y="46" width="16" height="18" fill="#fef08a"/><rect x="198" y="46" width="16" height="18" fill="#fef08a99"/><rect x="164" y="76" width="16" height="18" fill="#fef08a99"/><rect x="198" y="76" width="16" height="18" fill="#fef08a"/><rect x="100" y="60" width="12" height="14" fill="#fef08a88"/><rect x="100" y="86" width="12" height="14" fill="#fef08a"/>`;
+  if (id === 'penthouse') return `<path d="M52 146 L52 72 L126 72 L126 42 L268 42 L268 146 Z" fill="#ffffff1a" stroke="${accent}" stroke-width="2.2"/><rect x="138" y="54" width="116" height="36" fill="#fef08a30" stroke="${accent}" stroke-width="1.4"/><line x1="60" y1="72" x2="126" y2="72" stroke="#fde047" stroke-width="3"/><circle cx="78" cy="54" r="10" fill="#fde047" opacity=".85"/>`;
+  if (id === 'luxury_villa') return `<path d="M62 128 L62 76 L154 52 L258 76 L258 128 Z" fill="#ffffff1a" stroke="${accent}" stroke-width="2.2"/><rect x="82" y="86" width="54" height="28" rx="2" fill="#fef08a66"/><rect x="174" y="82" width="64" height="46" fill="#ffffff22"/><ellipse cx="160" cy="148" rx="84" ry="12" fill="#38bdf877" stroke="#bae6fd" stroke-width="1.6"/>`;
+  if (id === 'sport_coupe') return `<path d="M68 118 L86 90 Q145 72 204 88 L250 104 L254 118 Z" fill="#ffffff22" stroke="${accent}" stroke-width="2.4"/><path d="M108 92 L134 78 L184 79 L208 94 Z" fill="#ffffff30"/><circle cx="106" cy="122" r="16" fill="#090d16" stroke="${accent}" stroke-width="3"/><circle cx="218" cy="122" r="16" fill="#090d16" stroke="${accent}" stroke-width="3"/>`;
+  if (id === 'luxury_gt') return `<path d="M56 120 L74 88 Q144 66 218 84 L264 102 L266 120 Z" fill="#ffffff24" stroke="${accent}" stroke-width="2.6"/><path d="M104 89 Q148 70 198 85 L182 95 L100 95 Z" fill="#bae6fd66"/><line x1="56" y1="108" x2="262" y2="108" stroke="#fde047" stroke-width="1.6" opacity=".75"/><circle cx="102" cy="124" r="17" fill="#090d16" stroke="#fde047" stroke-width="2.8"/><circle cx="222" cy="124" r="17" fill="#090d16" stroke="#fde047" stroke-width="2.8"/>`;
+  if (id === 'exotic_supercar') return `<path d="M46 122 L82 94 Q146 66 208 78 L272 104 L268 122 Z" fill="#ffffff26" stroke="${accent}" stroke-width="2.6"/><polygon points="246,74 268,70 258,92" fill="none" stroke="${accent}" stroke-width="2.2"/><path d="M118 86 L156 76 L202 82 L182 96 Z" fill="#ffffff44"/><circle cx="98" cy="124" r="18" fill="#090d16" stroke="${accent}" stroke-width="3.2"/><circle cx="224" cy="124" r="18" fill="#090d16" stroke="${accent}" stroke-width="3.2"/><circle cx="98" cy="124" r="6" fill="${accent}"/><circle cx="224" cy="124" r="6" fill="${accent}"/>`;
+  if (id === 'personal_chef') return `<path d="M112 76 C100 58 118 40 138 48 C148 32 174 32 184 48 C204 40 220 58 208 76 L204 94 L116 94 Z" fill="#ffffff28" stroke="${accent}" stroke-width="2.2"/><ellipse cx="160" cy="126" rx="58" ry="18" fill="#ffffff22" stroke="${accent}" stroke-width="2"/><line x1="94" y1="146" x2="226" y2="146" stroke="${accent}" stroke-width="2" opacity=".7"/>`;
+  if (id === 'personal_physio') return `<rect x="94" y="54" width="132" height="84" rx="12" fill="#ffffff1e" stroke="${accent}" stroke-width="2.2"/><path d="M112 96 L138 96 L148 72 L162 120 L174 86 L186 96 L208 96" fill="none" stroke="#6ee7b7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><rect x="148" y="38" width="24" height="16" rx="4" fill="none" stroke="${accent}" stroke-width="2"/>`;
+  if (id === 'pr_manager') return `<rect x="92" y="44" width="136" height="92" rx="12" fill="#ffffff1e" stroke="${accent}" stroke-width="2.2"/><circle cx="160" cy="90" r="24" fill="#0f172a88" stroke="${accent}" stroke-width="3"/><circle cx="160" cy="90" r="9" fill="#fde047"/><circle cx="204" cy="60" r="5" fill="#f87171"/>`;
+  if (id === 'social_team') return `<rect x="118" y="34" width="84" height="122" rx="12" fill="#ffffff1e" stroke="${accent}" stroke-width="2.2"/><rect x="128" y="48" width="64" height="84" rx="4" fill="#0f172a88"/><path d="M148 102 L160 88 L172 102 M160 66 A10 10 0 1 1 159.9 66" fill="none" stroke="#38bdf8" stroke-width="2.5"/>`;
+  if (id === 'youth_academy_fund') return `<rect x="76" y="48" width="168" height="94" rx="6" fill="#15803d66" stroke="${accent}" stroke-width="2.2"/><line x1="160" y1="48" x2="160" y2="142" stroke="${accent}" stroke-width="1.6"/><circle cx="160" cy="95" r="22" fill="none" stroke="${accent}" stroke-width="1.8"/><rect x="76" y="72" width="24" height="46" fill="none" stroke="${accent}" stroke-width="1.6"/><rect x="220" y="72" width="24" height="46" fill="none" stroke="${accent}" stroke-width="1.6"/>`;
+  if (id === 'brand_portfolio') return `<path d="M74 134 L74 44 M74 134 L246 134" stroke="${accent}" stroke-width="2.2"/><rect x="96" y="100" width="24" height="34" rx="2" fill="#ffffff28"/><rect x="134" y="80" width="24" height="54" rx="2" fill="#ffffff38"/><rect x="172" y="62" width="24" height="72" rx="2" fill="#fde04788"/><rect x="210" y="46" width="24" height="88" rx="2" fill="#fde047" opacity=".9"/>`;
+  if (id === 'real_estate_fund') return `<rect x="72" y="64" width="46" height="80" fill="#ffffff1e" stroke="${accent}" stroke-width="2"/><rect x="126" y="34" width="68" height="110" fill="#ffffff28" stroke="${accent}" stroke-width="2.4"/><rect x="202" y="54" width="46" height="90" fill="#ffffff1e" stroke="${accent}" stroke-width="2"/><line x1="142" y1="54" x2="178" y2="54" stroke="#fde047" stroke-width="3"/><line x1="142" y1="74" x2="178" y2="74" stroke="#fde047" stroke-width="3"/><line x1="142" y1="94" x2="178" y2="94" stroke="#fde047" stroke-width="3"/>`;
+  if (id === 'local_clinic_gift') return `<rect x="92" y="44" width="136" height="96" rx="10" fill="#ffffff1e" stroke="${accent}" stroke-width="2.2"/><rect x="148" y="62" width="24" height="60" rx="4" fill="#fbcfe8"/><rect x="130" y="80" width="60" height="24" rx="4" fill="#fbcfe8"/>`;
+  if (id === 'foundation_launch') return `<path d="M160 132 C120 104 98 84 98 62 C98 46 112 36 128 36 C142 36 153 45 160 56 C167 45 178 36 192 36 C208 36 222 46 222 62 C222 84 200 104 160 132 Z" fill="#ffffff28" stroke="${accent}" stroke-width="2.5"/><circle cx="160" cy="80" r="14" fill="#fde047" opacity=".85"/>`;
+
+  // Category fallbacks (also used for custom assets, actions & scenes)
+  if (category === 'home' || category === 'inner_circle') return `<path d="M84 92 L160 36 L236 92 L236 144 L84 144 Z" fill="#ffffff1e" stroke="${accent}" stroke-width="2.4"/><rect x="142" y="96" width="36" height="48" rx="3" fill="#fde04755"/>`;
+  if (category === 'car') return `<path d="M64 118 L84 86 Q146 66 212 86 L254 102 L256 118 Z" fill="#ffffff20" stroke="${accent}" stroke-width="2.4"/><circle cx="106" cy="122" r="16" fill="#090d16" stroke="${accent}" stroke-width="3"/><circle cx="216" cy="122" r="16" fill="#090d16" stroke="${accent}" stroke-width="3"/>`;
+  if (category === 'staff' || category === 'extra_training' || category === 'team_dinner' || category === 'recovery') return `<circle cx="160" cy="68" r="24" fill="#ffffff22" stroke="${accent}" stroke-width="2.4"/><path d="M106 142 C106 110 214 110 214 142 Z" fill="#ffffff20" stroke="${accent}" stroke-width="2.4"/>`;
+  if (category === 'investment' || category === 'sponsor' || category === 'sponsor_shoot') return `<rect x="92" y="50" width="136" height="84" rx="10" fill="#ffffff1e" stroke="${accent}" stroke-width="2.2"/><path d="M112 112 L144 82 L170 98 L208 66" fill="none" stroke="#fde047" stroke-width="3" stroke-linecap="round"/>`;
+  if (category === 'charity' || category === 'charity_visit') return `<path d="M160 128 C122 102 104 82 104 62 C104 46 118 38 132 38 C144 38 154 45 160 55 C166 45 176 38 188 38 C202 38 216 46 216 62 C216 82 198 102 160 128 Z" fill="#ffffff22" stroke="${accent}" stroke-width="2.4"/>`;
+  return `<polygon points="160,38 176,78 218,82 186,108 196,148 160,126 124,148 134,108 102,82 144,78" fill="#ffffff20" stroke="${accent}" stroke-width="2.2"/>`;
+}
+
+function mlAssetArtSvg(id, category = 'custom') {
+  const [c1, c2, acc] = ML_ART_PALETTES[category] || ML_ART_PALETTES.custom;
+  const gid = `mlg-${String(id || category || 'x').replace(/[^a-z0-9_-]/gi, '')}`;
+  return `<svg class="ml-art-svg" viewBox="0 0 320 180" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${c1}"/><stop offset="100%" stop-color="${c2}"/></linearGradient></defs>
+    <rect width="320" height="180" fill="url(#${gid})"/>
+    <circle cx="274" cy="30" r="64" fill="${acc}" opacity=".10"/>
+    ${mlAssetGlyph(id, category, acc)}
+  </svg>`;
+}
+
+function mlActionBadgeSvg(id) {
+  const iconMap = {
+    recovery: 'sparkles',
+    extra_training: 'arrowUp',
+    team_dinner: 'chat',
+    inner_circle: 'home',
+    sponsor_shoot: 'camera',
+    charity_visit: 'heart',
+    media_feature: 'newspaper',
+    vip_night: 'trophy',
+  };
+  return hi(iconMap[id] || 'sparkles');
+}
+
+function mlSponsorMedallionHtml(sp) {
+  const img = lifeMediaUrl(sp?.customImage);
+  if (img) return `<span class="ml-sp-logo has-img"><img src="${esc(img)}" alt="${esc(sp.brand || '')}"></span>`;
+  const brand = String(sp?.brand || '?').trim();
+  const words = brand.split(/\s+/).filter(Boolean);
+  const mono = words.length > 1 ? `${words[0][0] || ''}${words[1][0] || ''}` : brand.slice(0, 2);
+  const cat = (Array.isArray(sp?.categories) && sp.categories[0]) || sp?.category || 'lifestyle';
+  const tones = {
+    boots: '#b91c1c', apparel: '#1d4ed8', beverage: '#047857', automotive: '#991b1b',
+    watches: '#92400e', lifestyle: '#6d28d9', tech: '#0f766e', travel: '#0369a1',
+    finance: '#1e3a8a', grooming: '#7e22ce', media: '#be185d', health: '#15803d', global: '#b45309',
+  };
+  const bg = tones[cat] || '#334155';
+  return `<span class="ml-sp-logo" style="background:${bg}">${esc(mono.toUpperCase())}</span>`;
+}
+
+function openLifeSceneModal(scene) {
+  if (!scene) return;
+  document.querySelectorAll('.ml-scene-back').forEach((el) => el.remove());
+  const back = document.createElement('div');
+  back.className = 'ml-scene-back';
+  const img = lifeMediaUrl(scene.image);
+  const art = img ? `<img src="${esc(img)}" alt="">` : mlAssetArtSvg(scene.refId, scene.category);
+  const deltas = [];
+  for (const [k, v] of Object.entries(scene.deltas?.meters || {})) {
+    if (!v || !ML_METER_LABELS[k]) continue;
+    deltas.push(`${ML_METER_LABELS[k]()} ${v > 0 ? `+${v}` : v}`);
+  }
+  if (scene.deltas?.cost > 0) deltas.push(`-${euros(scene.deltas.cost)}`);
+  if (scene.deltas?.bonusCash > 0) deltas.push(`+${euros(scene.deltas.bonusCash)}`);
+  if (scene.deltas?.followerDelta) {
+    const pct = Math.round(scene.deltas.followerDelta * 100);
+    deltas.push(tr('Abonnés Kop {d}', { d: `${pct > 0 ? '+' : ''}${pct}%` }));
+  }
+  if (scene.deltas?.saveEffects?.formArrowDelta) {
+    const d = scene.deltas.saveEffects.formArrowDelta;
+    deltas.push(tr('Forme {d}', { d: `${d > 0 ? '+' : ''}${d}` }));
+  }
+  if (scene.deltas?.saveEffects?.affectionDelta) {
+    const d = scene.deltas.saveEffects.affectionDelta;
+    deltas.push(tr('Affection coach {d}', { d: `${d > 0 ? '+' : ''}${d}` }));
+  }
+
+  const reacts = Array.isArray(scene.reactions) ? scene.reactions : [];
+  const reactsHtml = reacts.length ? `<div class="ml-scene-reacts">
+    <h4>${tr('Réactions autour du club')}</h4>
+    ${reacts.map((r) => `<div class="ml-scene-react">
+      <div class="ml-scene-react-top">
+        <span class="priv-badge on">${esc(r.channel === 'huddle' ? 'Vestiaire' : 'Kop')}</span>
+        <b>${esc(r.channel === 'huddle' ? r.from : (r.authorName || r.from))}</b>
+        ${r.from && r.channel === 'kop' ? `<span class="fineprint">${esc(r.from)}</span>` : ''}
+      </div>
+      <p>${esc(r.text)}</p>
+      <button type="button" class="btn ml-scene-jump" data-jump="${esc(r.channel === 'huddle' ? 'huddle' : 'tribune')}">${esc(r.channel === 'huddle' ? tr('Voir dans Vestiaire') : tr('Voir sur Kop'))}</button>
+    </div>`).join('')}
+  </div>` : '';
+
+  back.innerHTML = `<div class="ml-scene-modal card" role="dialog" aria-modal="true" aria-label="${esc(scene.headline || '')}">
+    <div class="ml-scene-stage">${art}<span class="ml-scene-date">${esc(shortDate(scene.date))}</span></div>
+    <div class="ml-scene-body">
+      <h3>${esc(scene.headline || '')}</h3>
+      <p>${esc(scene.narrative || '')}</p>
+      ${deltas.length ? `<div class="ml-scene-deltas"><span class="fineprint">${tr('Impacts')}${colon()}</span>${deltas.map((d) => `<span class="priv-tag">${esc(d)}</span>`).join('')}</div>` : ''}
+      ${reactsHtml}
+      <div class="ml-scene-foot"><button type="button" class="btn primary" id="ml-scene-close">${tr('Continuer')}</button></div>
+    </div>
+  </div>`;
+
+  const close = () => {
+    back.remove();
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = (ev) => {
+    if (ev.key === 'Escape') {
+      ev.preventDefault();
+      close();
+    }
+  };
+  document.addEventListener('keydown', onKey);
+  back.addEventListener('click', (ev) => { if (ev.target === back) close(); });
+  document.body.appendChild(back);
+  back.querySelector('#ml-scene-close').onclick = close;
+  back.querySelectorAll('.ml-scene-jump').forEach((btn) => {
+    btn.onclick = () => {
+      const dest = btn.dataset.jump;
+      close();
+      go(dest);
+    };
+  });
+}
+
 function renderMyLife(page) {
   if (!state || !state.snapshot) {
     page.innerHTML = empty(tr('Aucune carrière chargée'), tr('Choisis ta sauvegarde et lance une synchro pour débloquer ton hub Ma vie.'));
@@ -8934,15 +9143,44 @@ function renderMyLife(page) {
   }).join('');
 
   const actionsHtml = ML_ACTIONS_UI.map((a) => `<button type="button" class="ml-action" data-mlaction="${a.id}"${(hub.ap || 0) < 1 || (hub.cash || 0) < a.cost ? ' disabled' : ''}>
-    <b>${esc(a.label())}</b>
+    <div class="ml-action-head"><span class="ml-action-ico">${mlActionBadgeSvg(a.id)}</span><b>${esc(a.label())}</b></div>
     <small>${esc(a.sub())}</small>
     <span class="ml-tags">${a.tags().map((t) => `<span class="priv-tag">${esc(t)}</span>`).join('')}</span>
   </button>`).join('');
 
   const meterOpts = Object.entries(ML_METER_LABELS).map(([k, fn]) => `<option value="${k}">${esc(fn())}</option>`).join('');
+  const recentScenes = Array.isArray(hub.scenes) ? hub.scenes : [];
+  const scenesHtml = recentScenes.length
+    ? `<div class="ml-scenes-list">${recentScenes.slice(0, 6).map((sc, idx) => {
+        const scImg = lifeMediaUrl(sc.image);
+        const rCount = Array.isArray(sc.reactions) ? sc.reactions.length : 0;
+        return `<button type="button" class="ml-scene-row" data-mlscene="${idx}">
+          <span class="ml-scene-thumb">${scImg ? `<img src="${esc(scImg)}" alt="">` : mlAssetArtSvg(sc.refId, sc.category)}</span>
+          <span class="ml-scene-info">
+            <span class="ml-scene-meta"><span class="fineprint">${esc(shortDate(sc.date))}</span>${rCount ? `<span class="priv-badge on">${esc(trn(rCount, '{n} réaction', '{n} réactions'))}</span>` : ''}</span>
+            <b>${esc(sc.headline || '')}</b>
+            <small>${esc(sc.narrative || '')}</small>
+          </span>
+        </button>`;
+      }).join('')}</div>`
+    : '';
   const recentHtml = (hub.recentEvents || []).length
-    ? hub.recentEvents.slice(0, 12).map((e) => `<li><span class="fineprint">${esc(shortDate(e.date))}</span><span>${esc(mlFormatRecentEvent(e.text))}</span></li>`).join('')
-    : `<p class="fineprint">${tr('Aucune activité récente : choisis une action ou avance dans ta saison.')}</p>`;
+    ? hub.recentEvents.slice(0, 8).map((e) => `<li><span class="fineprint">${esc(shortDate(e.date))}</span><span>${esc(mlFormatRecentEvent(e.text))}</span></li>`).join('')
+    : (!recentScenes.length ? `<p class="fineprint">${tr('Aucune activité récente : choisis une action ou avance dans ta saison.')}</p>` : '');
+  const showcaseAssets = (hub.assets || []).filter((a) => a.category !== 'charity').slice(-6).reverse();
+  const showcaseHtml = showcaseAssets.length ? `<div class="card ml-card">
+    <div class="ml-sec-head"><h3>${tr('Patrimoine & style de vie actuels')}</h3><button type="button" class="btn" id="ml-go-shop">${tr('Lifestyle & Patrimoine')}</button></div>
+    <div class="ml-showcase">${showcaseAssets.map((a) => {
+      const cid = a.catalogId || a.id;
+      const catItem = !a.custom ? ML_ASSET_CATALOG_UI.find((c) => c.id === cid) : null;
+      const label = a.custom ? a.name : (catItem ? catItem.label() : mlFormatAssetName(cid));
+      const img = lifeMediaUrl(a.customImage || (!a.custom && hub.catalogImages?.[cid]));
+      return `<button type="button" class="ml-showcase-item" data-mlgo-shop="1">
+        <span class="ml-showcase-thumb">${img ? `<img src="${esc(img)}" alt="${esc(label)}">` : mlAssetArtSvg(cid, a.category)}</span>
+        <span class="ml-showcase-txt"><b>${esc(label)}</b><small>${esc(a.customCategory || (ML_ASSET_CAT_LABELS[a.category] || ML_ASSET_CAT_LABELS.custom)())}</small></span>
+      </button>`;
+    }).join('')}</div>
+  </div>` : '';
 
   const spPresetOpts = `<option value="">${esc(tr('Choisir un modèle (ou écrire en dessous)…'))}</option>${ML_SPONSOR_PRESETS_UI.map((p, i) => `<option value="${i}">${esc(p.brand)} (${esc((p.categories || [p.category]).map(mlSponsorCatLabel).join(' / '))})</option>`).join('')}`;
   const offersHtml = (hub.offers || []).length ? `<div class="ml-list">${hub.offers.map((o) => {
@@ -8960,10 +9198,19 @@ function renderMyLife(page) {
   const activeSponsorsHtml = hub.sponsors.length ? hub.sponsors.map((sp) => {
     const spCats = Array.isArray(sp.categories) && sp.categories.length ? sp.categories : [sp.category || 'lifestyle'];
     return `<div class="card ml-sp-card" data-spid="${esc(sp.id)}">
-      <div class="ml-sp-head">
-        ${spCats.map((c) => `<span class="priv-tag">${esc(mlSponsorCatLabel(c))}</span>`).join('')}
-        ${sp.linkedBootDeal ? `<span class="priv-badge on">${tr('Lié aux crampons (Mails)')}</span>` : ''}
-        <span class="fineprint">${esc(sp.until ? tr('Jusqu’au {d}', { d: shortDate(sp.until) }) : '')}</span>
+      <div class="ml-sp-brand-row">
+        <div class="ml-sp-brand-id">
+          ${mlSponsorMedallionHtml(sp)}
+          <div class="ml-sp-head">
+            ${spCats.map((c) => `<span class="priv-tag">${esc(mlSponsorCatLabel(c))}</span>`).join('')}
+            ${sp.linkedBootDeal ? `<span class="priv-badge on">${tr('Lié aux crampons (Mails)')}</span>` : ''}
+            <span class="fineprint">${esc(sp.until ? tr('Jusqu’au {d}', { d: shortDate(sp.until) }) : '')}</span>
+          </div>
+        </div>
+        <div class="ml-media-acts">
+          <button type="button" class="ml-media-btn" data-mlimg-target="sponsor" data-mlimg-id="${esc(sp.id)}" title="${esc(tr('Logo personnalisé'))}">${hi('camera')}</button>
+          ${sp.customImage ? `<button type="button" class="ml-media-btn" data-mlimg-clear="sponsor" data-mlimg-id="${esc(sp.id)}" title="${esc(tr('Retirer le logo'))}">${hi('xmark')}</button>` : ''}
+        </div>
       </div>
       <div class="ml-sp-grid">
         <label class="per-field"><span>${tr('Nom de la marque')}</span><input class="ml-sp-brand" value="${esc(sp.brand)}" maxlength="80"></label>
@@ -8995,12 +9242,21 @@ function renderMyLife(page) {
 
   const catalogCards = catalogFiltered.map((a) => {
     const owned = (hub.assets || []).find((x) => x.catalogId === a.id);
+    const customImg = owned?.customImage || hub.catalogImages?.[a.id] || null;
+    const imgUrl = lifeMediaUrl(customImg);
     const metaLines = [
       a.price > 0 ? tr('Prix : {p}', { p: euros(a.price) }) : tr('Gratuit'),
       a.monthlyCost > 0 ? tr('Entretien : {p}/mois', { p: euros(a.monthlyCost) }) : '',
       a.passiveReturn > 0 ? tr('Revenu : +{p}/mois', { p: euros(a.passiveReturn) }) : '',
     ].filter(Boolean).join(' · ');
     return `<div class="card ml-shop-card${owned ? ' owned' : ''}">
+      <div class="ml-card-media">
+        ${imgUrl ? `<img src="${esc(imgUrl)}" alt="${esc(a.label())}">` : mlAssetArtSvg(a.id, a.category)}
+        <div class="ml-card-media-acts">
+          <button type="button" class="ml-media-btn" data-mlimg-target="asset" data-mlimg-id="${esc(a.id)}" title="${esc(tr('Photo personnalisée'))}">${hi('camera')}</button>
+          ${customImg ? `<button type="button" class="ml-media-btn" data-mlimg-clear="asset" data-mlimg-id="${esc(a.id)}" title="${esc(tr('Retirer la photo'))}">${hi('xmark')}</button>` : ''}
+        </div>
+      </div>
       <div class="ml-sp-head"><span class="priv-tag">${esc(ML_ASSET_CAT_LABELS[a.category]())}</span>${owned ? `<span class="priv-badge on">${tr('Possédé')}</span>` : ''}</div>
       <h4>${esc(a.label())}</h4>
       <p class="fineprint">${esc(a.desc())}</p>
@@ -9013,14 +9269,24 @@ function renderMyLife(page) {
           : `<button type="button" class="btn primary" data-mlbuy="${a.id}"${(hub.cash || 0) < a.price ? ' disabled' : ''}>${tr('Acheter')}</button>`}
       </div>
     </div>`;
-  }).join('') + ownedCustom.map((a) => `<div class="card ml-shop-card owned">
-    <div class="ml-sp-head"><span class="priv-tag">${esc(a.customCategory || (ML_ASSET_CAT_LABELS[a.category] || ML_ASSET_CAT_LABELS.custom)())}</span><span class="priv-badge on">${tr('Possédé')}</span></div>
-    <h4>${esc(a.name)}</h4>
-    <div class="ml-shop-foot">
-      <span class="fineprint">${esc(euros(a.price))}${a.monthlyCost ? ` · ${esc(euros(a.monthlyCost))}/m` : ''}</span>
-      ${a.category !== 'charity' ? `<button type="button" class="btn" data-mlsell="${esc(a.id)}">${a.category === 'staff' ? tr('Licencier') : tr('Revendre')}</button>` : ''}
-    </div>
-  </div>`).join('');
+  }).join('') + ownedCustom.map((a) => {
+    const imgUrl = lifeMediaUrl(a.customImage);
+    return `<div class="card ml-shop-card owned">
+      <div class="ml-card-media">
+        ${imgUrl ? `<img src="${esc(imgUrl)}" alt="${esc(a.name)}">` : mlAssetArtSvg(a.id, a.category)}
+        <div class="ml-card-media-acts">
+          <button type="button" class="ml-media-btn" data-mlimg-target="asset" data-mlimg-id="${esc(a.id)}" title="${esc(tr('Photo personnalisée'))}">${hi('camera')}</button>
+          ${a.customImage ? `<button type="button" class="ml-media-btn" data-mlimg-clear="asset" data-mlimg-id="${esc(a.id)}" title="${esc(tr('Retirer la photo'))}">${hi('xmark')}</button>` : ''}
+        </div>
+      </div>
+      <div class="ml-sp-head"><span class="priv-tag">${esc(a.customCategory || (ML_ASSET_CAT_LABELS[a.category] || ML_ASSET_CAT_LABELS.custom)())}</span><span class="priv-badge on">${tr('Possédé')}</span></div>
+      <h4>${esc(a.name)}</h4>
+      <div class="ml-shop-foot">
+        <span class="fineprint">${esc(euros(a.price))}${a.monthlyCost ? ` · ${esc(euros(a.monthlyCost))}/m` : ''}</span>
+        ${a.category !== 'charity' ? `<button type="button" class="btn" data-mlsell="${esc(a.id)}">${a.category === 'staff' ? tr('Licencier') : tr('Revendre')}</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
 
   const annualWage = Number(s.player?.salary) || 0;
   const annualSponsors = (hub.sponsors || []).reduce((sum, sp) => sum + (Number(sp.fee) || 0), 0);
@@ -9096,19 +9362,30 @@ function renderMyLife(page) {
           : tr('À jour avec la sauvegarde : avance dans le jeu puis synchronise pour charger de nouvelles dates.');
   const calThirdBtnLabel = calBounds.mode === 'prematch' ? tr('Aller au jour de match') : tr('Rattraper tout');
 
+  const heroBgUrl = lifeMediaUrl(hub.heroImage) || stadiumUrl(state.clubStadiumImage);
+  const heroBgHtml = heroBgUrl
+    ? `<img class="ml-hero-bg-img" src="${esc(heroBgUrl)}" alt="">`
+    : mlHeroStadiumSvg();
+
   page.innerHTML = `<div class="ml">
-    <header class="ml-hero card">
-      <div>
+    <header class="ml-hero ml-hero--visual card">
+      <div class="ml-hero-bg">${heroBgHtml}</div>
+      <div class="ml-hero-content">
         <div class="ml-hero-pills">
           <span class="ml-stage-pill">${esc(mlStageLabel(hub.stage || est.stage))}</span>
+          ${s.club?.stadium ? `<span class="ml-mode-pill">${esc(s.club.stadium)}</span>` : ''}
           <button type="button" class="ml-mode-pill${calModeFull ? ' on' : ''}" id="ml-cal-mode-toggle" title="${esc(tr('Basculer entre synchro directe et calendrier complet anti-spoilers'))}">${esc(calModeFull ? tr('Calendrier : Complet') : tr('Calendrier : Basique'))}${calModeFull && pendingCalCount ? ` (${pendingCalCount})` : ''}</button>
         </div>
         <h1>${esc(s.player?.name || '')} · ${esc(s.club?.name || '')}</h1>
-        <p class="fineprint">${esc(slotCap === null
+        <p class="ml-hero-sub">${esc(slotCap === null
           ? tr('{f} abonnés Kop · sponsors illimités', { f: fmtCount(state.profile?.followers || 0) })
           : tr('{f} abonnés Kop · {slots} places sponsors', { f: fmtCount(state.profile?.followers || 0), slots: slotCap }))}</p>
       </div>
-      <button type="button" class="btn" id="ml-recalibrate">${tr('Recalibrer')}</button>
+      <div class="ml-hero-acts">
+        <button type="button" class="btn" id="ml-hero-img-pick">${tr('Changer l’image')}</button>
+        ${hub.heroImage ? `<button type="button" class="btn" id="ml-hero-img-reset">${tr('Réinitialiser')}</button>` : ''}
+        <button type="button" class="btn" id="ml-recalibrate">${tr('Recalibrer')}</button>
+      </div>
     </header>
 
     <div class="ml-kpis">
@@ -9127,6 +9404,7 @@ function renderMyLife(page) {
         <h3>${tr('Relations & Réputation')}</h3>
         <div class="ml-meters">${metersHtml}</div>
       </div>
+      ${showcaseHtml}
       <div class="card ml-card">
         <div class="ml-sec-head"><h3>${tr('Journées libres ({ap} PA restants)', { ap: hub.ap || 0 })}</h3><span class="fineprint">${tr('Se recharge après chaque match ou tous les 4 jours.')}</span></div>
         <div class="ml-actions">${actionsHtml}</div>
@@ -9141,8 +9419,9 @@ function renderMyLife(page) {
         </details>
       </div>
       <div class="card ml-card">
-        <h3>${tr('Journal hors terrain')}</h3>
-        <ul class="ml-feed">${recentHtml}</ul>
+        <h3>${tr('Scènes & temps forts récents')}</h3>
+        ${scenesHtml}
+        ${recentHtml ? `<ul class="ml-feed">${recentHtml}</ul>` : ''}
       </div>
     </section>
 
@@ -9184,7 +9463,7 @@ function renderMyLife(page) {
       <div class="card ml-card">
         <div class="ml-sec-head"><h3>${tr('Patrimoine, staff & style de vie')}</h3><div class="ml-chips">${shopFilterBtns}</div></div>
         <div class="ml-shop-grid">${catalogCards}</div>
-        <details class="ml-custom-box">
+        <details class="ml-custom-box"${view.mlCustomAssetImg ? ' open' : ''}>
           <summary>${tr('+ Achat ou investissement personnalisé')}</summary>
           <div class="ml-custom-form">
             <label class="per-field"><span>${tr('Nom')}</span><input id="ml-casset-name" placeholder="${esc(tr('ex. Maison au Brésil, yacht, académie locale…'))}" maxlength="80"></label>
@@ -9192,6 +9471,14 @@ function renderMyLife(page) {
             <label class="per-field" id="ml-casset-cat-custom-wrap" hidden><span>${tr('Catégorie personnalisée')}</span><input id="ml-casset-cat-custom" placeholder="${esc(tr('ex. Montre, Yacht, Studio musique…'))}" maxlength="40"></label>
             <label class="per-field"><span>${tr('Prix (€)')}</span><input id="ml-casset-price" type="number" min="0" step="1000" value="50000" placeholder="${esc(tr('Prix (€)'))}"></label>
             <label class="per-field"><span>${tr('Coût mensuel (€)')}</span><input id="ml-casset-mcost" type="number" min="0" step="100" value="0" placeholder="${esc(tr('Coût mensuel (€)'))}"></label>
+            <div class="per-field ml-casset-img-field">
+              <span>${tr('Photo personnalisée (optionnel)')}</span>
+              <div class="ml-casset-img-row">
+                ${view.mlCustomAssetImg ? `<img id="ml-casset-img-prev" class="ml-casset-thumb" src="${esc(view.mlCustomAssetImg)}" alt="">` : ''}
+                <button type="button" class="btn" id="ml-casset-img-pick">${tr('Choisir une image…')}</button>
+                ${view.mlCustomAssetImg ? `<button type="button" class="btn" id="ml-casset-img-clear">${tr('Réinitialiser')}</button>` : ''}
+              </div>
+            </div>
             <button type="button" class="btn primary" id="ml-casset-go">${tr('Acheter')}</button>
           </div>
         </details>
@@ -9276,24 +9563,77 @@ function renderMyLife(page) {
 
   page.querySelectorAll('[data-mltab]').forEach((b) => { b.onclick = () => { view.mlTab = b.dataset.mltab; renderMyLife(page); }; });
   page.querySelectorAll('[data-mlshopcat]').forEach((b) => { b.onclick = () => { view.mlShopCat = b.dataset.mlshopcat; renderMyLife(page); }; });
+  if ($('#ml-go-shop')) $('#ml-go-shop').onclick = () => { view.mlTab = 'shop'; renderMyLife(page); };
+  page.querySelectorAll('[data-mlgo-shop]').forEach((b) => { b.onclick = () => { view.mlTab = 'shop'; renderMyLife(page); }; });
+  page.querySelectorAll('[data-mlscene]').forEach((b) => {
+    b.onclick = () => {
+      const sc = recentScenes[Number(b.dataset.mlscene)];
+      if (sc) openLifeSceneModal(sc);
+    };
+  });
   if ($('#ml-recalibrate')) $('#ml-recalibrate').onclick = () => { view.mlCalibrate = true; view.mlCalSponsors = null; renderMyLife(page); };
+
+  const runAndOpenScene = async (fn, toastMsg = '') => {
+    const prevTopId = state?.lifeHub?.scenes?.[0]?.id || null;
+    state = await fn();
+    const topScene = state?.lifeHub?.scenes?.[0];
+    if (toastMsg) toast(toastMsg);
+    render();
+    if (topScene && topScene.id !== prevTopId) openLifeSceneModal(topScene);
+  };
+
+  if ($('#ml-hero-img-pick')) {
+    $('#ml-hero-img-pick').onclick = async () => {
+      const dataUrl = await mlPickImageDataUrl({ maxW: 1440, maxH: 520 });
+      if (!dataUrl) return;
+      try { state = await live.setLifeMedia({ target: 'hero', dataUrl }); render(); } catch (err) { toast(err.message, true); }
+    };
+  }
+  if ($('#ml-hero-img-reset')) {
+    $('#ml-hero-img-reset').onclick = async () => {
+      try { state = await live.setLifeMedia({ target: 'hero', dataUrl: null }); render(); } catch (err) { toast(err.message, true); }
+    };
+  }
+  page.querySelectorAll('[data-mlimg-target]').forEach((b) => {
+    b.onclick = async () => {
+      const target = b.dataset.mlimgTarget;
+      const id = b.dataset.mlimgId;
+      const dataUrl = await mlPickImageDataUrl({ maxW: target === 'sponsor' ? 420 : 880, maxH: target === 'sponsor' ? 420 : 560, keepAlpha: target === 'sponsor' });
+      if (!dataUrl) return;
+      try { state = await live.setLifeMedia({ target, id, dataUrl }); render(); } catch (err) { toast(err.message, true); }
+    };
+  });
+  page.querySelectorAll('[data-mlimg-clear]').forEach((b) => {
+    b.onclick = async () => {
+      try { state = await live.setLifeMedia({ target: b.dataset.mlimgClear, id: b.dataset.mlimgId, dataUrl: null }); render(); } catch (err) { toast(err.message, true); }
+    };
+  });
+  if ($('#ml-casset-img-pick')) {
+    $('#ml-casset-img-pick').onclick = async () => {
+      const dataUrl = await mlPickImageDataUrl({ maxW: 880, maxH: 560 });
+      if (!dataUrl) return;
+      view.mlCustomAssetImg = dataUrl;
+      renderMyLife(page);
+    };
+  }
+  if ($('#ml-casset-img-clear')) {
+    $('#ml-casset-img-clear').onclick = () => { view.mlCustomAssetImg = null; renderMyLife(page); };
+  }
 
   page.querySelectorAll('[data-dilemma]').forEach((b) => {
     b.onclick = async () => {
-      try { state = await live.answerLifeDilemma(b.dataset.dilemma, b.dataset.choice); render(); } catch (err) { toast(err.message, true); }
+      try { await runAndOpenScene(() => live.answerLifeDilemma(b.dataset.dilemma, b.dataset.choice)); } catch (err) { toast(err.message, true); }
     };
   });
   page.querySelectorAll('[data-mlaction]').forEach((b) => {
     b.onclick = async () => {
-      try { state = await live.doLifeAction({ actionId: b.dataset.mlaction }); toast(tr('Activité effectuée.')); render(); } catch (err) { toast(err.message, true); }
+      try { await runAndOpenScene(() => live.doLifeAction({ actionId: b.dataset.mlaction }), tr('Activité effectuée.')); } catch (err) { toast(err.message, true); }
     };
   });
   if ($('#ml-cact-go')) {
     $('#ml-cact-go').onclick = async () => {
       try {
-        state = await live.doLifeAction({ custom: true, title: $('#ml-cact-title').value, focus: $('#ml-cact-focus').value, cost: Number($('#ml-cact-cost').value) || 0 });
-        toast(tr('Activité effectuée.'));
-        render();
+        await runAndOpenScene(() => live.doLifeAction({ custom: true, title: $('#ml-cact-title').value, focus: $('#ml-cact-focus').value, cost: Number($('#ml-cact-cost').value) || 0 }), tr('Activité effectuée.'));
       } catch (err) { toast(err.message, true); }
     };
   }
@@ -9366,12 +9706,16 @@ function renderMyLife(page) {
   }
   page.querySelectorAll('[data-mlob]').forEach((b) => {
     b.onclick = async () => {
-      try { state = await live.completeLifeObligation(b.dataset.mlob, b.dataset.obskip === '1'); render(); } catch (err) { toast(err.message, true); }
+      const skip = b.dataset.obskip === '1';
+      try {
+        if (skip) { state = await live.completeLifeObligation(b.dataset.mlob, true); render(); }
+        else await runAndOpenScene(() => live.completeLifeObligation(b.dataset.mlob, false));
+      } catch (err) { toast(err.message, true); }
     };
   });
   page.querySelectorAll('[data-mlbuy]').forEach((b) => {
     b.onclick = async () => {
-      try { state = await live.buyLifeAsset({ catalogId: b.dataset.mlbuy }); toast(tr('Achat confirmé.')); render(); } catch (err) { toast(err.message, true); }
+      try { await runAndOpenScene(() => live.buyLifeAsset({ catalogId: b.dataset.mlbuy }), tr('Achat confirmé.')); } catch (err) { toast(err.message, true); }
     };
   });
   page.querySelectorAll('[data-mlsell]').forEach((b) => {
@@ -9390,16 +9734,20 @@ function renderMyLife(page) {
     $('#ml-casset-go').onclick = async () => {
       try {
         const cat = $('#ml-casset-cat').value;
-        state = await live.buyLifeAsset({
-          custom: true,
-          name: $('#ml-casset-name').value,
-          category: cat,
-          customCategory: cat === '__custom__' ? $('#ml-casset-cat-custom')?.value || '' : '',
-          price: Number($('#ml-casset-price').value) || 0,
-          monthlyCost: Number($('#ml-casset-mcost').value) || 0,
-        });
-        toast(tr('Achat confirmé.'));
-        render();
+        const imgData = view.mlCustomAssetImg || null;
+        await runAndOpenScene(async () => {
+          const nextState = await live.buyLifeAsset({
+            custom: true,
+            name: $('#ml-casset-name').value,
+            category: cat,
+            customCategory: cat === '__custom__' ? $('#ml-casset-cat-custom')?.value || '' : '',
+            price: Number($('#ml-casset-price').value) || 0,
+            monthlyCost: Number($('#ml-casset-mcost').value) || 0,
+            ...(imgData ? { imageDataUrl: imgData } : {}),
+          });
+          view.mlCustomAssetImg = null;
+          return nextState;
+        }, tr('Achat confirmé.'));
       } catch (err) { toast(err.message, true); }
     };
   }

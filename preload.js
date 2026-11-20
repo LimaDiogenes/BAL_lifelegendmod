@@ -67,6 +67,7 @@ contextBridge.exposeInMainWorld('live', {
   completeLifeObligation: (obligationId, skip = false) => call('lifeHub:completeObligation', { obligationId, skip }),
   doLifeAction: (payload) => call('lifeHub:action', payload),
   answerLifeDilemma: (dilemmaId, choiceId) => call('lifeHub:dilemma', { dilemmaId, choiceId }),
+  setLifeMedia: (payload) => call('lifeHub:setMedia', payload),
   applyLifeSaveEffects: () => call('lifeHub:applySaveEffects'),
   dismissLifeSaveEffects: () => call('lifeHub:dismissSaveEffects'),
   advanceCalendar: (mode = 'day', targetDate = null) => call('calendar:advance', { mode, targetDate }),
