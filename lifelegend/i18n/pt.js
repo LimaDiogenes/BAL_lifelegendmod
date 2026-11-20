@@ -2334,4 +2334,11 @@ window.LL_I18N.pt = {
   "Date et titre requis.": "Data e título obrigatórios.",
   "Les effets Ma vie sur la sauvegarde sont désactivés : active-les dans les réglages.": "Efeitos de Minha vida no save estão desativados: ative nas configurações.",
   "Aucun changement à écrire dans la sauvegarde.": "Nenhuma alteração para gravar no save.",
+  "Activité": "Atividade",
+  "Relation visée": "Relação-alvo",
+  "Modèle rapide": "Modelo rápido",
+  "Titre": "Título",
+  "Rôle": "Papel",
+  "Bouclier": "Escudo",
+  "Libellé": "Rótulo",
 };

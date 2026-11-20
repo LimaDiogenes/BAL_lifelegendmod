@@ -78,6 +78,7 @@ function ordinal(n) {
 const shortDate = (iso) => fmtDate(iso, { day: 'numeric', month: 'short' });
 
 const SITES = [
+  { id: 'mylife', label: () => tr('Ma vie') },
   { id: 'national', label: () => 'La Transversale' },
   { id: 'local', label: () => state?.localPaper?.name || tr('Journal local') },
   { id: 'tribune', label: () => 'Kop' },
@@ -85,7 +86,6 @@ const SITES = [
   { id: 'huddle', label: () => 'Vestiaire' },
   { id: 'stats', label: () => 'Scoreline' },
   { id: 'pantheon', label: () => 'Panthéon' },
-  { id: 'mylife', label: () => tr('Ma vie') },
   { id: 'settings', hidden: true, label: () => tr('Réglages') },
 ];
 
@@ -176,7 +176,7 @@ let state = null;
 let settings = null;
 let providers = {};
 let appVersion = '';
-let current = 'national';
+let current = 'mylife';
 const view = { edition: null, thread: null, openPost: null };
 
 // ---------- utilitaires d'interface ----------
@@ -458,6 +458,7 @@ function privacyFormHtml(prefix, priv, { playerName = '', handle = '' } = {}) {
       <details class="priv-people-box"${people.length ? ' open' : ''}>
         <summary><span>${tr('Personnes personnalisées')}</span><span class="priv-badge${people.length ? ' on' : ''}" id="${prefix}-priv-people-count">${people.length} / ${PRIVACY_MAX_PEOPLE}</span></summary>
         <p class="fineprint">${esc(tr('Ajoute jusqu’à 10 personnes (tu peux renommer chaque libellé).'))}</p>
+        <div class="priv-person-row per-col-head"><span>${tr('Libellé')}</span><span>${tr('Nom réel')}</span><span>${tr('Pseudo (auto)')}</span><span></span></div>
         <div class="priv-people-list" id="${prefix}-priv-people-list">${people.map((p) => privacyPersonRowHtml(prefix, p)).join('')}</div>
         <button type="button" class="btn" id="${prefix}-priv-add-person"${people.length >= PRIVACY_MAX_PEOPLE ? ' disabled' : ''}>${tr('Ajouter une personne')}</button>
       </details>
@@ -800,6 +801,7 @@ function personaFormHtml(prefix, rawPersona) {
         <span class="priv-badge${filled ? ' on' : ''}" id="${prefix}-per-cnt-${g.key}">${rows.length} / ${PERSONA_GROUP_MAX}</span>
       </summary>
       <div class="per-group-body">
+        <div class="per-person-row per-col-head"><span>${tr('Rôle')}</span><span>${tr('Nom réel')}</span><span>${tr('Pseudo (auto)')}</span><span>${tr('Bouclier')}</span><span></span></div>
         <div class="per-group-list" id="${prefix}-per-list-${g.key}">${rows.map((p) => personaPersonRowHtml(p)).join('')}</div>
         <button type="button" class="btn per-p-add" data-group="${g.key}"${rows.length >= PERSONA_GROUP_MAX ? ' disabled' : ''}>+ ${esc(tr('Ajouter'))}</button>
       </div>
@@ -974,7 +976,7 @@ function bindPersonaForm(prefix, { onChange } = {}) {
 function openBioStep(info) {
   const pb = settings.pendingBio?.savePath === settings.savePath ? settings.pendingBio : null;
   view.setup = { step: 3, newCareer: true, savePath: settings.savePath, info, bio: pb?.text || '', kind: pb?.kind || null, privacy: pb?.privacy || { enabled: true, fields: {}, customPeople: [] }, persona: pb?.persona || null };
-  if (current === 'settings') current = 'national';
+  if (current === 'settings') current = 'mylife';
   render();
   viewScrollTo(0);
 }
@@ -8290,11 +8292,11 @@ function mlStageLabel(stage) {
 function mlCalSponsorRowHtml(item = {}, untilDefault = '') {
   const cats = Object.entries(ML_SPONSOR_CAT_LABELS).map(([k, fn]) => `<option value="${k}"${(item.category || 'lifestyle') === k ? ' selected' : ''}>${esc(fn())}</option>`).join('');
   return `<div class="ml-cal-sp-row">
-    <input class="ml-csp-brand" value="${esc(item.brand || '')}" placeholder="${esc(tr('Nom du sponsor (éditable)'))}" maxlength="80">
-    <select class="ml-csp-cat">${cats}</select>
-    <input class="ml-csp-fee" type="number" min="0" step="5000" value="${esc(item.fee ?? 150000)}" placeholder="${esc(tr('Montant annuel (€)'))}">
-    <input class="ml-csp-bonus" type="number" min="0" step="500" value="${esc(item.bonus ?? 2500)}" placeholder="${esc(tr('Prime but/passe (€)'))}">
-    <input class="ml-csp-until" type="date" value="${esc(item.until || untilDefault)}">
+    <label class="per-field"><span>${tr('Nom de la marque')}</span><input class="ml-csp-brand" value="${esc(item.brand || '')}" placeholder="${esc(tr('Nom du sponsor (éditable)'))}" maxlength="80"></label>
+    <label class="per-field"><span>${tr('Catégorie')}</span><select class="ml-csp-cat">${cats}</select></label>
+    <label class="per-field"><span>${tr('Montant annuel (€)')}</span><input class="ml-csp-fee" type="number" min="0" step="5000" value="${esc(item.fee ?? 150000)}" placeholder="${esc(tr('Montant annuel (€)'))}"></label>
+    <label class="per-field"><span>${tr('Prime but/passe (€)')}</span><input class="ml-csp-bonus" type="number" min="0" step="500" value="${esc(item.bonus ?? 2500)}" placeholder="${esc(tr('Prime but/passe (€)'))}"></label>
+    <label class="per-field"><span>${tr('Fin du contrat')}</span><input class="ml-csp-until" type="date" value="${esc(item.until || untilDefault)}"></label>
     <button type="button" class="per-p-del ml-csp-del" aria-label="${esc(tr('Supprimer'))}">−</button>
   </div>`;
 }
@@ -8413,7 +8415,7 @@ function mlAgendaItems(s, hub, cal, monthIso) {
 
 function renderMyLife(page) {
   if (!state || !state.snapshot) {
-    page.innerHTML = emptyHtml(tr('Aucune carrière chargée'), tr('Choisis ta sauvegarde et lance une synchro pour débloquer ton hub Ma vie.'), () => openSettings('rg-save'), tr('Ouvrir les réglages'));
+    page.innerHTML = empty(tr('Aucune carrière chargée'), tr('Choisis ta sauvegarde et lance une synchro pour débloquer ton hub Ma vie.'));
     return;
   }
   const s = state.snapshot;
@@ -8470,7 +8472,10 @@ function renderMyLife(page) {
           </label>
           <div class="ml-cal-fol">
             <label class="rg-switch"><input type="checkbox" id="ml-cal-fol-on"${view.mlCalFolOn ? ' checked' : ''}><span class="rg-switch-text"><b>${tr('Ajuster aussi les abonnés Kop')}</b><small>${esc(tr('Actuel : {cur} · Estimé selon la carrière : {est}', { cur: fmtCount(state.profile?.followers || 4200), est: fmtCount(est.followers) }))}</small></span></label>
-            <input id="ml-cal-fol-val" type="number" min="100" step="500" value="${esc(view.mlCalFolVal ?? est.followers)}"${view.mlCalFolOn ? '' : ' hidden'}>
+            <label class="per-field" id="ml-cal-fol-wrap"${view.mlCalFolOn ? '' : ' hidden'}>
+              <span>${tr('Abonnés Kop')}</span>
+              <input id="ml-cal-fol-val" type="number" min="100" step="500" value="${esc(view.mlCalFolVal ?? est.followers)}">
+            </label>
           </div>
         </div>
 
@@ -8512,7 +8517,7 @@ function renderMyLife(page) {
       };
     });
     const folCheck = $('#ml-cal-fol-on');
-    if (folCheck) folCheck.onchange = () => { view.mlCalFolOn = folCheck.checked; $('#ml-cal-fol-val').hidden = !folCheck.checked; };
+    if (folCheck) folCheck.onchange = () => { view.mlCalFolOn = folCheck.checked; $('#ml-cal-fol-wrap').hidden = !folCheck.checked; };
     const calCashEl = $('#ml-cal-cash');
     if (calCashEl) calCashEl.oninput = () => { view.mlCalCash = Number(calCashEl.value) || 0; };
     const folValEl = $('#ml-cal-fol-val');
@@ -8803,9 +8808,9 @@ function renderMyLife(page) {
         <details class="ml-custom-box">
           <summary>${tr('+ Activité personnalisée (1 PA)')}</summary>
           <div class="ml-custom-form">
-            <input id="ml-cact-title" placeholder="${esc(tr('ex. Séance vidéo avec le coach, dîner en famille…'))}" maxlength="80">
-            <select id="ml-cact-focus">${meterOpts}</select>
-            <input id="ml-cact-cost" type="number" min="0" step="500" value="0" placeholder="${esc(tr('Coût (€)'))}">
+            <label class="per-field"><span>${tr('Activité')}</span><input id="ml-cact-title" placeholder="${esc(tr('ex. Séance vidéo avec le coach, dîner en famille…'))}" maxlength="80"></label>
+            <label class="per-field"><span>${tr('Relation visée')}</span><select id="ml-cact-focus">${meterOpts}</select></label>
+            <label class="per-field"><span>${tr('Coût (€)')}</span><input id="ml-cact-cost" type="number" min="0" step="500" value="0" placeholder="${esc(tr('Coût (€)'))}"></label>
             <button type="button" class="btn primary" id="ml-cact-go"${(hub.ap || 0) < 1 ? ' disabled' : ''}>${tr('Valider')}</button>
           </div>
         </details>
@@ -8827,13 +8832,13 @@ function renderMyLife(page) {
         <details class="ml-custom-box">
           <summary>${tr('+ Ajouter un sponsor personnalisé')}</summary>
           <div class="ml-sp-add">
-            <select id="ml-sp-preset">${spPresetOpts}</select>
+            <label class="per-field"><span>${tr('Modèle rapide')}</span><select id="ml-sp-preset">${spPresetOpts}</select></label>
             <div class="ml-sp-grid">
-              <input id="ml-newsp-brand" placeholder="${esc(tr('Nom du sponsor (éditable)'))}" maxlength="80">
-              <select id="ml-newsp-cat">${spCatsOpts('lifestyle')}</select>
-              <input id="ml-newsp-fee" type="number" min="0" step="5000" value="150000" placeholder="${esc(tr('Montant annuel (€)'))}">
-              <input id="ml-newsp-bonus" type="number" min="0" step="500" value="2500" placeholder="${esc(tr('Prime but/passe (€)'))}">
-              <input id="ml-newsp-until" type="date" value="${esc(`${Number(String(s.gameDate || '2026-08-01').slice(0, 4)) + 2}-06-30`)}">
+              <label class="per-field"><span>${tr('Nom de la marque')}</span><input id="ml-newsp-brand" placeholder="${esc(tr('Nom du sponsor (éditable)'))}" maxlength="80"></label>
+              <label class="per-field"><span>${tr('Catégorie')}</span><select id="ml-newsp-cat">${spCatsOpts('lifestyle')}</select></label>
+              <label class="per-field"><span>${tr('Montant annuel (€)')}</span><input id="ml-newsp-fee" type="number" min="0" step="5000" value="150000" placeholder="${esc(tr('Montant annuel (€)'))}"></label>
+              <label class="per-field"><span>${tr('Prime but/passe (€)')}</span><input id="ml-newsp-bonus" type="number" min="0" step="500" value="2500" placeholder="${esc(tr('Prime but/passe (€)'))}"></label>
+              <label class="per-field"><span>${tr('Fin du contrat')}</span><input id="ml-newsp-until" type="date" value="${esc(`${Number(String(s.gameDate || '2026-08-01').slice(0, 4)) + 2}-06-30`)}"></label>
             </div>
             <button type="button" class="btn primary" id="ml-newsp-go"${hub.sponsors.length >= slotCap ? ' disabled' : ''}>${tr('Ajouter')}</button>
           </div>
@@ -8852,10 +8857,10 @@ function renderMyLife(page) {
         <details class="ml-custom-box">
           <summary>${tr('+ Achat ou investissement personnalisé')}</summary>
           <div class="ml-custom-form">
-            <input id="ml-casset-name" placeholder="${esc(tr('ex. Maison au Brésil, yacht, académie locale…'))}" maxlength="80">
-            <select id="ml-casset-cat">${Object.entries(ML_ASSET_CAT_LABELS).filter(([k]) => k !== 'all').map(([k, fn]) => `<option value="${k}">${esc(fn())}</option>`).join('')}</select>
-            <input id="ml-casset-price" type="number" min="0" step="1000" value="50000" placeholder="${esc(tr('Prix (€)'))}">
-            <input id="ml-casset-mcost" type="number" min="0" step="100" value="0" placeholder="${esc(tr('Coût mensuel (€)'))}">
+            <label class="per-field"><span>${tr('Nom')}</span><input id="ml-casset-name" placeholder="${esc(tr('ex. Maison au Brésil, yacht, académie locale…'))}" maxlength="80"></label>
+            <label class="per-field"><span>${tr('Catégorie')}</span><select id="ml-casset-cat">${Object.entries(ML_ASSET_CAT_LABELS).filter(([k]) => k !== 'all').map(([k, fn]) => `<option value="${k}">${esc(fn())}</option>`).join('')}</select></label>
+            <label class="per-field"><span>${tr('Prix (€)')}</span><input id="ml-casset-price" type="number" min="0" step="1000" value="50000" placeholder="${esc(tr('Prix (€)'))}"></label>
+            <label class="per-field"><span>${tr('Coût mensuel (€)')}</span><input id="ml-casset-mcost" type="number" min="0" step="100" value="0" placeholder="${esc(tr('Coût mensuel (€)'))}"></label>
             <button type="button" class="btn primary" id="ml-casset-go">${tr('Acheter')}</button>
           </div>
         </details>
@@ -8925,9 +8930,9 @@ function renderMyLife(page) {
           <details class="ml-custom-box">
             <summary>${tr('+ Ajouter un événement au calendrier')}</summary>
             <div class="ml-custom-form">
-              <input id="ml-calev-date" type="date" value="${esc(calDay)}">
-              <input id="ml-calev-title" placeholder="${esc(tr('ex. Dîner famille, séance photo, visite fondation…'))}" maxlength="100">
-              <select id="ml-calev-cat">${calCatOpts}</select>
+              <label class="per-field"><span>${tr('Date')}</span><input id="ml-calev-date" type="date" value="${esc(calDay)}"></label>
+              <label class="per-field"><span>${tr('Titre')}</span><input id="ml-calev-title" placeholder="${esc(tr('ex. Dîner famille, séance photo, visite fondation…'))}" maxlength="100"></label>
+              <label class="per-field"><span>${tr('Catégorie')}</span><select id="ml-calev-cat">${calCatOpts}</select></label>
               <button type="button" class="btn primary" id="ml-calev-go">${tr('Planifier')}</button>
             </div>
           </details>
@@ -9209,6 +9214,7 @@ function lifeEventRowHtml(ev = {}, defaultDate = '') {
 function lifeEventsFormHtml(events = [], defaultDate = '') {
   const list = Array.isArray(events) ? events.slice(0, LIFE_EVENTS_MAX) : [];
   return `<div class="life-ev-wrap">
+    <div class="life-ev-row per-col-head"><span>${tr('Date')}</span><span>${tr('Événement')}</span><span></span></div>
     <div class="life-ev-list" id="rg-life-list">${list.map((e) => lifeEventRowHtml(e, defaultDate)).join('')}</div>
     <button type="button" class="btn" id="rg-life-add"${list.length >= LIFE_EVENTS_MAX ? ' disabled' : ''}>${tr('Ajouter une date')}</button>
   </div>`;
@@ -9606,7 +9612,7 @@ function onAutoSync(ev) {
 async function doSync({ bioAsked = false } = {}) {
   // Étapes de démarrage pas finies (sauvegarde, clé d'IA, biographie) : on y ramène, sans synchro vouée à l'échec.
   if (!bioAsked && setupActive()) {
-    current = 'national';
+    current = 'mylife';
     render();
     toast(tr('Termine d’abord les étapes : ta sauvegarde, ta clé d’IA, puis sa biographie. La première édition part à la fin.'));
     return false;
@@ -9623,7 +9629,7 @@ async function doSync({ bioAsked = false } = {}) {
   try {
     state = await live.sync();
     view.edition = null;
-    if (current === 'settings') current = 'national';
+    if (current === 'settings') current = 'mylife';
     render();
     if (state.lastSync?.backup) {
       toast(tr('Quota de l’IA épuisé pour aujourd’hui : synchro de secours. Scores, Scoreline, posts officiels et mails sont à jour ; les articles sortiront à la prochaine synchro.'), true);
@@ -9714,7 +9720,7 @@ async function init() {
   $('#sync-btn').onclick = doSync;
   document.addEventListener('click', (ev) => { const b = ev.target.closest('[data-kgo]'); if (b) go(b.dataset.kgo); });
   $('#settings-btn').onclick = () => go('settings');
-  $('#ll-home').onclick = () => go('national');
+  $('#ll-home').onclick = () => go('mylife');
   // Échap revient d'un cran (pas en pleine saisie, ni quand une fenêtre gère sa propre touche).
   document.addEventListener('keydown', (ev) => {
     if (ev.key !== 'Escape' || ev.defaultPrevented || isTyping() || document.querySelector('.k-modal-back, .tw-modal-back')) return;
