@@ -8488,6 +8488,92 @@ function mlMonthCells(monthIso) {
   return cells;
 }
 
+function mlCalendarBounds(s, cal) {
+  const simDate = cal?.simDate || s?.gameDate || '';
+  const saveDate = cal?.saveDate || state?.saveSnapshot?.gameDate || s?.gameDate || simDate;
+  const pending = cal?.pendingMatches?.length || 0;
+  if (simDate && saveDate && (simDate < saveDate || pending > 0)) {
+    return { mode: 'catchup', simDate, saveDate, maxDate: saveDate, canAdvance: true, nextMatch: null, pendingCount: pending };
+  }
+  const candidates = [
+    ...(s?.fixtures || []),
+    ...(s?.nationalTeam?.fixtures || []),
+    s?.next,
+    s?.nationalTeam?.next,
+  ].filter((f) => f && !f.played && /^\d{4}-\d{2}-\d{2}$/.test(f.date || '') && (!simDate || f.date >= simDate));
+  candidates.sort((a, b) => a.date.localeCompare(b.date));
+  const nextMatch = candidates[0] || null;
+  if (nextMatch && nextMatch.date > simDate) {
+    return { mode: 'prematch', simDate, saveDate, maxDate: nextMatch.date, canAdvance: true, nextMatch, pendingCount: 0 };
+  }
+  if (nextMatch && nextMatch.date === simDate) {
+    return { mode: 'matchday', simDate, saveDate, maxDate: simDate, canAdvance: false, nextMatch, pendingCount: 0 };
+  }
+  return { mode: 'synced', simDate, saveDate, maxDate: saveDate, canAdvance: false, nextMatch: null, pendingCount: 0 };
+}
+
+function mlFormatAssetName(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  const found = ML_ASSET_CATALOG_UI.find((a) => a.id === s);
+  if (found) return found.label();
+  if (/^[a-z0-9]+(_[a-z0-9]+)+$/.test(s)) {
+    const clean = s.replace(/_/g, ' ');
+    return clean.charAt(0).toUpperCase() + clean.slice(1);
+  }
+  return s;
+}
+
+function mlFormatLedgerLabel(row) {
+  const raw = String(row?.label || '').trim();
+  if (!raw) return tr('Opération');
+  if (raw === 'calibration:bundle') return tr('Calibration : Pack adapté à mon statut');
+  if (raw === 'calibration:cash_only') return tr('Calibration : Tout en cash');
+  if (raw === 'calibration:humble') return tr('Calibration : Départ modeste');
+  if (raw === 'passive_yield') return tr('Revenus passifs (investissements)');
+  let m = /^wage:(\d+)d$/i.exec(raw);
+  if (m) return tr('Salaire club ({d} j)', { d: m[1] });
+  m = /^retainers:(\d+)$/i.exec(raw);
+  if (m) return tr('Revenus sponsors ({n})', { n: m[1] });
+  m = /^upkeep:(\d+)d$/i.exec(raw);
+  if (m) return tr('Charges & entretien ({d} j)', { d: m[1] });
+  m = /^match_bonus:x(\d+)$/i.exec(raw);
+  if (m) return tr('Primes de match (×{n})', { n: m[1] });
+  m = /^event:(.+)$/i.exec(raw);
+  if (m) return tr('Prime sponsor : {brand}', { brand: m[1] });
+  if (row?.kind === 'asset_buy') return tr('Achat : {name}', { name: mlFormatAssetName(raw) });
+  if (row?.kind === 'asset_sell') return tr('Revente : {name}', { name: mlFormatAssetName(raw) });
+  const act = ML_ACTIONS_UI.find((a) => a.id === raw);
+  if (act) return act.label();
+  const dil = ML_DILEMMAS_UI[raw];
+  if (dil) return dil.title();
+  return mlFormatAssetName(raw);
+}
+
+function mlFormatRecentEvent(text) {
+  const s = String(text || '').trim();
+  if (!s) return '';
+  let m = /^Acquired (.+)$/i.exec(s);
+  if (m) return tr('Acquisition : {item}', { item: mlFormatAssetName(m[1]) });
+  m = /^Sold (.+)$/i.exec(s);
+  if (m) return tr('Revente : {item}', { item: mlFormatAssetName(m[1]) });
+  m = /^Dismissed (.+)$/i.exec(s);
+  if (m) return tr('Fin de contrat : {item}', { item: mlFormatAssetName(m[1]) });
+  m = /^Signed sponsor deal with (.+)$/i.exec(s);
+  if (m) return tr('Nouveau contrat sponsor avec {brand}', { brand: m[1] });
+  m = /^Ended deal with (.+)$/i.exec(s);
+  if (m) return tr('Contrat sponsor résilié avec {brand}', { brand: m[1] });
+  m = /^Sponsor contract ended: (.+)$/i.exec(s);
+  if (m) return tr('Contrat sponsor arrivé à terme : {brand}', { brand: m[1] });
+  m = /^Completed (.+) appearance$/i.exec(s);
+  if (m) return tr('Événement sponsor honoré : {brand}', { brand: m[1] });
+  m = /^Skipped (.+) commitment$/i.exec(s);
+  if (m) return tr('Événement sponsor ignoré : {brand}', { brand: m[1] });
+  m = /^Missed sponsor commitment \((.+)\)$/i.exec(s);
+  if (m) return tr('Échéance sponsor manquée ({brand})', { brand: m[1] });
+  return s;
+}
+
 function mlAgendaItems(s, hub, cal, monthIso) {
   const ref = /^\d{4}-\d{2}$/.test(monthIso || '') ? monthIso : String(cal?.simDate || s?.gameDate || '2026-08-01').slice(0, 7);
   const simDate = cal?.simDate || s?.gameDate || '';
@@ -8533,9 +8619,10 @@ function mlAgendaItems(s, hub, cal, monthIso) {
   for (const ev of cal?.customEvents || []) {
     if (inMonth(ev.date)) items.push({ id: ev.id, date: ev.date, kind: 'custom', category: ev.category, customCategory: ev.customCategory || '', title: ev.title, detail: '' });
   }
+  const winTitle = (w) => (w.kind === 'été' ? tr('Mercato d’été') : w.kind === 'hiver' ? tr('Mercato d’hiver') : tr('Mercato'));
   for (const w of s?.windows || []) {
-    if (inMonth(w.open)) items.push({ date: w.open, kind: 'window', title: w.kind || tr('Mercato'), detail: tr('Ouverture') });
-    if (inMonth(w.close)) items.push({ date: w.close, kind: 'window', title: w.kind || tr('Mercato'), detail: tr('Fermeture') });
+    if (inMonth(w.open)) items.push({ date: w.open, kind: 'window', title: winTitle(w), detail: tr('Ouverture') });
+    if (inMonth(w.close)) items.push({ date: w.close, kind: 'window', title: winTitle(w), detail: tr('Fermeture') });
   }
   items.sort((a, b) => a.date.localeCompare(b.date));
   return { month: ref, items };
@@ -8706,7 +8793,8 @@ function renderMyLife(page) {
   const saveDate = cal.saveDate || state.saveSnapshot?.gameDate || simDate;
   const pendingCalCount = calModeFull ? (cal.pendingMatches?.length || 0) : 0;
   const behindDays = Math.max(0, mlDaysBetween(simDate, saveDate));
-  const canAdvance = calModeFull && (behindDays > 0 || pendingCalCount > 0);
+  const calBounds = mlCalendarBounds(s, cal);
+  const canAdvance = calModeFull && calBounds.canAdvance;
   if (view.mlCalCareer !== state.careerId) {
     view.mlCalCareer = state.careerId;
     view.mlCalMonth = (simDate || '2026-08-01').slice(0, 7);
@@ -8767,7 +8855,7 @@ function renderMyLife(page) {
 
   const meterOpts = Object.entries(ML_METER_LABELS).map(([k, fn]) => `<option value="${k}">${esc(fn())}</option>`).join('');
   const recentHtml = (hub.recentEvents || []).length
-    ? hub.recentEvents.slice(0, 12).map((e) => `<li><span class="fineprint">${esc(shortDate(e.date))}</span><span>${esc(e.text)}</span></li>`).join('')
+    ? hub.recentEvents.slice(0, 12).map((e) => `<li><span class="fineprint">${esc(shortDate(e.date))}</span><span>${esc(mlFormatRecentEvent(e.text))}</span></li>`).join('')
     : `<p class="fineprint">${tr('Aucune activité récente : choisis une action ou avance dans ta saison.')}</p>`;
 
   const spPresetOpts = `<option value="">${esc(tr('Choisir un modèle (ou écrire en dessous)…'))}</option>${ML_SPONSOR_PRESETS_UI.map((p, i) => `<option value="${i}">${esc(p.brand)} (${esc((p.categories || [p.category]).map(mlSponsorCatLabel).join(' / '))})</option>`).join('')}`;
@@ -8853,7 +8941,7 @@ function renderMyLife(page) {
   const annualPassive = (hub.assets || []).reduce((sum, a) => sum + (Number(a.passiveReturn) || 0) * 12, 0);
   const ledgerRows = (hub.ledger || []).slice(0, 40).map((r) => `<tr>
     <td>${esc(shortDate(r.date))}</td>
-    <td>${esc(r.label)}</td>
+    <td>${esc(mlFormatLedgerLabel(r))}</td>
     <td class="num ${r.amount >= 0 ? 'pos' : 'neg'}">${r.amount >= 0 ? `+${esc(euros(r.amount))}` : esc(euros(r.amount))}</td>
   </tr>`).join('');
 
@@ -8875,7 +8963,7 @@ function renderMyLife(page) {
       'ml-cal-cell',
       iso === simDate ? 'is-sim' : '',
       iso === calDay ? 'is-selected' : '',
-      calModeFull && saveDate && iso > simDate && iso <= saveDate ? 'is-ahead' : '',
+      calModeFull && calBounds.maxDate && iso > simDate && iso <= calBounds.maxDate ? 'is-ahead' : '',
       dayItems.some((x) => x.kind === 'match') ? 'has-match' : '',
     ].filter(Boolean).join(' ');
     const dots = dayItems.slice(0, 3).map((x) => `<i class="ml-dot ml-dot--${esc(x.kind)}"></i>`).join('');
@@ -8907,13 +8995,20 @@ function renderMyLife(page) {
     const detail = h.matches ? `${rLabel} · ${tr('{n} match(s) révélé(s).', { n: h.matches })}` : rLabel;
     return `<li><small>${esc(shortDate(h.date))}</small><span>${esc(detail)}</span></li>`;
   }).join('');
+  const nextMatchName = calBounds.nextMatch ? `${calBounds.nextMatch.home} – ${calBounds.nextMatch.away}` : '';
+  const daysToMatch = calBounds.nextMatch ? Math.max(0, mlDaysBetween(simDate, calBounds.nextMatch.date)) : 0;
   const calStatusText = !calModeFull
     ? tr('Synchro directe active')
-    : pendingCalCount > 0
-      ? tr('{n} match(s) en attente sans spoiler', { n: pendingCalCount })
-      : behindDays > 0
-        ? tr('{n} jour(s) à rattraper', { n: behindDays })
-        : tr('Synchronisé avec la sauvegarde');
+    : calBounds.mode === 'catchup'
+      ? (pendingCalCount > 0
+        ? tr('{n} match(s) en attente sans spoiler', { n: pendingCalCount })
+        : tr('{n} jour(s) à rattraper', { n: behindDays }))
+      : calBounds.mode === 'prematch'
+        ? tr('Prochain match dans {n} jour(s) : {match}', { n: daysToMatch, match: nextMatchName })
+        : calBounds.mode === 'matchday'
+          ? tr('Jour de match ({match}) : joue ce match dans le jeu, sauvegarde puis clique sur Synchroniser.', { match: nextMatchName })
+          : tr('À jour avec la sauvegarde : avance dans le jeu puis synchronise pour charger de nouvelles dates.');
+  const calThirdBtnLabel = calBounds.mode === 'prematch' ? tr('Aller au jour de match') : tr('Rattraper tout');
 
   page.innerHTML = `<div class="ml">
     <header class="ml-hero card">
@@ -9044,7 +9139,7 @@ function renderMyLife(page) {
           ${calModeFull
             ? `<button type="button" class="btn" data-caladv="day"${canAdvance ? '' : ' disabled'}>${tr('Jour suivant (+1 j)')}</button>
                <button type="button" class="btn primary" data-caladv="next_event"${canAdvance ? '' : ' disabled'}>${tr('Prochain événement')}</button>
-               <button type="button" class="btn" data-caladv="catch_up"${canAdvance ? '' : ' disabled'}>${tr('Rattraper tout')}</button>`
+               <button type="button" class="btn" data-caladv="catch_up"${canAdvance ? '' : ' disabled'}>${calThirdBtnLabel}</button>`
             : `<button type="button" class="btn primary" id="ml-cal-enable-full">${tr('Activer le mode Complet')}</button>`}
         </div>
       </div>

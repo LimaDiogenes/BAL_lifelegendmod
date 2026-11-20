@@ -17,6 +17,7 @@ const {
 } = require('../src/save/lifeEffectsWrite');
 const {
   ingestSyncCalendar,
+  calendarBounds,
   advanceCalendar,
   flushCalendarToSave,
   addCustomCalendarEvent,
@@ -240,6 +241,49 @@ describe('Calendrier complet anti-spoilers (Phase D)', () => {
     // 2026-08-09 est dimanche -> day_off ; 2026-08-11 est mardi -> training
     assert.equal(dayRhythm(state, '2026-08-09'), 'day_off');
     assert.equal(dayRhythm(state, '2026-08-11'), 'training');
+  });
+
+  it('calendarBounds et advanceCalendar permettent d avancer en pre-match jusqu au prochain match sans perte lors d une resynchro', () => {
+    const nextUnplayed = { ...fx1, played: false, score: null, me: null };
+    const nextUnplayed2 = { ...fx2, played: false, score: null, me: null };
+    const state = { snapshot: makeSnap('2026-08-01', [fx0, nextUnplayed, nextUnplayed2]) };
+    ingestSyncCalendar(state, state.snapshot, { calendarMode: 'full' });
+
+    let b = calendarBounds(state);
+    assert.equal(b.mode, 'prematch');
+    assert.equal(b.canAdvance, true);
+    assert.equal(b.maxDate, '2026-08-05');
+
+    addCustomCalendarEvent(state, { date: '2026-08-03', title: 'Seance tactique', category: 'training' }, () => 'ev_pre');
+    const step1 = advanceCalendar(state, { mode: 'day' });
+    assert.equal(step1.nextDate, '2026-08-02');
+    assert.equal(state.snapshot.gameDate, '2026-08-02');
+    assert.equal(state.saveSnapshot.gameDate, '2026-08-01');
+
+    const step2 = advanceCalendar(state, { mode: 'next_event' });
+    assert.equal(step2.nextDate, '2026-08-03');
+
+    // Resynchro alors que le jeu n a pas encore avance -> simDate reste 2026-08-03 sans reculer
+    const sameSave = makeSnap('2026-08-01', [fx0, nextUnplayed, nextUnplayed2]);
+    const reSync = ingestSyncCalendar(state, sameSave, { calendarMode: 'full' });
+    assert.equal(reSync.deferred, true);
+    assert.equal(state.calendar.simDate, '2026-08-03');
+    assert.equal(state.snapshot.gameDate, '2026-08-03');
+
+    // Aller au jour de match (catch_up en pre-match pointe sur 2026-08-05)
+    const step3 = advanceCalendar(state, { mode: 'catch_up' });
+    assert.equal(step3.nextDate, '2026-08-05');
+    b = calendarBounds(state);
+    assert.equal(b.mode, 'matchday');
+    assert.equal(b.canAdvance, false);
+    assert.throws(() => advanceCalendar(state, { mode: 'day' }), /Tu es déjà à jour avec ta sauvegarde/);
+
+    // Jouer ensuite 2 matchs et synchroniser le 2026-08-10 -> les deux sont mis en file y compris celui du 2026-08-05 !
+    const playedTwo = makeSnap('2026-08-10', [fx0, fx1, fx2]);
+    const queuedAfter = ingestSyncCalendar(state, playedTwo, { calendarMode: 'full' });
+    assert.equal(queuedAfter.deferred, true);
+    assert.equal(queuedAfter.queuedCount, 2);
+    assert.equal(state.snapshot.stats.total.apps, 1);
   });
 });
 
