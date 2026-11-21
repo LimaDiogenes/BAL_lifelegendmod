@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { Store } = require('./src/store');
 const { peekSave } = require('./src/save/blReader');
+const { scanSaveFiles, snapshotWatchedFiles, detectModifiedSave, resolveSaveForSync } = require('./src/save/autoSaveWatch');
 const { setSaveKeys } = require('./src/save/pesCrypt');
 const { answerAdvice } = require('./src/world/coachAdvice');
 const { answerSponsor } = require('./src/world/sponsors');
@@ -55,33 +56,10 @@ function createWindow() {
 }
 
 // Sauvegardes Become a Legend trouvées dans Documents\KONAMI (PES 2021, Football Life jusqu'à 2026) et
-// Documents\SPGAME (Football Life 2027 : SPGAME\Football Life\2027\save).
-const SAVE_ROOTS = [['KONAMI', /PES 2021|eFootball PES/i], ['SPGAME', /football ?life/i]];
+// Documents\SPGAME (Football Life 2027 : SPGAME\Football Life\2027\save), triées de la plus récente à la plus ancienne.
 function detectSaves() {
-  const found = [];
-  const gameDirs = [];
-  for (const [name, game] of SAVE_ROOTS) {
-    const root = path.join(app.getPath('documents'), name);
-    try { gameDirs.push(...fs.readdirSync(root).filter((d) => game.test(d)).map((d) => path.join(root, d))); } catch { /* pas ce jeu ici */ }
-  }
-  for (const g of gameDirs) {
-    let profiles = [];
-    try { profiles = fs.readdirSync(g); } catch { continue; }
-    for (const p of profiles) {
-      // Une carrière par emplacement : BL00000000, BL00000001…
-      let slots = [];
-      try { slots = fs.readdirSync(path.join(g, p, 'save')).filter((f) => /^BL\d{8}$/.test(f)); } catch { continue; }
-      for (const slot of slots) {
-        const file = path.join(g, p, 'save', slot);
-        try {
-          found.push({ path: file, modified: fs.statSync(file).mtimeMs, ...peekSave(file) });
-        } catch (err) {
-          found.push({ path: file, error: err.message, locked: err.code === 'SAVE_KEY' });
-        }
-      }
-    }
-  }
-  return found.sort((a, b) => (b.modified || 0) - (a.modified || 0));
+  const curSave = store?.getSettings()?.savePath;
+  return scanSaveFiles({ documentsDir: app.getPath('documents'), extraFiles: curSave ? [curSave] : [] });
 }
 
 // Clés de sauvegarde ajoutées par le joueur (Football Life 2027…) : des fichiers de 64 octets dans data/keys, jamais
@@ -125,7 +103,12 @@ function runSync() {
   if (!syncing) {
     logActivity('synchro : début');
     syncLog = [];
-    syncing = world.sync({ store, settings: store.getSettings(), log: syncLine, progress })
+    const { settings, switchedTo } = resolveSaveForSync({ store, documentsDir: app.getPath('documents') });
+    if (switchedTo) {
+      logActivity(`sauvegarde la plus récente chargée : ${switchedTo.path}`);
+      win?.webContents.send('sync:auto', { phase: 'switched-save', savePath: switchedTo.path, info: switchedTo, settings: store.publicSettings() });
+    }
+    syncing = world.sync({ store, settings, log: syncLine, progress })
       .then((state) => { logActivity(`synchro : terminée (${state.lastSync?.published ? 'édition publiée' : state.lastSync?.agentMail ? 'mail de l’agent' : 'rien de nouveau'}, ${state.lastSync?.gameDate})${state.lastSync?.durations ? ` · ${state.lastSync.durations}` : ''}`); return state; },
         (err) => { logActivity(`synchro : erreur (${err.message})`); throw err; })
       .finally(() => { syncing = null; });
@@ -133,43 +116,66 @@ function runSync() {
   return syncing;
 }
 
-// Synchro automatique : on surveille la sauvegarde et on synchronise quand le jeu l'a réécrite
-// (sauvegarde manuelle ou sauvegarde automatique du jeu).
-let watched = null;
+// Synchro automatique : on surveille la sauvegarde (ou tous les emplacements BL0000000x si autoLatestSave est actif)
+// et on synchronise en arrière-plan dès que le jeu a fini d'écrire.
+let watchTimer = null;
+let watchedSnap = new Map();
 let pending = null;
 function setupAutoSync() {
-  const s = store.getSettings();
-  if (watched && (watched !== s.savePath || !s.autoSync)) {
-    fs.unwatchFile(watched);
-    watched = null;
+  if (watchTimer) {
+    clearInterval(watchTimer);
+    watchTimer = null;
   }
-  if (!s.autoSync || !s.savePath || watched) return;
-  watched = s.savePath;
-  logActivity(`surveillance de ${watched}`);
-  fs.watchFile(watched, { interval: 4000 }, (cur, prev) => {
-    if (cur.mtimeMs === prev.mtimeMs || cur.size === 0) return;
-    logActivity(`sauvegarde modifiée (${cur.size} octets, ${new Date(cur.mtimeMs).toISOString()})`);
+  const s0 = store.getSettings();
+  if (s0.autoLatestSave && !s0.savePath) {
+    resolveSaveForSync({ store, documentsDir: app.getPath('documents') });
+  }
+  const s = store.getSettings();
+  if (!s.autoSync || (!s.savePath && !s.autoLatestSave)) {
+    watchedSnap = new Map();
+    return;
+  }
+  const docsDir = app.getPath('documents');
+  watchedSnap = snapshotWatchedFiles({ documentsDir: docsDir, savePath: s.savePath, autoLatestSave: Boolean(s.autoLatestSave) });
+  logActivity(`surveillance auto-sync (${s.autoLatestSave ? 'emplacement le plus récent' : s.savePath})`);
+  watchTimer = setInterval(() => {
+    const cur = store.getSettings();
+    if (!cur.autoSync) return;
+    const nextSnap = snapshotWatchedFiles({ documentsDir: docsDir, savePath: cur.savePath, autoLatestSave: Boolean(cur.autoLatestSave) });
+    const changed = detectModifiedSave(watchedSnap, nextSnap);
+    watchedSnap = nextSnap;
+    if (!changed) return;
+    logActivity(`sauvegarde modifiée (${changed.path}, ${changed.size} octets, ${new Date(changed.mtimeMs).toISOString()})`);
+    win?.webContents.send('sync:auto', { phase: 'detected', savePath: changed.path });
     clearTimeout(pending);
-    pending = setTimeout(() => autoSync(0), 8000); // le jeu écrit en plusieurs fois : on attend qu'il ait fini
-  });
+    pending = setTimeout(() => autoSync(0, changed.path), 6000); // le jeu écrit en plusieurs fois : on attend qu'il ait fini
+  }, 4000);
 }
 
 // Après un échec passager de l'IA (réseau, serveur surchargé), on retente plus tard, 3 fois au plus.
 let aiRetries = 0;
 
-async function autoSync(attempt) {
-  if (!win || !watched) return;
+async function autoSync(attempt, detectedPath = null) {
+  const s0 = store.getSettings();
+  const targetPath = detectedPath || s0.savePath;
+  if (!win || !targetPath) return;
+  let info = null;
   try {
-    peekSave(watched); // fichier complet et lisible ?
+    info = peekSave(targetPath); // fichier complet et lisible ?
   } catch (err) {
     logActivity(`sauvegarde pas encore lisible (essai ${attempt + 1}) : ${err.message}`);
-    if (attempt < 3) pending = setTimeout(() => autoSync(attempt + 1), 10000);
+    if (attempt < 3) pending = setTimeout(() => autoSync(attempt + 1, targetPath), 8000);
     return;
   }
+  if (s0.autoLatestSave && targetPath !== s0.savePath) {
+    store.saveSettings({ savePath: targetPath });
+    logActivity(`bascule automatique sur la sauvegarde la plus récente : ${targetPath}`);
+    win.webContents.send('sync:auto', { phase: 'switched-save', savePath: targetPath, info: { path: targetPath, ...info }, settings: store.publicSettings() });
+  }
   const s = store.getSettings();
-  const fresh = s.pendingBio?.savePath === watched ? null : world.newCareerInfo({ store, settings: s });
-  if (fresh) { win.webContents.send('sync:auto', { phase: 'new-career', info: fresh }); return; }
-  win.webContents.send('sync:auto', { phase: 'start' });
+  const fresh = s.pendingBio?.savePath === targetPath ? null : world.newCareerInfo({ store, settings: s });
+  if (fresh) { win.webContents.send('sync:auto', { phase: 'new-career', info: fresh, savePath: targetPath }); return; }
+  win.webContents.send('sync:auto', { phase: 'start', savePath: targetPath });
   logActivity(syncing ? 'synchro auto : une synchro est déjà en cours, on attend la même' : 'synchro auto : début');
   try {
     const state = await runSync();

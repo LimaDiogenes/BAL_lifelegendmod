@@ -1038,17 +1038,20 @@ const keyResult = (r, saves) => {
 };
 
 function setupSaveHtml(su) {
+  const firstGoodIdx = (su.saves || []).findIndex((x) => !x.error && !x.locked);
   const row = (s, i) => `<label class="save-option"><input type="radio" name="su-save" value="${i}"${s.path === su.savePath ? ' checked' : ''}${s.error ? ' disabled' : ''}>
-    ${s.locked ? lockedSaveHtml(s) : `<div>${s.error ? '' : `<b>${esc(s.player)}</b> · ${esc(s.club || '')} ${s.league ? `(${esc(s.league)})` : ''}<br>`}
+    ${s.locked ? lockedSaveHtml(s) : `<div>${s.error ? '' : `<b>${esc(s.player)}</b> · ${esc(s.club || '')} ${s.league ? `(${esc(s.league)})` : ''}${i === firstGoodIdx ? ` <span class="priv-badge on">${esc(tr('Plus récente'))}</span>` : ''}<br>`}
     <span class="fineprint">${esc(s.game || (s.error && tr(s.error)) || '')}${s.date ? ` · ${esc(fmtDate(s.date, { day: 'numeric', month: 'long', year: 'numeric' }))}` : ''}</span></div>`}</label>`;
   const locked = su.saves?.some((s) => s.locked);
   const list = !su.saves ? `<p class="fineprint">${tr('Recherche des sauvegardes…')}</p>`
     : su.saves.length ? su.saves.map(row).join('') : `<p class="fineprint">${tr('Aucune sauvegarde pour l’instant. Crée ton joueur dans le jeu, sauvegarde ta carrière, puis clique sur {button}.', { button: quote(tr('Rechercher à nouveau')) })}</p>`;
+  const autoLatestOn = su.autoLatestSave !== undefined ? su.autoLatestSave : Boolean(settings?.autoLatestSave);
   return `<section class="card"><h3>${tr('Ta sauvegarde')}</h3>
       <p class="su-text">${tr('Dans le jeu, lance Vers une Légende et crée ton joueur ({mode}), puis sauvegarde ta carrière depuis son menu. LifeLegend part de cette sauvegarde : ta biographie et ta première édition s’appuient dessus.', { mode: quote(tr('Joueur original')) })}</p>
       <div class="saves">${list}</div>
       ${locked ? keyHelpHtml('su-key') : ''}
       <div class="su-tools"><button class="btn" id="su-rescan">${tr('Rechercher à nouveau')}</button><button class="btn" id="su-browse">${tr('Choisir un autre fichier…')}</button>${locked ? '' : `<button class="btn" id="su-key">${tr('Ajouter une clé de sauvegarde…')}</button>`}</div>
+      ${rgSwitch('su-autolatest', autoLatestOn, tr('Charger automatiquement la sauvegarde modifiée la plus récente'), tr('Si tu utilises plusieurs emplacements (BL00000000, BL00000001…), LifeLegend bascule automatiquement sur le fichier sauvegardé le plus récemment par le jeu.'))}
       ${locked ? '' : `<p class="fineprint">${tr('Football Life 2027 chiffre ses sauvegardes avec sa propre clé, que LifeLegend ne fournit pas. Si tu l’as (un fichier de 64 octets), ajoute-la ici : elle reste sur ce PC.')}</p>`}
     </section>
     <div class="su-nav"><span></span><button class="btn primary big" id="su-next"${su.savePath ? '' : ' disabled'}>${tr('Suivant')}</button></div>`;
@@ -1123,7 +1126,12 @@ async function setupPublish() {
   su.busy = true;
   render();
   try {
-    settings = await live.saveSettings({ savePath: su.savePath, pendingBio: { savePath: su.savePath, text, kind: su.kind, privacy, persona } });
+    const saveUpdate = {
+      savePath: su.savePath,
+      ...(su.autoLatestSave !== undefined ? { autoLatestSave: Boolean(su.autoLatestSave) } : {}),
+      pendingBio: { savePath: su.savePath, text, kind: su.kind, privacy, persona },
+    };
+    settings = await live.saveSettings(saveUpdate);
     if (await doSync({ bioAsked: true })) {
       view.setup = null;
       render();
@@ -1157,6 +1165,9 @@ function renderSetup(page) {
     page.querySelectorAll('input[name=su-save]').forEach((r) => {
       r.onchange = () => { su.info = su.saves[Number(r.value)]; su.savePath = su.info.path; $('#su-next').disabled = false; };
     });
+    if ($('#su-autolatest')) {
+      $('#su-autolatest').onchange = (ev) => { su.autoLatestSave = ev.target.checked; };
+    }
     $('#su-rescan').onclick = () => { su.saves = null; render(); };
     $('#su-browse').onclick = async () => {
       try {
@@ -9871,7 +9882,7 @@ const RG_TABS = [
   ['about', 'À propos', ''],
 ];
 // L'onglet de chaque section qu'ouvrent les autres pages (« Réglages de l'IA », « Ajouter ma clé… », la bio de Panthéon).
-const RG_SECTION_TAB = { 'rg-save': 'save', 'rg-key': 'save', 'rg-names': 'save', 'rg-ai': 'ai', 'rg-lang': 'look', 'rg-theme': 'look', 'rg-tone': 'world', 'rg-calmode': 'world', 'rg-replays': 'world', 'rg-mebio': 'me', 'rg-mepersona': 'me', 'rg-privacy': 'me', 'rg-lifeevents': 'me', 'rg-about': 'about', 'rg-update': 'about' };
+const RG_SECTION_TAB = { 'rg-save': 'save', 'rg-key': 'save', 'rg-names': 'save', 'rg-ai': 'ai', 'rg-lang': 'look', 'rg-theme': 'look', 'rg-tone': 'world', 'rg-calmode': 'world', 'rg-replays': 'world', 'rg-mebio': 'me', 'rg-mepersona': 'me', 'rg-privacy': 'me', 'rg-lifeevents': 'me', 'rg-about': 'about', 'rg-credits': 'about', 'rg-update': 'about' };
 const rgRow = (id, label, control, note = '') => `<div class="rg-row"${id ? ` id="${id}"` : ''}><div class="rg-label"><h3>${label}</h3>${note ? `<p>${note}</p>` : ''}</div><div class="rg-ctl">${control}</div></div>`;
 const rgSwitch = (id, on, label, note = '') => `<label class="rg-switch"><input type="checkbox" id="${id}"${on ? ' checked' : ''}><span class="rg-switch-text"><b>${label}</b>${note ? `<small>${note}</small>` : ''}</span></label>`;
 // Miniature d'un thème : le cadre de LifeLegend (rail, barre, blocs), clair ou sombre ; Automatique est coupé en diagonale.
@@ -9981,7 +9992,8 @@ async function renderSettings(page) {
     rgRow('rg-key', tr('Clé de sauvegarde'), `<div id="key-help"></div>
       <div id="key-plain"><p class="fineprint">${tr('Football Life 2027 chiffre ses sauvegardes avec sa propre clé, que LifeLegend ne fournit pas. Si tu l’as (un fichier de 64 octets), ajoute-la ici : elle reste sur ce PC.')} <span id="key-count"></span></p>
       <button class="btn" id="add-key">${tr('Ajouter une clé de sauvegarde…')}</button></div>`),
-    rgRow('', tr('Synchronisation automatique'), rgSwitch('autosync', settings.autoSync, tr('Synchroniser automatiquement dès que le jeu sauvegarde la carrière'), tr('LifeLegend surveille le fichier pendant qu’il est ouvert. Active aussi la sauvegarde automatique dans les paramètres du jeu : chaque match sera alors enregistré et publié sans que tu touches à rien. Une requête à l’IA n’est envoyée que si quelque chose a vraiment changé.'))),
+    rgRow('', tr('Synchronisation automatique'), rgSwitch('autosync', settings.autoSync, tr('Synchroniser automatiquement dès que le jeu sauvegarde la carrière'), tr('LifeLegend surveille le fichier pendant qu’il est ouvert. Active aussi la sauvegarde automatique dans les paramètres du jeu : chaque match sera alors enregistré et publié sans que tu touches à rien. Une requête à l’IA n’est envoyée que si quelque chose a vraiment changé.'))
+      + rgSwitch('autolatestsave', settings.autoLatestSave, tr('Charger automatiquement la sauvegarde modifiée la plus récente'), tr('Si tu utilises plusieurs emplacements (BL00000000, BL00000001…), LifeLegend bascule automatiquement sur le fichier sauvegardé le plus récemment par le jeu.'))),
     rgRow('rg-names', tr('Noms des joueurs'), `<p class="fineprint">${tr('Dossier du jeu')}${colon()} <code id="game-dir">${esc(settings.gameDir || tr('détection automatique…'))}</code></p>
       <button class="btn" id="browse-game">${tr('Choisir le dossier du jeu…')}</button>
       <p class="fineprint">${tr('La sauvegarde ne contient que les numéros des autres joueurs. Leurs noms (et les écussons) sont lus dans les fichiers du jeu ou du patch, comme Football Life, seulement s’ils correspondent à ta carrière. Avec plusieurs jeux installés, LifeLegend prend pour chaque carrière celui qui lui correspond.')}</p>`),
@@ -10037,8 +10049,10 @@ async function renderSettings(page) {
   ]) : ''}
     ${panel('about', [
     rgRow('rg-about', tr('À propos de LifeLegend'), `<p class="fineprint">${esc(/-/.test(appVersion || '') ? tr('Version {v} · bêta', { v: appVersion }) : tr('Version {v}', { v: appVersion || '—' }))}</p>
+      <p class="fineprint">${tr('Créé à l’origine par {author} — édition enrichie {fork}.', { author: '<b>Saamz09</b>', fork: '<b>BAL_lifelegendmod</b>' })}</p>
       <p class="fineprint">${tr(REAL_PEOPLE_NOTE)}</p>
       <p class="fineprint">${tr('LifeLegend est publié sous licence MIT. Polices, icônes et mises en page reprises ont leurs propres licences : voir LICENSE et THIRD-PARTY-NOTICES.txt dans le dossier de LifeLegend.')}</p>`),
+    rgRow('rg-credits', tr('Crédits & auteur original'), `<p class="fineprint">${tr('Remerciements particuliers à {author}, créateur et auteur original de LifeLegend, dont le travail et l’architecture sous licence MIT ont rendu cette édition possible, ainsi qu’aux auteurs des outils communautaires PES ({tools}).', { author: '<b>Saamz09</b>', tools: 'pesXdecrypter (the4chancup), PES21 BAL Ultimate Editor (AlexDelPiero23), TyNet' })}</p>`),
     rgRow('rg-update', tr('Mises à jour'), `<button class="btn" id="rg-update-btn" type="button">${tr('Vérifier les mises à jour')}</button><p class="fineprint" id="rg-update-out" role="status"></p>`, tr('LifeLegend regarde la dernière version publiée sur sa page GitHub, seulement quand tu cliques. Rien d’autre n’est envoyé.')),
     ...(introAvailable ? [rgRow('rg-intro', tr('Animation d’ouverture'), `<button class="btn" id="rg-intro-btn" type="button">${tr('Revoir')}</button>`, tr('La courte vidéo qui ouvre LifeLegend au premier lancement. Animation réalisée avec Profounder (profounder.com), qui n’a pas de lien avec LifeLegend.'))] : []),
     rgRow('rg-report', tr('Signaler un problème'), `<button class="btn" id="rg-report-btn" type="button">${tr('Préparer le rapport')}</button>`,
@@ -10198,9 +10212,10 @@ async function renderSettings(page) {
     $('#key-help').innerHTML = locked ? keyHelpHtml('add-key-now') : '';
     $('#key-plain').hidden = locked;
     if (locked) $('#add-key-now').onclick = addKey;
+    const firstGoodIdx = saves.findIndex((x) => !x.error && !x.locked);
     box.innerHTML = saves.length ? saves.map((s, i) => `
       <label class="save-option"><input type="radio" name="save" value="${i}"${s.path === (pendingSave || settings.savePath) ? ' checked' : ''}${s.error ? ' disabled' : ''}>
-        ${s.locked ? lockedSaveHtml(s) : `<div><b>${esc(s.player || tr('Sauvegarde illisible'))}</b> · ${esc(s.club || '')} ${s.league ? `(${esc(s.league)})` : ''}<br>
+        ${s.locked ? lockedSaveHtml(s) : `<div><b>${esc(s.player || tr('Sauvegarde illisible'))}</b> · ${esc(s.club || '')} ${s.league ? `(${esc(s.league)})` : ''}${i === firstGoodIdx ? ` <span class="priv-badge on">${esc(tr('Plus récente'))}</span>` : ''}<br>
         <span class="fineprint">${esc(s.game || (s.error && tr(s.error)) || '')}${s.date ? ` · ${esc(fmtDate(s.date, { day: 'numeric', month: 'long', year: 'numeric' }))}` : ''}</span></div>`}</label>`).join('')
       : `<p class="fineprint">${tr('Aucune sauvegarde trouvée automatiquement. Utilise {button}.', { button: quote(tr('Choisir un autre fichier')) })}</p>`;
     box.querySelectorAll('input[name=save]').forEach((r) => {
@@ -10224,6 +10239,7 @@ async function saveSettings() {
     model: $('#model').value.trim(),
     baseUrl: providers[$('#provider').value]?.editableBaseUrl ? $('#baseurl').value.trim() : '',
     autoSync: $('#autosync').checked,
+    autoLatestSave: Boolean($('#autolatestsave')?.checked),
     offerRedirect: $('#offerredirect').checked,
     influenceWrites: $('#influencewrites').checked,
     lifeSaveEffects: $('#lifesaveeffects').checked,
@@ -10340,7 +10356,30 @@ function softRender() {
 
 // Synchro lancée par LifeLegend quand le jeu a réécrit la sauvegarde.
 function onAutoSync(ev) {
-  if (ev.phase === 'new-career') { if (!view.setup) openBioStep(ev.info); return; }
+  if (ev.phase === 'detected') {
+    logLine(tr('Sauvegarde détectée : préparation de la synchronisation…'));
+    return;
+  }
+  if (ev.phase === 'switched-save') {
+    if (ev.settings) settings = ev.settings;
+    else if (ev.savePath) settings = { ...settings, savePath: ev.savePath };
+    if ($('#save-path') && !pendingSave) $('#save-path').textContent = settings.savePath || '';
+    toast(tr('Sauvegarde la plus récente chargée : {player}.', { player: ev.info?.player || ev.info?.slot || 'BL' }));
+    return;
+  }
+  if (ev.phase === 'new-career') {
+    if (!view.setup) {
+      if (isTyping() || current === 'settings') {
+        toast(tr('Nouvelle carrière détectée : {player}.', { player: ev.info?.player || 'BL' }), false, {
+          label: tr('Configurer'),
+          run: () => openBioStep(ev.info),
+        });
+      } else {
+        openBioStep(ev.info);
+      }
+    }
+    return;
+  }
   const box = $('#synclog');
   if (ev.phase === 'start') {
     box.innerHTML = '';
