@@ -2472,4 +2472,7 @@ window.LL_I18N.de = {
   "Asie": "Asien",
   "Amérique du Nord": "Nordamerika",
   "Monde": "Welt",
+  "Sauvegarde chargée : {m} match(s) et {d} jour(s) en attente dans Ma vie › Calendrier.": "Spielstand geladen: {m} Spiel(e) und {d} Tag(e) warten unter Mein Leben › Kalender.",
+  "Sauvegarde chargée : {d} jour(s) à avancer dans Ma vie › Calendrier.": "Spielstand geladen: {d} Tag(e) zum Vorrücken unter Mein Leben › Kalender.",
+  "Ouvrir le calendrier": "Kalender öffnen",
 };

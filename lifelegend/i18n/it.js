@@ -2472,4 +2472,7 @@ window.LL_I18N.it = {
   "Asie": "Asia",
   "Amérique du Nord": "Nord America",
   "Monde": "Mondo",
+  "Sauvegarde chargée : {m} match(s) et {d} jour(s) en attente dans Ma vie › Calendrier.": "Salvataggio caricato: {m} partita/e e {d} giorno/i in attesa in La mia vita › Calendario.",
+  "Sauvegarde chargée : {d} jour(s) à avancer dans Ma vie › Calendrier.": "Salvataggio caricato: {d} giorno/i da avanzare in La mia vita › Calendario.",
+  "Ouvrir le calendrier": "Apri calendario",
 };
