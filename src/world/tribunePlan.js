@@ -242,7 +242,7 @@ const dayPart = (h) => (!Number.isInteger(h) ? '' : h < 12 ? `${h}h, « ce matin
 
 // Rend [{ handle, name, type, new?, style, angle, tag?, supports? }] : une douzaine de posts.
 // world : le football mondial depuis la dernière édition ({ stories: [{ competition, teams, story }], take }), ou null.
-function tribunePlan({ state, snapshot: s, changes, handle: me, world = null, clubLeague = null, rival = null, derby = null, reunion = null }) {
+function tribunePlan({ state, snapshot: s, changes, handle: me, world = null, clubLeague = null, rival = null, derby = null, reunion = null, drama = null }) {
   const rand = rng(`${state.careerId}|${s.gameDate}|${state.editions?.length || 0}`);
   const lang = langOf(s.league?.name);
   const langFor = (club) => (club && clubLeague?.get(club) ? langOf(clubLeague.get(club)) : lang);
@@ -303,7 +303,11 @@ function tribunePlan({ state, snapshot: s, changes, handle: me, world = null, cl
   else if (pt.club_matches_without_him_since >= 2) about = `he has not played for ${pt.club_matches_without_him_since} club matches (last appearance ${pt.last_appearance ? `${pt.last_appearance.date} against ${pt.last_appearance.opponent}` : 'none this season'}): a fan who wants to see him play again and asks why`;
   else about = next ? `what the fans expect from him in ${matchLabel(next)}` : 'what the fans expect from him';
   add(fresh('fan', club), `${about}. Tag him (@${me}) in the text.`, { tag: me });
-  add(pro('journalist'), `his place in the squad and his future: playing time (FACTS.player.playing_time), contract until ${s.player.contractUntil || 'the date in FACTS'}${changes.window || /^(01|07|08)/.test(String(s.gameDate).slice(5)) ? ', the transfer window' : ''}; nothing that FACTS does not show.`);
+  if (pt.club_matches_without_him_since < 2 && drama?.primary && (drama.primary.heat >= 2 || (state.editions?.length || 0) % 2 === 1) && !changes.window) {
+    add(pro('pundit'), `media & fan drama (${drama.primary.kind}): ${drama.primary.angle}. Push a spicy, opinionated take grounded strictly in FACTS, FACTS.persona, FACTS.off_pitch_hub, or MEMORY.media_memory.quote_vault. Tag him (@${me}).`, { tag: me });
+  } else {
+    add(pro('journalist'), `his place in the squad and his future: playing time (FACTS.player.playing_time), contract until ${s.player.contractUntil || 'the date in FACTS'}${changes.window || /^(01|07|08)/.test(String(s.gameDate).slice(5)) ? ', the transfer window' : ''}; nothing that FACTS does not show.`);
+  }
 
   // 3-5. Le match (avant, après, ou rien) : un habitué, un nouveau du coin, un supporter adverse.
   if (res) {
@@ -369,14 +373,16 @@ function tribunePlan({ state, snapshot: s, changes, handle: me, world = null, cl
   }
   // 11. Les cotes avant son match (une seule fois, chiffres de FACTS).
   if (next && !res && s.next?.odds) add(brand('betting'), `the odds of ${matchLabel(next)} from FACTS.next_match.odds only; play responsibly`);
-  // 12. Libre : événement personnel (CHANGES.life_events), mercato, potin hors terrain (une fois sur trois), ou libre.
+  // 12. Libre : événement personnel (CHANGES.life_events), drame secondaire, mercato, potin/persona hors terrain, ou libre.
   let slot12 = 'free: any topic of the moment';
   if (changes.life_events?.length) {
     slot12 = `off-pitch life & fan buzz: react to CHANGES.life_events (and FACTS.biography / MEMORY.key_memory if relevant): gossip, congratulations, or banter around his life outside football. Tag him (@${me}).`;
+  } else if (drama?.secondary) {
+    slot12 = `off-pitch life & spotlight drama (${drama.secondary.kind}): ${drama.secondary.angle}. Draw naturally on FACTS.persona (traits, roots, inner_circle, habits), FACTS.biography, FACTS.off_pitch_hub (sponsors, lifestyle), and FACTS.media_spotlight without inventing unlisted facts. Tag him (@${me}).`;
   } else if (changes.window || /^(01|07|08)/.test(String(s.gameDate).slice(5))) {
     slot12 = 'the transfer window for his club: only the moves in FACTS.mercato, no invented rumour';
-  } else if ((state.bio?.text || state.keyMemory?.length) && (state.editions?.length || 0) % 3 === 1) {
-    slot12 = `off-pitch life & fan/tabloid gossip: talk about his personal background, hometown roots, lifestyle, or people around him from FACTS.biography / MEMORY.key_memory — playful gossip or curiosity, without inventing fake scandals. Tag him (@${me}).`;
+  } else if (drama?.primary || ((state.bio?.text || state.persona || state.lifeHub?.calibrated || state.keyMemory?.length) && (state.editions?.length || 0) % 3 === 1)) {
+    slot12 = `off-pitch life & fan/tabloid gossip: talk about his personal background, personality traits, hometown roots, lifestyle, sponsors, or people around him from FACTS.persona, FACTS.biography, FACTS.off_pitch_hub, FACTS.media_spotlight, and MEMORY.key_memory — playful gossip, scrutiny, or curiosity, without inventing fake scandals or unlisted people. Tag him (@${me}).`;
   }
   add(fresh('fan', club), slot12);
   return slots;

@@ -763,7 +763,8 @@ table { width: 100%; border-collapse: collapse; }
 .gz .gz-modal-who { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; margin-top: 1.1rem; color: var(--ink-3); font-size: 13px; }
 .gz-modal-who .gz-avatar { width: 26px; height: 26px; font-size: 9.5px /* hors échelle */; }
 .gz-modal-who b { color: var(--ink); font-weight: 600; }
-.gz-modal-who span:not(.gz-avatar)::before { content: "• "; }
+.gz-modal-who span:not(.gz-avatar):not(.gz-beat-chip)::before { content: "• "; }
+.gz .gz-beat-chip { display: inline-flex; align-items: center; margin-left: auto; padding: 2px 8px; border-radius: var(--r-s); background: var(--surface-2); color: var(--ink-2); font-size: 11px; font-weight: 600; }
 .gz-answer { display: block; width: 100%; min-height: 130px; padding: 12px 14px; border: 1px solid var(--line-2); border-radius: var(--r-l); background: var(--surface); color: var(--ink); font: 15px/1.55 var(--f-sans); resize: vertical; }
 .gz-answer:focus { border-color: var(--tv-accent); outline: 2px solid color-mix(in srgb, var(--tv-accent) 28%, transparent); outline-offset: 1px; }
 .gz-answer:disabled { opacity: .5; }
@@ -4473,4 +4474,18 @@ html, body { height: 100%; overflow: hidden; background: var(--sh-back); }
 .club-alias-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-s); background: var(--surface-2); }
 .club-alias-meta { flex: 1; min-width: 170px; }
 .club-alias-in { flex: 1; min-width: 180px; }
+.ml-drama-list { display: grid; gap: 8px; }
+.ml-drama-item { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-m); background: var(--surface-2); }
+.ml-drama-item.heat-3 { border-color: var(--loss); background: var(--loss-soft); }
+.ml-drama-item.heat-2 { border-color: var(--gold); }
+.ml-drama-item b { font-size: 14px; font-weight: 700; }
+.ml-drama-item p { margin: 0; }
+.ml-drama-head { display: flex; align-items: center; gap: 6px; }
+.ml-drama-heat { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--ink-2); }
+.ml-mem-body { display: grid; gap: 10px; padding-top: 8px; }
+.ml-mem-sec { display: grid; gap: 6px; }
+.ml-mem-sec h4 { margin: 0; font-size: 12px; font-weight: 700; color: var(--ink-2); }
+.ml-mem-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.ml-mem-list li { display: grid; gap: 2px; padding: 6px 8px; border-radius: var(--r-s); background: var(--surface-2); font-size: 12px; }
+.ml-mem-list small { color: var(--ink-3); font-size: 11px; }
 

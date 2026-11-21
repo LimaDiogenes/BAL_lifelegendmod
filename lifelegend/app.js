@@ -2638,13 +2638,23 @@ function paintPressModal() {
   const q = view.pressIn ? p.questions?.[at] : null;
   const m = (s.fixtures || []).find((f) => f.id === p.matchId);
   const side = (team) => `<span class="gz-sb-team">${gzCrest(team, ' gz-crest--sb')}<em>${esc(team)}</em></span>`;
+  const focusMap = {
+    match: () => tr('Match'),
+    tactics: () => tr('Tactique'),
+    drama: () => tr('Drame'),
+    persona: () => tr('Personnalité'),
+    off_pitch: () => tr('Hors terrain'),
+    quote: () => tr('Citation'),
+    fans: () => tr('Supporters'),
+  };
+  const focusLabel = q?.focus && focusMap[q.focus] ? focusMap[q.focus]() : '';
   const head = `<button class="gz-modal-x" data-press-close aria-label="${tr('Revenir plus tard')}" title="${tr('Revenir plus tard')}">${hi('xmark')}</button>
     <span class="gz-modal-label">${tr('Conférence de presse · après-match')}</span>`;
   let body;
   if (q) {
     body = `${head}<p class="gz-modal-match">${esc(p.match)}</p>
       <div class="gz-modal-progress"><span>${tr('Question {n} sur {total}', { n: at + 1, total })}</span><div class="gz-modal-bar">${p.questions.map((_, k) => `<i class="${k <= at ? 'on' : ''}"></i>`).join('')}</div></div>
-      <p class="gz-modal-who"><span class="gz-avatar">${gzInitials(q.journalist)}</span><b>${esc(q.journalist)}</b>${q.outlet ? `<span>${esc(q.outlet)}</span>` : ''}</p>
+      <p class="gz-modal-who"><span class="gz-avatar">${gzInitials(q.journalist)}</span><b>${esc(q.journalist)}</b>${q.outlet ? `<span>${esc(q.outlet)}</span>` : ''}${focusLabel ? `<span class="gz-beat-chip">${esc(focusLabel)}</span>` : ''}</p>
       <h2 id="gz-modal-title">${esc(q.question)}</h2>
       <textarea class="gz-answer" data-i="${at}" placeholder="${tr('Ta réponse…')}"${drafts.noComment[at] ? ' disabled' : ''}>${esc(drafts.press[at] || '')}</textarea>
       <div class="gz-answer-tools">${micHtml(at, drafts.noComment[at])}<label class="gz-check"><input type="checkbox" data-nc="${at}"${drafts.noComment[at] ? ' checked' : ''}> ${tr('Pas de commentaire')}</label>
@@ -2682,7 +2692,7 @@ function paintPressModal() {
   }
   if (skip) {
     skip.onclick = async () => {
-      try { state = await live.skipPress(); closePressModal(); render(); toast(tr('Tu n’es pas venu à la conférence. Personne ne t’en tiendra rigueur.')); } catch (err) { toast(err.message, true); }
+      try { state = await live.skipPress(); closePressModal(); render(); toast(tr('Tu as séché la conférence de presse : les journalistes et Kop vont le remarquer.')); } catch (err) { toast(err.message, true); }
     };
   }
   if (!q) return;
@@ -8598,6 +8608,18 @@ const ML_RHYTHM_LABELS = {
   training: () => tr('Entraînement'),
 };
 
+const ML_DRAMA_KIND_LABELS = {
+  tall_poppy_skeptics: () => tr('Critiques & sceptiques'),
+  brand_vs_football: () => tr('Image & sponsors'),
+  persona_friction: () => tr('Traits & caractère'),
+  divided_loyalties: () => tr('Sélection vs club'),
+  dressing_room_shadow: () => tr('Vestiaire & statut'),
+  roots_backstory_echo: () => tr('Origines & parcours'),
+  media_cold_war: () => tr('Guerre froide médias'),
+  invincible_target: () => tr('Série sous pression'),
+  quote_boomerang: () => tr('Rappel de déclaration'),
+};
+
 function mlAddDays(iso, n) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return '2026-08-01';
   const d = new Date(`${iso}T12:00:00Z`);
@@ -9242,6 +9264,34 @@ function renderMyLife(page) {
   const recentHtml = (hub.recentEvents || []).length
     ? hub.recentEvents.slice(0, 8).map((e) => `<li><span class="fineprint">${esc(shortDate(e.date))}</span><span>${esc(mlFormatRecentEvent(e.text))}</span></li>`).join('')
     : (!recentScenes.length ? `<p class="fineprint">${tr('Aucune activité récente : choisis une action ou avance dans ta saison.')}</p>` : '');
+  const dramaSnap = state.dramaSnapshot || {};
+  const activeArcs = Array.isArray(dramaSnap.activeArcs) ? dramaSnap.activeArcs : [];
+  const spotlightScore = Number.isFinite(dramaSnap.spotlight) ? dramaSnap.spotlight : (state.tone?.spotlight ?? 25);
+  const dramaHtml = `<div class="card ml-card ml-drama-card">
+    <div class="ml-sec-head">
+      <h3>${tr('Projecteur médiatique & drames actifs')}</h3>
+      <span class="priv-badge${spotlightScore >= 60 ? ' on' : ''}">${esc(tr('Projecteur {n}/100', { n: spotlightScore }))}</span>
+    </div>
+    ${activeArcs.length
+      ? `<div class="ml-drama-list">${activeArcs.map((arc) => {
+          const kindFn = ML_DRAMA_KIND_LABELS[arc.kind];
+          const kLabel = kindFn ? kindFn() : arc.kind;
+          return `<div class="ml-drama-item heat-${Math.min(3, Math.max(1, Number(arc.heat) || 1))}">
+            <div class="ml-drama-head">
+              <span class="priv-tag">${esc(kLabel)}</span>
+              <span class="ml-drama-heat">${esc(tr('Intensité {h}/3', { h: arc.heat || 1 }))}</span>
+              <button type="button" class="per-p-del" data-dismiss-arc="${esc(arc.id)}" title="${esc(tr('Classer ce sujet'))}" aria-label="${esc(tr('Classer ce sujet'))}">×</button>
+            </div>
+            <b>${esc(arc.headline || '')}</b>
+            <p class="fineprint">${esc(arc.angle || '')}</p>
+          </div>`;
+        }).join('')}</div>`
+      : `<p class="fineprint">${tr('Aucun arc médiatique actif pour le moment : synchronise après un match ou une conférence pour alimenter le projecteur.')}</p>`}
+    <details class="ml-custom-box" id="ml-mem-box">
+      <summary>${esc(tr('Mémoire locale des médias & citations ({q} citation(s), {n} question(s))', { q: dramaSnap.quoteCount || 0, n: dramaSnap.questionCount || 0 }))}</summary>
+      <div class="ml-mem-body" id="ml-mem-body"><p class="fineprint">${tr('Chargement de la mémoire…')}</p></div>
+    </details>
+  </div>`;
   const showcaseAssets = (hub.assets || []).filter((a) => a.category !== 'charity').slice(-6).reverse();
   const showcaseHtml = showcaseAssets.length ? `<div class="card ml-card">
     <div class="ml-sec-head"><h3>${tr('Patrimoine & style de vie actuels')}</h3><button type="button" class="btn" id="ml-go-shop">${tr('Lifestyle & Patrimoine')}</button></div>
@@ -9473,6 +9523,7 @@ function renderMyLife(page) {
     <section class="ml-panel"${tab === 'overview' ? '' : ' hidden'}>
       ${dilemmaHtml}
       ${saveEffectsHtml}
+      ${dramaHtml}
       <div class="card ml-card">
         <h3>${tr('Relations & Réputation')}</h3>
         <div class="ml-meters">${metersHtml}</div>
@@ -9936,6 +9987,50 @@ function renderMyLife(page) {
     $('#ml-sfx-dismiss').onclick = async () => {
       try { state = await live.dismissLifeSaveEffects(); render(); } catch (err) { toast(err.message, true); }
     };
+  }
+  page.querySelectorAll('[data-dismiss-arc]').forEach((b) => {
+    b.onclick = async () => {
+      try {
+        const res = await live.dismissNarrativeArc(b.dataset.dismissArc);
+        if (res?.state) state = res.state;
+        toast(tr('Sujet classé.'));
+        render();
+      } catch (err) { toast(err.message, true); }
+    };
+  });
+  const memBox = $('#ml-mem-box');
+  if (memBox) {
+    const paintMem = async () => {
+      const body = $('#ml-mem-body');
+      if (!body || !memBox.open) return;
+      try {
+        const mem = await live.getNarrativeMemory();
+        const quotes = [...(mem?.quoteVault || [])].reverse().slice(0, 8);
+        const questions = [...(mem?.pressHistory || []), ...(mem?.interviewHistory || [])]
+          .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+          .slice(0, 10);
+        const qHtml = quotes.length
+          ? `<ul class="ml-mem-list">${quotes.map((q) => `<li><small>${esc(shortDate(q.date))}${q.to ? ` · ${esc(q.to)}` : ''}</small><span>« ${esc(q.text)} »</span></li>`).join('')}</ul>`
+          : `<p class="fineprint">${tr('Aucune déclaration archivée : réponds en conférence de presse, en interview ou sur Kop.')}</p>`;
+        const hHtml = questions.length
+          ? `<ul class="ml-mem-list">${questions.map((x) => `<li><small>${esc(shortDate(x.date))}${x.journalist ? ` · ${esc(x.journalist)}` : ''}</small><span>${esc(x.question)}</span></li>`).join('')}</ul>`
+          : `<p class="fineprint">${tr('Aucune question mémorisée pour l’instant.')}</p>`;
+        body.innerHTML = `<div class="ml-mem-sec"><h4>${tr('Déclarations archivées')}</h4>${qHtml}</div>
+          <div class="ml-mem-sec"><h4>${tr('Dernières questions mémorisées')}</h4>${hHtml}</div>
+          ${questions.length ? `<button type="button" class="btn" id="ml-mem-clear">${tr('Vider l’historique des questions')}</button>` : ''}`;
+        if ($('#ml-mem-clear')) {
+          $('#ml-mem-clear').onclick = async () => {
+            try {
+              const res = await live.clearNarrativeQuestions();
+              if (res?.state) state = res.state;
+              toast(tr('Historique des questions effacé (citations et arcs conservés).'));
+              render();
+            } catch (err) { toast(err.message, true); }
+          };
+        }
+      } catch (err) { body.innerHTML = `<p class="fineprint">${esc(err.message)}</p>`; }
+    };
+    memBox.ontoggle = paintMem;
   }
 }
 

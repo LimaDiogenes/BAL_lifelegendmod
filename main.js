@@ -420,6 +420,9 @@ app.whenReady().then(() => {
   });
   handle('calendar:addEvent', (payload) => world.calendarAddEvent({ store, payload }));
   handle('calendar:removeEvent', (id) => world.calendarRemoveEvent({ store, id }));
+  handle('narrative:get', () => world.getNarrativeMemory({ store }));
+  handle('narrative:dismissArc', (arcId) => world.dismissNarrativeArc({ store, arcId }));
+  handle('narrative:clearQuestions', () => world.clearNarrativeQuestions({ store }));
   handle('career:aliasClub', ({ clubRef, name }) => world.saveClubAlias({ store, clubRef, name }));
   handle('paper:save', (payload) => world.saveNationalPaper({ store, payload }));
   handle('lifeEvents:save', (events) => world.saveLifeEvents({ store, events }));

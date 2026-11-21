@@ -23,6 +23,14 @@ const { fanVote } = require('./fanVote');
 const { chantDue, keepChant } = require('./chant');
 const { interviewDue, markInterview } = require('./interview');
 const { clubAuthor: clubAuthorOf } = require('./clubPosts');
+const {
+  loadNarrativeMemory, saveNarrativeMemory,
+  recordPressQuestions, recordPressAnswers, recordPressSkip,
+  recordInterviewQuestions, recordInterviewAnswer, recordKopQuote,
+  notePersonaBeat, markQuoteUsed, dismissDramaArc, clearMediaQuestionHistory,
+  findRepeatedQuestions, pickPressBeats, narrativeMemoryForAi,
+} = require('./narrativeMemory');
+const { tickDramaArcs, dramaFacts, spotlightLevel } = require('./dramaEngine');
 
 function privacyMapFor(state, settings) {
   const pending = settings?.pendingBio?.savePath === settings?.savePath ? settings.pendingBio : null;
@@ -332,6 +340,54 @@ const setLifeMedia = ({ store, payload = {} }) => withCareer(store, (state) => {
   }
 });
 
+function syncDramaSnapshot(state, mem, snapshot = state?.snapshot) {
+  if (!state || !mem) return null;
+  const active = (mem.dramaArcs || []).filter((a) => a.status === 'active');
+  state.dramaSnapshot = {
+    spotlight: spotlightLevel({ state, snapshot, mem }),
+    activeArcs: active.map(({ id, kind, heat, headline, angle, startedOn, editionsActive }) => ({
+      id, kind, heat, headline, angle, startedOn, editionsActive,
+    })),
+    quoteCount: (mem.quoteVault || []).length,
+    questionCount: (mem.pressHistory || []).length + (mem.interviewHistory || []).length,
+    pressSkips: mem.pressBehavior?.skips || 0,
+    recentQuotes: (mem.quoteVault || []).slice(-4).reverse().map(({ id, date, source, text }) => ({ id, date, source, text })),
+  };
+  return state.dramaSnapshot;
+}
+
+function getNarrativeMemory({ store }) {
+  const state = store.activeCareer();
+  if (!state) return null;
+  const mem = loadNarrativeMemory(store, state.careerId);
+  return {
+    ...mem,
+    spotlight: state.dramaSnapshot?.spotlight ?? spotlightLevel({ state, snapshot: state.snapshot, mem }),
+  };
+}
+
+function dismissNarrativeArc({ store, arcId }) {
+  const state = store.activeCareer();
+  if (!state) throw new Error('Synchronise ta sauvegarde une première fois.');
+  const mem = loadNarrativeMemory(store, state.careerId);
+  dismissDramaArc(mem, arcId, state.snapshot?.gameDate || '');
+  syncDramaSnapshot(state, mem, state.snapshot);
+  saveNarrativeMemory(store, state.careerId, mem);
+  store.saveCareer(state);
+  return { state, memory: { ...mem, spotlight: state.dramaSnapshot?.spotlight ?? 0 } };
+}
+
+function clearNarrativeQuestions({ store }) {
+  const state = store.activeCareer();
+  if (!state) throw new Error('Synchronise ta sauvegarde une première fois.');
+  const mem = loadNarrativeMemory(store, state.careerId);
+  clearMediaQuestionHistory(mem);
+  syncDramaSnapshot(state, mem, state.snapshot);
+  saveNarrativeMemory(store, state.careerId, mem);
+  store.saveCareer(state);
+  return { state, memory: { ...mem, spotlight: state.dramaSnapshot?.spotlight ?? 0 } };
+}
+
 function noteKeyMemory(state, line, gameDate = '') {
   const text = String(line || '').replace(/\s+/g, ' ').trim().slice(0, 120);
   if (!text) return;
@@ -566,8 +622,8 @@ function kopInteractionFacts(state) {
   return facts;
 }
 
-function pressFacts(state) {
-  const { agent, club_accounts, competition_accounts, football_elsewhere, other_leagues, ...facts } = factsFor(state.snapshot, state.profile, state);
+function pressFacts(state, narrativeMem = null) {
+  const { agent, club_accounts, competition_accounts, football_elsewhere, other_leagues, ...facts } = factsFor(state.snapshot, state.profile, state, narrativeMem);
   return facts;
 }
 
@@ -579,10 +635,11 @@ function mailReplyFacts(state, role) {
 
 // Heure du coup d'envoi en clair (« aujourd'hui à 14h (l'après-midi) ») : l'IA écrivait « ce soir » pour un match à 14h.
 const kickoffLabel = (m, today) => (Number.isInteger(m.hour) && m.hour >= 0 && m.hour <= 23 ? `${m.date === today ? 'aujourd’hui' : m.date} à ${m.hour}h (${m.hour < 12 ? 'le matin' : m.hour < 18 ? 'l’après-midi' : 'le soir'})` : undefined);
-function factsFor(s, profile = {}, state = null) {
+function factsFor(s, profile = {}, state = null, narrativeMem = null) {
   const derby = derbyFacts(s); // un derby dans les 7 jours, ou tout juste joué (src/world/derby.js)
   // Un ancien club dans les 7 jours, ou tout juste affronté (src/world/reunion.js) ; ses anciens coéquipiers encore là-bas.
   const reunion = state ? reunionFacts(state, s, { squadOf: (ref) => state.formerSquads?.[ref] ?? null }) : null;
+  const mediaSpotlight = dramaFacts(narrativeMem || (state?.dramaSnapshot ? { dramaArcs: state.dramaSnapshot.activeArcs || [] } : null));
   return {
     game_date: s.gameDate,
     season: s.season,
@@ -644,6 +701,7 @@ function factsFor(s, profile = {}, state = null) {
     club_accounts: clubAccountsFacts(s),
     competition_accounts: state?.competitionAccounts || [],
     fan_mood: state?.fanMood || { level: 0, target: null, reasons: [] },
+    ...(mediaSpotlight ? { media_spotlight: mediaSpotlight } : {}),
     football_elsewhere: state?.footballElsewhere || undefined,
   };
 }
@@ -1018,7 +1076,7 @@ function loadState(store) {
   return state;
 }
 
-function memoryFor(state) {
+function memoryFor(state, narrativeMem = null) {
   const quoting = (p) => { const q = quotedIn(state, p); return q ? { handle: q.target.author.handle, text: String(q.target.text || '').slice(0, 200) } : undefined; };
   const thread = (p) => ((p.replies || []).length ? (p.replies || []).slice(-2).map((r) => ({ handle: r.author.handle, text: String(r.text || '').slice(0, 140) })) : undefined);
   const posts = state.feed.filter((p) => p.author.isMe).slice(-12).map((p) => ({ id: p.id, date: p.gameDate, text: p.text, quoting: quoting(p), last_replies: thread(p), ...(p.poll ? { poll_result: p.poll.options.map((o, k) => `${o}: ${p.poll.percents[k]}%`).join(', ') } : {}) }));
@@ -1029,6 +1087,7 @@ function memoryFor(state) {
   }));
   const chantNow = state.chants?.[state.snapshot?.club?.ref];
   const accounts = Object.entries(state.accounts).slice(-24).map(([handle, a]) => ({ handle, name: a.name, type: a.type, bio: a.bio || undefined, style: styleOf(handle, a.type) }));
+  const mediaMem = narrativeMem ? narrativeMemoryForAi(narrativeMem) : undefined;
   return {
     handle: state.profile.handle,
     followers: state.profile.followers,
@@ -1041,6 +1100,7 @@ function memoryFor(state) {
     local_paper: state.localPaper ? { name: state.localPaper.name, city: state.localPaper.city, ...(state.localPaper.renameDue ? { rename: true } : {}) } : null,
     my_life: state.myLife,
     ...(state.keyMemory?.length ? { key_memory: state.keyMemory.slice(-10) } : {}),
+    ...(mediaMem ? { media_memory: mediaMem } : {}),
     storylines: state.storylines,
     previous_headlines: state.editions.slice(-2).flatMap((e) => [...e.national, ...e.local].map((a) => a.headline)),
     // Objets des derniers mails reçus : les nouveaux ne les reprennent pas (Mails ne doit pas radoter).
@@ -1330,8 +1390,8 @@ function renameInventedAccounts(state, out, { voices = [], people = [], clubLeag
 // Discussions sous les posts (règle 30) : une requête à part après l'édition, pour de vrais échanges entre comptes
 // (réponses à d'autres réponses, désaccords, l'auteur qui réplique), sous les posts de l'édition et quelques posts
 // récents. Les faits envoyés sont réduits à ce qui sert à discuter (pas les autres compétitions, le mercato, l'agent).
-const DISCUSSION_FACTS = ['game_date', 'season', 'player', 'club', 'league', 'league_table', 'last_match', 'next_match', 'club_recent_results', 'league_last_round', 'league_next_round', 'scorer_race_in_league', 'season_stats', 'club_squad', 'coaches', 'fan_mood', 'club_accounts', 'competition_accounts', 'national_team', 'football_elsewhere'];
-async function writeDiscussions({ state, settings, apiKey, facts, fresh, people, gameDate, onProgress, clubLeague = null, privacyMap = null }) {
+const DISCUSSION_FACTS = ['game_date', 'season', 'player', 'club', 'league', 'league_table', 'last_match', 'next_match', 'club_recent_results', 'league_last_round', 'league_next_round', 'scorer_race_in_league', 'season_stats', 'club_squad', 'coaches', 'fan_mood', 'media_spotlight', 'persona', 'off_pitch_hub', 'club_accounts', 'competition_accounts', 'national_team', 'football_elsewhere'];
+async function writeDiscussions({ state, settings, apiKey, facts, fresh, people, gameDate, onProgress, clubLeague = null, privacyMap = null, narrativeMem = null }) {
   const brief = (p, isNew) => {
     const q = quotedIn(state, p);
     return {
@@ -1344,7 +1404,7 @@ async function writeDiscussions({ state, settings, apiKey, facts, fresh, people,
   const older = state.feed.filter((p) => !freshIds.has(p.id) && !p.official);
   const posts = [...fresh.map((p) => brief(p, true)), ...[...older.filter((p) => p.author.isMe).slice(-3), ...older.filter((p) => !p.author.isMe).slice(-6)].map((p) => brief(p, false))];
   if (!posts.length) return { threads: 0, messages: 0 };
-  const memory = memoryFor(state);
+  const memory = memoryFor(state, narrativeMem);
   const voices = state.snapshot ? newVoices({ state, snapshot: state.snapshot, clubLeague }).map((v) => ({ ...v, style: styleIn(v.style, settings.language) })) : [];
   // De courts échanges entre comptes : le modèle léger suffit et ménage le quota du modèle choisi.
   const out = parseJson(await complete(settings, apiKey, {
@@ -1353,7 +1413,7 @@ async function writeDiscussions({ state, settings, apiKey, facts, fresh, people,
     system: prompts.discussionsSystem(settings),
     user: prompts.discussionsUser({
       facts: Object.fromEntries(DISCUSSION_FACTS.filter((k) => facts[k] !== undefined).map((k) => [k, facts[k]])),
-      memory: { handle: memory.handle, my_profile: memory.my_profile, accounts: memory.accounts, storylines: memory.storylines },
+      memory: { handle: memory.handle, my_profile: memory.my_profile, accounts: memory.accounts, storylines: memory.storylines, ...(memory.media_memory ? { media_memory: memory.media_memory } : {}) },
       posts,
       newVoices: voices,
       settings: withTone(settings, state),
@@ -1607,6 +1667,7 @@ function worldPaperPlan(desk, press, kind, n, angles, showName = 'Le Débrief') 
   for (const f of filler) { if (count() >= PAPER_MAX || (opinion.length && count() >= PAPER_MIN)) break; if (!opinion.some((o) => o.kind === f.kind)) opinion.push(f); }
   // La une : son article quand il fait l'actualité, sinon la plus grosse compétition.
   const plan = big ? [...club, ...world, ...awards, ...opinion] : poty ? [...awards, ...club, ...world, ...opinion] : !world.length ? [...club, ...world, ...awards, ...opinion] : [world[0], ...club, ...world.slice(1), ...awards, ...opinion];
+  injectDramaAngle(plan, angles.drama);
   const sizes = plan.map((p, i) => {
     if (i === 0) return 'long';
     if (['conférence de presse', 'portrait', AWARDS_KIND, 'récit du match'].includes(p.kind)) return 'medium';
@@ -1614,6 +1675,16 @@ function worldPaperPlan(desk, press, kind, n, angles, showName = 'Le Débrief') 
     return n % 2 ? 'medium' : 'short';
   });
   return plan.slice(0, PAPER_MAX).map((p, i) => ({ ...p, lead: p.lead || leadOf(p.kind, n), size: sizes[i] }));
+}
+
+function injectDramaAngle(plan, drama) {
+  if (!drama?.primary) return plan;
+  const target = plan.find((p) => p.focus === 'club' && ['débat télévisé', 'regard de consultant', 'édito'].includes(p.kind))
+    || plan.find((p) => p.focus === 'lead');
+  if (target) {
+    target.subject += `; weave in the active spotlight debate (${drama.primary.headline}: ${drama.primary.angle}, FACTS.media_spotlight)`;
+  }
+  return plan;
 }
 
 function transversalePlan(desk, press, kind, editions = 0, angles = {}, showName = 'Le Débrief') {
@@ -1682,6 +1753,7 @@ function transversalePlan(desk, press, kind, editions = 0, angles = {}, showName
     while (at > 0 && (plan[at].focus === 'lead' || plan[at].kind === 'conférence de presse' || (plan[at].focus === 'competition' && wide === 1))) at--;
     if (at > 0 && plan.length >= 4) plan[at] = portrait; else plan.push(portrait);
   }
+  if (!/^SEASON REVIEW/.test(kind)) injectDramaAngle(plan, angles.drama);
   // Longueurs : récit long seulement quand l'édition compte, chronique d'ouverture longue ; conférence, analyse, portrait
   // et débat en format moyen ; le reste alterne brève et moyen d'une édition à l'autre. Une seule longue lecture.
   const sizes = plan.map((p) => {
@@ -1765,7 +1837,7 @@ function articleProblems(article, earlier = [], { nextOpponent = null, coverage 
 // et des brèves), chacun dans la voix de sa plume.
 // Les articles de l'édition de La Transversale, décidés par le code avant toute requête (auteur, genre, sujet,
 // format) : l'édition (blog, Kop, mails) les connaît ainsi pendant qu'ils s'écrivent.
-function transversaleOutline({ state, snapshot, rawChanges, kind, world = null, rumor = null, paper = null }) {
+function transversaleOutline({ state, snapshot, rawChanges, kind, world = null, rumor = null, paper = null, drama = null }) {
   const resolvedPaper = paper || paperForState(state, snapshot);
   const desk = transversaleDesk(state, resolvedPaper);
   const press = pressMoments(snapshot, rawChanges);
@@ -1778,7 +1850,7 @@ function transversaleOutline({ state, snapshot, rawChanges, kind, world = null, 
   const own = debate && league ? [{ competition: league, focus: 'competition', topics: [{ subject: debate, teams: [] }] }] : [];
   const names = [...(world?.competitions || []).map((c) => c.competition), league].filter(Boolean);
   const rival = rivalInNews(state.rival, n, 5) ? state.rival : null;
-  const angles = { rival, derby: derbyFacts(snapshot), reunion: reunionFacts(state, snapshot), rumour: rumor && rumor.reliability !== 'unverified' ? rumor : null, tour: tourAngle(snapshot, press, stories), story: longViewAngle(stories, n), debate, big: bigEdition(snapshot, rawChanges, press), world: stories2.length || world?.awards?.player_of_the_year ? { stories: stories2, debates: worldDebates(world, { recent: recentDebates(state, names, league), extra: own }), awards: world.awards || null } : null };
+  const angles = { rival, derby: derbyFacts(snapshot), reunion: reunionFacts(state, snapshot), rumour: rumor && rumor.reliability !== 'unverified' ? rumor : null, tour: tourAngle(snapshot, press, stories), story: longViewAngle(stories, n), debate, drama: drama?.primary ? drama : null, big: bigEdition(snapshot, rawChanges, press), world: stories2.length || world?.awards?.player_of_the_year ? { stories: stories2, debates: worldDebates(world, { recent: recentDebates(state, names, league), extra: own }), awards: world.awards || null } : null };
   return { desk, press, paper: resolvedPaper, plan: transversalePlan(desk, press, kind, n, angles, resolvedPaper?.showName || 'Le Débrief') };
 }
 
@@ -1814,11 +1886,11 @@ function worldTeams(w) {
   return out;
 }
 
-async function writeTransversale({ state, settings, apiKey, facts, changes, rawChanges, snapshot, kind, outline = transversaleOutline({ state, snapshot, rawChanges, kind }), onProgress, log = () => {}, clock = null, privacyMap = null, paper = null }) {
+async function writeTransversale({ state, settings, apiKey, facts, changes, rawChanges, snapshot, kind, outline = transversaleOutline({ state, snapshot, rawChanges, kind }), onProgress, log = () => {}, clock = null, privacyMap = null, paper = null, narrativeMem = null }) {
   const { desk, press, plan } = outline;
   const resolvedPaper = paper || outline.paper || paperForState(state, snapshot);
   const pName = resolvedPaper?.name || PAPER_NAME;
-  const m = memoryFor(state);
+  const m = memoryFor(state, narrativeMem);
   const memory = {
     writers: { national_columnist: state.writers.national_columnist, local_beat_writer: state.writers.local_beat_writer || null },
     storylines: m.storylines,
@@ -1827,6 +1899,7 @@ async function writeTransversale({ state, settings, apiKey, facts, changes, rawC
     user_on_record: m.user_on_record,
     open_promises: m.open_promises,
     my_life: m.my_life,
+    ...(m.media_memory ? { media_memory: m.media_memory } : {}),
   };
   const out = parseJson(await complete(settings, apiKey, {
     privacyMap,
@@ -2009,6 +2082,7 @@ async function syncInner({ store, settings, log, t }) {
   const careerId = careerIdOf(snapshot);
   const state = store.loadCareer(careerId) || newCareerState(snapshot);
   store.setActiveCareer(careerId);
+  const narrativeMem = loadNarrativeMemory(store, careerId);
   // Biographie écrite dans la fenêtre de configuration, avant que la carrière existe : elle nourrit sa première édition.
   if (!state.snapshot && settings.pendingBio?.savePath === settings.savePath) {
     setBio(state, settings.pendingBio.text, settings.pendingBio.kind);
@@ -2146,8 +2220,11 @@ async function syncInner({ store, settings, log, t }) {
   const settled = resolvePromises(state, snapshot, settings.language);
   // Humeur des supporters : recalculée quand il y a de nouveaux matchs ou une promesse jugée, sinon gardée.
   if (changes.newResults.length || settled.some((p) => p.status === 'broken')) state.fanMood = fanMood({ changes, snapshot, settled, previous: state.fanMood });
-  // Pression médiatique et enjeu du moment (taille du club, Europe, course au titre, maintien, coupe, mercato, crise).
-  state.tone = toneContext({ snapshot, state });
+  // Arcs dramatiques et mise sous le projecteur (src/world/dramaEngine.js) + mémoire narrative locale.
+  const drama = tickDramaArcs({ state, snapshot, changes, mem: narrativeMem });
+  syncDramaSnapshot(state, narrativeMem, snapshot);
+  // Pression médiatique et enjeu du moment (taille du club, Europe, course au titre, maintien, coupe, mercato, crise, drame).
+  state.tone = toneContext({ snapshot, state, dramaArcs: drama.active });
   for (const p of settled) {
     log(`Promesse « ${p.label} » : ${{ kept: 'tenue ✅', broken: 'non tenue ❌', void: 'annulée (il n’a pas joué)', expired: 'expirée' }[p.status]}.`);
     if (p.status === 'kept' || p.status === 'broken') {
@@ -2253,8 +2330,10 @@ async function syncInner({ store, settings, log, t }) {
   const scoresNow = () => { if (scoresData === undefined) scoresData = buildScores(career, { nameOf, clubRef: snapshot.club.ref, leagueId: snapshot.league.id, playerId: career.player.id, today: snapshot.gameDate }); return scoresData; };
   const saveAll = () => {
     state.syncedSnapshot = state.snapshot;
+    syncDramaSnapshot(state, narrativeMem, state.snapshot);
     try { refreshEmblems({ state, career: rawCareer, settings, store }); } catch (err) { log(`Écussons : lecture impossible (${err.message}).`); }
     recordNotoriety(state, state.snapshot); // abonnés, valeur, image dans la presse du jour (courbes de Scoreline)
+    saveNarrativeMemory(store, careerId, narrativeMem);
     store.saveCareer(state);
     if (settings.pendingBio) store.saveSettings({ pendingBio: null });
     if (!calIngest.deferred) store.saveAux(careerId, 'clubs', clubs);
@@ -2341,7 +2420,7 @@ async function syncInner({ store, settings, log, t }) {
   try { const r = updateRival(state, scoresNow(), snapshot, { since: state.editions.at(-1)?.gameDate || null }); if (r?.moment === 'new') log(`Rival de la saison : ${r.name} (${r.team}).`); } catch (err) { log(`Rival : ${err.message}`); }
   // L'effectif actuel de ses anciens clubs (scores du jeu) : ses anciens coéquipiers encore là-bas (src/world/reunion.js).
   try { const sc = scoresNow(); state.formerSquads = Object.fromEntries(formerClubs(state, snapshot).filter((c) => c.ref && sc?.teams?.[c.ref]).map((c) => [c.ref, sc.teams[c.ref][4] || []])); } catch { /* sans scores : pas d'anciens coéquipiers */ }
-  const facts = factsFor(snapshot, state.profile, state);
+  const facts = factsFor(snapshot, state.profile, state, narrativeMem);
   if (vote) facts.fan_vote = { month: vote.month, winner: vote.winner, percent: vote.percent, options: vote.post.poll.options, won_by_him: vote.won };
   // Les offres reçues restent privées : seul l'agent les connaît (FACTS.agent.offers_received).
   // La prolongation est publique (annonce du club), son salaire ne l'est pas.
@@ -2406,7 +2485,7 @@ async function syncInner({ store, settings, log, t }) {
   const paper = paperForState(state, snapshot);
   state.nationalPaper = paper;
   const nationalFacts = { ...transversaleFacts(facts, snapshot), ...(world ? { world_football: world } : {}), ...(rumorFacts ? { transfer_rumour: rumorFacts } : {}) };
-  const outline = transversaleOutline({ state, snapshot, rawChanges: changes, kind, world, rumor: rumorFacts, paper });
+  const outline = transversaleOutline({ state, snapshot, rawChanges: changes, kind, world, rumor: rumorFacts, paper, drama });
   // Kop parle aussi du football mondial (demande d'un testeur) : un résumé court, dans la requête de l'édition, et trois
   // places dans le plan des posts. Gardé jusqu'à la synchro suivante pour les réponses à ses posts.
   const elsewhere = worldBrief(world);
@@ -2414,11 +2493,11 @@ async function syncInner({ store, settings, log, t }) {
   const potmTake = world?.awards?.player_of_the_year ? "the game's player of the year (FACTS.football_elsewhere.player_of_the_year): deserved or not, who should have won? Take a side"
     : world?.awards?.player_of_the_month?.overall ? 'the player of the month (FACTS.football_elsewhere.player_of_the_month): deserved or not? Take a side' : null;
   const kopWorld = world && (worldStories(world).length || potmTake) ? { stories: worldStories(world), take: potmTake || worldDebate(world, state.editions.length)?.replace(/FACTS\.world_football/g, 'FACTS.football_elsewhere') || null } : null;
-  const memory = memoryFor(state);
+  const memory = memoryFor(state, narrativeMem);
   memory.transversale_today = outline.plan.map(({ author, kind: genre, subject }) => ({ author, kind: genre, subject }));
   if (chapterEvents.length) memory.pantheon = chapterTitles(state);
   // Le groupe du jour (qui parle, le sujet de vestiaire, le coach) : décidé par le code, dans la même requête.
-  if (huddle) memory.huddle = { ...huddleContext(huddle, snapshot), ...huddleToday(huddle, { last: changes.newResults.at(-1) || null, elsewhere: Boolean(facts.football_elsewhere), edition: state.editions.length, date: snapshot.gameDate, rival: state.rival, derby: facts.derby || null, reunion: facts.reunion || null, squadIntel: snapshot.squadIntel || null }) };
+  if (huddle) memory.huddle = { ...huddleContext(huddle, snapshot), ...huddleToday(huddle, { last: changes.newResults.at(-1) || null, elsewhere: Boolean(facts.football_elsewhere), edition: state.editions.length, date: snapshot.gameDate, rival: state.rival, derby: facts.derby || null, reunion: facts.reunion || null, squadIntel: snapshot.squadIntel || null, drama }) };
   // Le groupe de la sélection ne parle que quand sa sélection fait l'actualité.
   const ntHuddle = changes.callUp || changes.ntResults.length || changes.ntMatchday ? nationalHuddle(state, snapshot) : null;
   if (ntHuddle) memory.huddle_national = huddleContext(ntHuddle);
@@ -2426,7 +2505,7 @@ async function syncInner({ store, settings, log, t }) {
   // Le championnat de chaque club du monde (scores du jeu) : les nouveaux comptes prennent les prénoms de son pays.
   let clubLeague = null;
   try { clubLeague = clubLeagues(scoresNow()); } catch { /* sans scores : les prénoms du championnat du joueur */ }
-  const plan = tribunePlan({ state, snapshot, changes: { ...changes, life_events: aiChanges.life_events }, handle: state.profile.handle, world: kopWorld, clubLeague, rival: rivalInNews(state.rival, state.editions.length, 3) ? state.rival : null, derby: facts.derby || null, reunion: facts.reunion || null }).map((p) => ({ ...p, style: styleIn(p.style, settings.language) }));
+  const plan = tribunePlan({ state, snapshot, changes: { ...changes, life_events: aiChanges.life_events }, handle: state.profile.handle, world: kopWorld, clubLeague, rival: rivalInNews(state.rival, state.editions.length, 3) ? state.rival : null, derby: facts.derby || null, reunion: facts.reunion || null, drama }).map((p) => ({ ...p, style: styleIn(p.style, settings.language) }));
   // Rumeur mercato (src/world/rumors.js) : un créneau de plus, tenu par l'insider de son niveau de fiabilité.
   const rumorHandle = rumor && INSIDERS[rumor.tier].handle.toLowerCase();
   if (rumor) plan.push(rumorSlot(rumor, { known: Object.keys(state.accounts || {}).some((h) => h.toLowerCase() === rumorHandle), language: settings.language }));
@@ -2439,7 +2518,7 @@ async function syncInner({ store, settings, log, t }) {
     t.ai(p?.phase === 'writing' ? { ...p, chars: chars.national + chars.edition } : p);
   };
   const nationalTrack = clock.track(), editionTrack = clock.track();
-  const writeNational = () => writeTransversale({ state, settings, apiKey, facts: nationalFacts, changes: aiChanges, rawChanges: changes, snapshot, kind, outline, onProgress: progressOf(nationalTrack, 'national'), log, clock: nationalTrack, privacyMap, paper });
+  const writeNational = () => writeTransversale({ state, settings, apiKey, facts: nationalFacts, changes: aiChanges, rawChanges: changes, snapshot, kind, outline, onProgress: progressOf(nationalTrack, 'national'), log, clock: nationalTrack, privacyMap, paper, narrativeMem });
   const [nationalDone, editionDone] = await Promise.allSettled([
     writeNational().catch((err) => {
       nationalTrack.lap(`${paper.name} (échec)`);
@@ -2565,7 +2644,7 @@ async function syncInner({ store, settings, log, t }) {
       t.step(settings.factCheck !== false ? 3 : 2);
       // Les posts officiels les plus suivis (résultats, programme, classement) ont aussi leurs réactions, comme sur X.
       const top = officialNow.filter((o) => o.importance >= 30).sort((a, b) => b.importance - a.importance).slice(0, 6).map((o) => o.item);
-      const r = await writeDiscussions({ state, settings, apiKey, facts, fresh: [...published, ...top], people, gameDate: snapshot.gameDate, onProgress: t.ai, clubLeague, privacyMap });
+      const r = await writeDiscussions({ state, settings, apiKey, facts, fresh: [...published, ...top], people, gameDate: snapshot.gameDate, onProgress: t.ai, clubLeague, privacyMap, narrativeMem });
       log(r.messages || r.quotes ? `Kop : ${r.messages} messages sous ${r.threads} posts${r.quotes ? `, ${r.quotes} citation${r.quotes > 1 ? 's' : ''}` : ''}.` : 'Kop : pas de nouvelle discussion.');
       if (r.renamed) log(`Kop : ${r.renamed} compte(s) inventé(s) par l'IA renommé(s).`);
     } catch (err) {
@@ -2584,9 +2663,16 @@ async function syncInner({ store, settings, log, t }) {
         agentWrote = true;
       }
       state.mail.push({ id: newId(), from: e.role === 'agent' ? agent.name : e.from, role: e.role, club: snapshot.club.name, subject: e.subject, unread: true, closed: false, messages: [{ who: 'them', body: e.body, gameDate: snapshot.gameDate }] });
+      if (e.role === 'journalist' && e.subject && (!interview || e.from !== interview.journalist)) {
+        recordInterviewQuestions(narrativeMem, { gameDate: snapshot.gameDate, journalist: e.from, questions: [e.subject], source: 'mail' });
+      }
     }
   }
-  if (interview) { const asked = markInterview(state, interview, out.interview_questions, snapshot.gameDate); log(asked ? `Interview : ${interview.journalist} te demande un entretien (Mails).` : 'Interview : pas de demande cette fois.'); }
+  if (interview) {
+    const asked = markInterview(state, interview, out.interview_questions, snapshot.gameDate);
+    if (asked) recordInterviewQuestions(narrativeMem, { gameDate: snapshot.gameDate, journalist: interview.journalist, questions: asked.interview.questions, source: 'interview' });
+    log(asked ? `Interview : ${interview.journalist} te demande un entretien (Mails).` : 'Interview : pas de demande cette fois.');
+  }
   // « Le brief du matin » de La Transversale, si le joueur s'y est abonné sur le site du journal (composé sans IA).
   if (settings.transversaleBrief) state.mail.push(transversaleBrief(snapshot, state.editions.at(-1), settings.language, paper));
   if (state.sponsor) state.sponsor.news = null;
@@ -2719,6 +2805,11 @@ async function postInner({ store, settings, text, quote, poll = null, t }) {
     mine.promiseId = promise.id;
   }
   recordConduct(state, out.conduct, { source: 'kop', text, gameDate: state.snapshot.gameDate });
+  const narrativeMem = loadNarrativeMemory(store, state.careerId);
+  if (recordKopQuote(narrativeMem, { gameDate: state.snapshot.gameDate, text })) {
+    syncDramaSnapshot(state, narrativeMem, state.snapshot);
+    saveNarrativeMemory(store, state.careerId, narrativeMem);
+  }
   // Ses posts : une bonne part de ses abonnés, davantage juste après un match où il a marqué ou fait une passe décisive.
   const last = state.snapshot.last;
   const hot = last?.me && (last.me.goals || last.me.assists) && last.date >= daysBefore(state.snapshot.gameDate, 2);
@@ -2931,10 +3022,11 @@ async function replyMailInner({ store, settings, threadId, text, t }) {
 async function interviewReply({ store, settings, state, thread, text, apiKey, t, privacyMap = null }) {
   const gameDate = state.snapshot.gameDate;
   const paper = state.nationalPaper || paperForState(state);
+  const narrativeMem = loadNarrativeMemory(store, state.careerId);
   const out = parseJson(await complete(settings, apiKey, {
     privacyMap: privacyMap || privacyMapFor(state, settings),
     system: prompts.interviewSystem(settings, paper),
-    user: prompts.interviewUser({ facts: pressFacts(state), memory: memoryFor(state), interview: { journalist: thread.from, questions: thread.interview.questions, answers: text } }),
+    user: prompts.interviewUser({ facts: pressFacts(state, narrativeMem), memory: memoryFor(state, narrativeMem), interview: { journalist: thread.from, questions: thread.interview.questions, answers: text } }),
     maxTokens: 6000,
     onProgress: t.ai,
   }));
@@ -2958,6 +3050,9 @@ async function interviewReply({ store, settings, state, thread, text, apiKey, t,
   thread.interview.status = 'done';
   thread.interview.article = article.headline;
   recordConduct(state, out.conduct, { source: 'press', text, gameDate });
+  recordInterviewAnswer(narrativeMem, { gameDate, journalist: thread.from, text });
+  syncDramaSnapshot(state, narrativeMem, state.snapshot);
+  saveNarrativeMemory(store, state.careerId, narrativeMem);
   store.saveCareer(state);
   return state;
 }
@@ -3145,7 +3240,10 @@ async function askQuestions({ store, settings, state, press, t }) {
   const panel = pressPanel(state, press);
   const blogger = state.writers?.local_beat_writer, blog = state.localPaper?.name;
   const privacyMap = privacyMapFor(state, settings);
-  const user = prompts.pressQuestionsUser({ facts: pressFacts(state), memory: memoryFor(state), conference: { match: pressMatch(state, press), panel } });
+  const narrativeMem = loadNarrativeMemory(store, state.careerId);
+  const activeArcs = (narrativeMem.dramaArcs || []).filter((a) => a.status === 'active');
+  const beats = pickPressBeats({ state, snapshot: state.snapshot, mem: narrativeMem, activeArcs, match: pressMatch(state, press) });
+  const user = prompts.pressQuestionsUser({ facts: pressFacts(state, narrativeMem), memory: memoryFor(state, narrativeMem), conference: { match: pressMatch(state, press), panel, beats } });
   const ask = async (extra = '') => parseJson(await complete(settings, store.getKey(settings.provider), {
     privacyMap,
     system: prompts.pressQuestionsSystem(settings),
@@ -3155,21 +3253,49 @@ async function askQuestions({ store, settings, state, press, t }) {
   }));
   let out = await ask();
   const tutoie = (o) => (o.questions || []).some((q, i) => panel[i]?.address === 'formal' && TUTOIE.test(q?.question || ''));
-  if ((settings.language || 'fr') === 'fr' && tutoie(out)) out = await ask('\nREMINDER: your previous questions said "tu" to him. Every journalist with address "formal" must say "vous".');
+  const repeats = findRepeatedQuestions((out.questions || []).map((q) => q?.question || ''), narrativeMem);
+  const frTutoie = (settings.language || 'fr') === 'fr' && tutoie(out);
+  if (frTutoie || repeats.length) {
+    const reminders = [];
+    if (frTutoie) reminders.push('your previous questions said "tu" to him. Every journalist with address "formal" must say "vous"');
+    if (repeats.length) reminders.push(`question(s) #${repeats.map((r) => r.index + 1).join(', #')} repeated earlier questions (${repeats.map((r) => `"${r.matchedQuestion}"`).join('; ')}). Rewrite ALL 3 questions to be 100% fresh, distinct, and faithful to CONFERENCE.beats`);
+    out = await ask(`\nREMINDER: ${reminders.join('. Also, ')}.`);
+  }
   press.questions = (out.questions || []).slice(0, 3).map((q, i) => {
     const seat = panel[i] || {};
+    const b = beats[i] || {};
     // Le fauteuil libre va à un confrère : jamais au blog des supporters, sauf quand c'est son tour.
     const other = q?.journalist && q.journalist !== blogger ? q.journalist : 'Journaliste';
-    return { journalist: seat.name || other, outlet: seat.outlet || (q?.outlet && q.outlet !== blog ? q.outlet : ''), question: q?.question || '' };
+    return {
+      journalist: seat.name || other,
+      outlet: seat.outlet || (q?.outlet && q.outlet !== blog ? q.outlet : ''),
+      question: q?.question || '',
+      ...(b.beat ? { beat: b.beat } : {}),
+      ...(b.focusLabel ? { focus: b.focusLabel } : {}),
+    };
   }).filter((q) => q.question);
   if (!press.questions.length) throw new Error('Les journalistes n’ont posé aucune question. Réessaie.');
+  const qDate = press.gameDate || state.snapshot?.gameDate || '';
+  recordPressQuestions(narrativeMem, { gameDate: qDate, matchId: press.matchId, questions: press.questions });
+  for (const b of beats) {
+    if (b.personaKey) notePersonaBeat(narrativeMem, b.personaKey, qDate);
+    if (b.quoteId) markQuoteUsed(narrativeMem, b.quoteId, qDate);
+  }
+  syncDramaSnapshot(state, narrativeMem, state.snapshot);
+  saveNarrativeMemory(store, state.careerId, narrativeMem);
   press.status = 'open';
   store.saveCareer(state);
 }
 
 function skipPress({ store }) {
   const state = store.activeCareer();
-  activePress(state).status = 'skipped';
+  const press = activePress(state);
+  press.status = 'skipped';
+  const narrativeMem = loadNarrativeMemory(store, state.careerId);
+  recordPressSkip(narrativeMem, { gameDate: state.snapshot?.gameDate || press.gameDate || '' });
+  tickDramaArcs({ state, snapshot: state.snapshot, changes: { newResults: [] }, mem: narrativeMem });
+  syncDramaSnapshot(state, narrativeMem, state.snapshot);
+  saveNarrativeMemory(store, state.careerId, narrativeMem);
   store.saveCareer(state);
   return state;
 }
@@ -3204,14 +3330,15 @@ async function submitPressInner({ store, settings, answers, log, t }) {
   const exchanges = press.questions.map((q, i) => ({ ...q, answer: String(answers?.[i] || '').trim() || null }));
   const apiKey = store.getKey(settings.provider);
   const privacyMap = privacyMapFor(state, settings);
-  const facts = { ...pressFacts(state), press_conference: exchanges };
+  const narrativeMem = loadNarrativeMemory(store, state.careerId);
+  const facts = { ...pressFacts(state, narrativeMem), press_conference: exchanges };
   const paper = state.nationalPaper || paperForState(state);
   const desk = transversaleDesk(state, paper);
   const reporter = desk.find((w) => w.role === 'Reporter') || desk[0];
   const out = parseJson(await complete(settings, apiKey, {
     privacyMap,
     system: prompts.pressWriteupSystem(settings, paper),
-    user: prompts.pressWriteupUser({ facts, memory: memoryFor(state), conference: { match: pressMatch(state, press), exchanges, writer: reporter.name } }),
+    user: prompts.pressWriteupUser({ facts, memory: memoryFor(state, narrativeMem), conference: { match: pressMatch(state, press), exchanges, writer: reporter.name } }),
     maxTokens: 6000,
     log,
     onProgress: t.ai,
@@ -3259,6 +3386,13 @@ async function submitPressInner({ store, settings, answers, log, t }) {
     if (promise) state.promises = [...(state.promises || []), promise];
   }
   recordConduct(state, out.conduct, { source: 'press', text: allAnswers, gameDate: press.gameDate || state.snapshot.gameDate });
+  const pDate = press.gameDate || state.snapshot?.gameDate || '';
+  recordPressAnswers(narrativeMem, { gameDate: pDate, matchId: press.matchId, exchanges });
+  if (exchanges.filter((x) => !x.answer).length >= 2) {
+    tickDramaArcs({ state, snapshot: state.snapshot, changes: { newResults: [] }, mem: narrativeMem });
+  }
+  syncDramaSnapshot(state, narrativeMem, state.snapshot);
+  saveNarrativeMemory(store, state.careerId, narrativeMem);
   press.answers = exchanges.map((x) => x.answer);
   press.status = 'done';
   press.article = article.headline;
@@ -3696,4 +3830,4 @@ function loadScores({ store }) {
   return state ? store.loadAux(state.careerId, 'scores') : null;
 }
 
-module.exports = { savePrivacy, savePersona, saveNationalPaper, saveClubAlias, saveLifeEvents, calibrateCareerLifeHub, buyLifeAsset, sellLifeAsset, addLifeSponsor, updateLifeSponsor, removeLifeSponsor, answerLifeSponsorOffer, completeLifeObligation, doLifeAction, answerLifeDilemma, setLifeMedia, ensureLifeHub, calendarAdvance, calendarSetMode, calendarAddEvent, calendarRemoveEvent, applyLifeSaveEffects, dismissLifeSaveEffects, noteKeyMemory, privacyMapFor, previewMasked, getAiAuditLog, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };
+module.exports = { getNarrativeMemory, dismissNarrativeArc, clearNarrativeQuestions, savePrivacy, savePersona, saveNationalPaper, saveClubAlias, saveLifeEvents, calibrateCareerLifeHub, buyLifeAsset, sellLifeAsset, addLifeSponsor, updateLifeSponsor, removeLifeSponsor, answerLifeSponsorOffer, completeLifeObligation, doLifeAction, answerLifeDilemma, setLifeMedia, ensureLifeHub, calendarAdvance, calendarSetMode, calendarAddEvent, calendarRemoveEvent, applyLifeSaveEffects, dismissLifeSaveEffects, noteKeyMemory, privacyMapFor, previewMasked, getAiAuditLog, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };
