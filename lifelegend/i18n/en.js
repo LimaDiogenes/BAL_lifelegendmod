@@ -2472,4 +2472,7 @@ window.LL_I18N.en = {
   "Asie": "Asia",
   "Amérique du Nord": "North America",
   "Monde": "World",
+  "Sauvegarde chargée : {m} match(s) et {d} jour(s) en attente dans Ma vie › Calendrier.": "Save loaded: {m} match(es) and {d} day(s) queued in My Life › Calendar.",
+  "Sauvegarde chargée : {d} jour(s) à avancer dans Ma vie › Calendrier.": "Save loaded: {d} day(s) ready to advance in My Life › Calendar.",
+  "Ouvrir le calendrier": "Open calendar",
 };

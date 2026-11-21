@@ -8644,12 +8644,19 @@ function mlCalendarBounds(s, cal) {
   const rawSim = cal?.simDate || s?.gameDate || saveDate;
   const simDate = (rawSim && saveDate && rawSim > saveDate) ? saveDate : rawSim;
   const pending = cal?.pendingMatches?.length || 0;
+  const pendingIds = new Set((cal?.pendingMatches || []).map((m) => String(m.id)));
+  const fullSnap = state?.saveSnapshot || s;
   const candidates = [
-    ...(s?.fixtures || []),
-    ...(s?.nationalTeam?.fixtures || []),
-    s?.next,
-    s?.nationalTeam?.next,
-  ].filter((f) => f && !f.played && /^\d{4}-\d{2}-\d{2}$/.test(f.date || '') && (!simDate || f.date >= simDate));
+    ...(fullSnap?.fixtures || []),
+    ...(fullSnap?.nationalTeam?.fixtures || []),
+    fullSnap?.next,
+    fullSnap?.nationalTeam?.next,
+  ].filter((f) => {
+    if (!f || f.played || !/^\d{4}-\d{2}-\d{2}$/.test(f.date || '')) return false;
+    const id = String(f.id ?? `${f.date}|${f.home}|${f.away}`);
+    if (pendingIds.has(id)) return false;
+    return !simDate || f.date >= simDate;
+  });
   candidates.sort((a, b) => a.date.localeCompare(b.date));
   const nextMatch = candidates[0] || null;
   if (simDate && saveDate && (simDate < saveDate || pending > 0)) {
@@ -9835,21 +9842,32 @@ function renderMyLife(page) {
       if (curSim) { view.mlCalMonth = curSim.slice(0, 7); view.mlCalDay = curSim; }
       toast(nextMode === 'full' ? tr('Mode Calendrier Complet activé.') : tr('Mode Calendrier Basique activé.'));
       render();
+      if (nextMode === 'basic' && res?.revealedCount > 0) await doSync();
     } catch (err) { toast(err.message, true); }
   };
   if ($('#ml-cal-mode-toggle')) $('#ml-cal-mode-toggle').onclick = () => toggleCalMode(calModeFull ? 'basic' : 'full');
   if ($('#ml-cal-enable-full')) $('#ml-cal-enable-full').onclick = () => toggleCalMode('full');
   page.querySelectorAll('[data-caladv]').forEach((b) => {
     b.onclick = async () => {
+      const advBtns = [...page.querySelectorAll('[data-caladv]')];
+      advBtns.forEach((btn) => { btn.disabled = true; });
       try {
         const res = await live.advanceCalendar(b.dataset.caladv);
         if (res?.state) state = res.state;
         const step = res?.step;
         if (step?.nextDate) { view.mlCalMonth = step.nextDate.slice(0, 7); view.mlCalDay = step.nextDate; }
-        if (step?.revealedFixtures?.length) toast(tr('{n} match(s) révélé(s).', { n: step.revealedFixtures.length }));
-        else if (step?.days) toast(tr('{n} journée(s) avancée(s).', { n: step.days }));
         render();
-      } catch (err) { toast(err.message, true); }
+        if (step?.needsPublish) {
+          await doSync();
+        } else if (step?.revealedFixtures?.length) {
+          toast(tr('{n} match(s) révélé(s).', { n: step.revealedFixtures.length }));
+        } else if (step?.days) {
+          toast(tr('{n} journée(s) avancée(s).', { n: step.days }));
+        }
+      } catch (err) {
+        advBtns.forEach((btn) => { btn.disabled = !canAdvance; });
+        toast(err.message, true);
+      }
     };
   });
   if ($('#ml-cal-prev')) {
@@ -10528,6 +10546,21 @@ function softRender() {
   render();
 }
 
+function showDeferredCalendarToast(ls) {
+  const m = ls?.queuedCount || 0;
+  const d = ls?.daysBehind || 0;
+  const msg = m > 0
+    ? tr('Sauvegarde chargée : {m} match(s) et {d} jour(s) en attente dans Ma vie › Calendrier.', { m, d })
+    : tr('Sauvegarde chargée : {d} jour(s) à avancer dans Ma vie › Calendrier.', { d });
+  toast(msg, false, {
+    label: tr('Ouvrir le calendrier'),
+    run: () => {
+      view.mlTab = 'calendar';
+      go('mylife');
+    },
+  });
+}
+
 // Synchro lancée par LifeLegend quand le jeu a réécrit la sauvegarde.
 function onAutoSync(ev) {
   if (ev.phase === 'detected') {
@@ -10575,6 +10608,7 @@ function onAutoSync(ev) {
   const published = state.lastSync?.published;
   if (published) toast(tr('Nouvelle édition publiée (synchro automatique).'));
   else if (state.lastSync?.backup) toast(tr('Quota de l’IA épuisé pour aujourd’hui : synchro de secours. Scores, Scoreline, posts officiels et mails sont à jour ; les articles sortiront à la prochaine synchro.'), true);
+  else if (state.lastSync?.deferredCalendar) showDeferredCalendarToast(state.lastSync);
   else if (state.lastSync?.agentMail) toast(tr('Offre de contrat reçue : ton agent t’a écrit dans Mails.'));
   box.classList.add('hidden');
 }
@@ -10604,6 +10638,8 @@ async function doSync({ bioAsked = false } = {}) {
     render();
     if (state.lastSync?.backup) {
       toast(tr('Quota de l’IA épuisé pour aujourd’hui : synchro de secours. Scores, Scoreline, posts officiels et mails sont à jour ; les articles sortiront à la prochaine synchro.'), true);
+    } else if (state.lastSync?.deferredCalendar) {
+      showDeferredCalendarToast(state.lastSync);
     } else if (state.lastSync?.published === false) {
       toast(state.lastSync.agentMail ? tr('Offre de contrat reçue : ton agent t’a écrit dans Mails.') : tr('Synchro terminée : rien de nouveau depuis la dernière fois.'));
     } else {

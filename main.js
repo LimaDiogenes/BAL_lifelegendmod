@@ -109,7 +109,14 @@ function runSync() {
       win?.webContents.send('sync:auto', { phase: 'switched-save', savePath: switchedTo.path, info: switchedTo, settings: store.publicSettings() });
     }
     syncing = world.sync({ store, settings, log: syncLine, progress })
-      .then((state) => { logActivity(`synchro : terminée (${state.lastSync?.published ? 'édition publiée' : state.lastSync?.agentMail ? 'mail de l’agent' : 'rien de nouveau'}, ${state.lastSync?.gameDate})${state.lastSync?.durations ? ` · ${state.lastSync.durations}` : ''}`); return state; },
+      .then((state) => {
+        const status = state.lastSync?.published ? 'édition publiée'
+          : state.lastSync?.deferredCalendar ? `calendrier différé (${state.lastSync.queuedCount || 0} match(s), ${state.lastSync.daysBehind || 0} j)`
+            : state.lastSync?.agentMail ? 'mail de l’agent'
+              : 'rien de nouveau';
+        logActivity(`synchro : terminée (${status}, ${state.lastSync?.gameDate})${state.lastSync?.durations ? ` · ${state.lastSync.durations}` : ''}`);
+        return state;
+      },
         (err) => { logActivity(`synchro : erreur (${err.message})`); throw err; })
       .finally(() => { syncing = null; });
   }
@@ -409,7 +416,7 @@ app.whenReady().then(() => {
   handle('calendar:advance', ({ mode, targetDate } = {}) => world.calendarAdvance({ store, mode, targetDate }));
   handle('calendar:setMode', ({ mode }) => {
     const r = world.calendarSetMode({ store, mode });
-    return { state: r.state, settings: store.publicSettings() };
+    return { state: r.state, settings: store.publicSettings(), flushed: r.flushed, revealedCount: r.revealedCount };
   });
   handle('calendar:addEvent', (payload) => world.calendarAddEvent({ store, payload }));
   handle('calendar:removeEvent', (id) => world.calendarRemoveEvent({ store, id }));

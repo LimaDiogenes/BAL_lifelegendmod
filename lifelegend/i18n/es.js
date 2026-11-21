@@ -2472,4 +2472,7 @@ window.LL_I18N.es = {
   "Asie": "Asia",
   "Amérique du Nord": "Norteamérica",
   "Monde": "Mundo",
+  "Sauvegarde chargée : {m} match(s) et {d} jour(s) en attente dans Ma vie › Calendrier.": "Partida cargada: {m} partido(s) y {d} día(s) en espera en Mi vida › Calendario.",
+  "Sauvegarde chargée : {d} jour(s) à avancer dans Ma vie › Calendrier.": "Partida cargada: {d} día(s) por avanzar en Mi vida › Calendario.",
+  "Ouvrir le calendrier": "Abrir calendario",
 };

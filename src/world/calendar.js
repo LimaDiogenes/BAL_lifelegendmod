@@ -138,7 +138,7 @@ function calendarBounds(state) {
 }
 
 // Renvoie un instantané garanti sans spoilers jusqu'à `simDate`.
-function buildVisibleSnapshot(realSnapshot, simDate, pendingMatches = []) {
+function buildVisibleSnapshot(realSnapshot, simDate, pendingMatches = [], baseSnap = null) {
   if (!realSnapshot || !isIsoDate(simDate)) return realSnapshot;
   if (!realSnapshot.gameDate || simDate === realSnapshot.gameDate) return realSnapshot;
   if (simDate > realSnapshot.gameDate) {
@@ -149,12 +149,20 @@ function buildVisibleSnapshot(realSnapshot, simDate, pendingMatches = []) {
   const club = maskFixturesAndNext(realSnapshot.fixtures || [], simDate, pendingIds);
   const stats = computeStatsFromFixtures(club.masked);
 
+  const keepBasePoint = Boolean(baseSnap && baseSnap.club?.ref === realSnapshot.club?.ref);
+
   let nationalTeam = realSnapshot.nationalTeam || null;
   if (nationalTeam && Array.isArray(nationalTeam.fixtures)) {
     const nt = maskFixturesAndNext(nationalTeam.fixtures, simDate, pendingIds);
     const ntStats = computeStatsFromFixtures(nt.masked).total;
+    const baseNt = keepBasePoint && baseSnap.nationalTeam
+      && ((nationalTeam.ref && baseSnap.nationalTeam.ref === nationalTeam.ref)
+        || (!nationalTeam.ref && baseSnap.nationalTeam.name === nationalTeam.name))
+      ? baseSnap.nationalTeam
+      : null;
     nationalTeam = {
       ...nationalTeam,
+      ...(baseNt ? { inSquad: baseNt.inSquad, squad: baseNt.squad } : {}),
       fixtures: nt.masked,
       stats: ntStats,
       last: nt.last,
@@ -166,6 +174,15 @@ function buildVisibleSnapshot(realSnapshot, simDate, pendingMatches = []) {
 
   return {
     ...realSnapshot,
+    ...(keepBasePoint ? {
+      player: baseSnap.player ?? realSnapshot.player,
+      table: baseSnap.table ?? realSnapshot.table,
+      roundResults: baseSnap.roundResults ?? realSnapshot.roundResults,
+      nextRound: baseSnap.nextRound ?? realSnapshot.nextRound,
+      competitions: baseSnap.competitions ?? realSnapshot.competitions,
+      otherLeagues: baseSnap.otherLeagues ?? realSnapshot.otherLeagues,
+      trophies: baseSnap.trophies ?? realSnapshot.trophies,
+    } : {}),
     gameDate: simDate,
     fixtures: club.masked,
     last: club.last,
@@ -177,6 +194,29 @@ function buildVisibleSnapshot(realSnapshot, simDate, pendingMatches = []) {
   };
 }
 
+function maskCareerForDate(career, simDate, pendingMatches = []) {
+  if (!career || !isIsoDate(simDate)) return career;
+  if (career.save?.date && simDate >= career.save.date && (!pendingMatches || !pendingMatches.length)) {
+    return career;
+  }
+  const pendingIds = new Set((pendingMatches || []).map((m) => String(m.id)));
+  const matches = (career.matches || []).map((m) => {
+    const id = `${m.date}|${m.home?.ref}|${m.away?.ref}|${m.competitionId}`;
+    if (m.played && ((m.date && m.date > simDate) || pendingIds.has(id))) {
+      return { ...m, played: false, score: null, homeLineup: [], awayLineup: [] };
+    }
+    return m;
+  });
+  const keepEvents = career.lastMatchEvents
+    && matches.some((m) => m.key === career.lastMatchEvents.matchKey && m.played);
+  return {
+    ...career,
+    save: career.save ? { ...career.save, date: simDate } : { date: simDate },
+    matches,
+    lastMatchEvents: keepEvents ? career.lastMatchEvents : null,
+  };
+}
+
 function extractQueueItems(realSnapshot, simDate, alreadyRevealedIds) {
   const revealed = new Set((alreadyRevealedIds || []).map(String));
   const items = [];
@@ -184,7 +224,7 @@ function extractQueueItems(realSnapshot, simDate, alreadyRevealedIds) {
     for (const f of list || []) {
       if (!f?.played || !f.date) continue;
       const id = String(f.id ?? `${f.date}|${f.home}|${f.away}`);
-      if (f.date >= simDate && f.date <= realSnapshot.gameDate && !revealed.has(id)) {
+      if (f.date > simDate && f.date <= realSnapshot.gameDate && !revealed.has(id)) {
         items.push({ id, date: f.date, home: f.home, away: f.away, competition: f.competition || '', kind });
       }
     }
@@ -211,10 +251,14 @@ function ingestSyncCalendar(state, realSnapshot, { calendarMode = 'basic' } = {}
     return { deferred: false, queuedCount: 0, visibleSnapshot: realSnapshot };
   }
 
-  // Mode calendrier complet et le jeu a avancé au-delà de simDate : on met la suite en file d'attente sans spoiler !
+  // Mode calendrier complet et le jeu a avancé au-delà de simDate : on garde simDate intact et on met la suite en file d'attente sans spoiler.
+  const reachedIds = [...(realSnapshot.fixtures || []), ...(realSnapshot.nationalTeam?.fixtures || [])]
+    .filter((f) => f?.played && f.date && f.date <= cal.simDate)
+    .map((f) => String(f.id ?? `${f.date}|${f.home}|${f.away}`));
+  cal.revealedMatchIds = [...new Set([...cal.revealedMatchIds, ...reachedIds])].slice(-MAX_REVEALED_IDS);
   state.saveSnapshot = realSnapshot;
   cal.pendingMatches = extractQueueItems(realSnapshot, cal.simDate, cal.revealedMatchIds);
-  const visible = buildVisibleSnapshot(realSnapshot, cal.simDate, cal.pendingMatches);
+  const visible = buildVisibleSnapshot(realSnapshot, cal.simDate, cal.pendingMatches, state.syncedSnapshot || state.snapshot);
   state.snapshot = visible;
   return { deferred: true, queuedCount: cal.pendingMatches.length, visibleSnapshot: visible };
 }
@@ -289,7 +333,7 @@ function advanceCalendar(state, { mode = 'day', targetDate = null } = {}) {
   }
 
   cal.simDate = nextDate;
-  const visible = buildVisibleSnapshot(fullSnap, nextDate, cal.pendingMatches);
+  const visible = buildVisibleSnapshot(fullSnap, nextDate, cal.pendingMatches, state.syncedSnapshot || state.snapshot);
   state.snapshot = visible;
 
   const reachedSaveDate = Boolean(cal.saveDate && nextDate === cal.saveDate && cal.pendingMatches.length === 0);
@@ -418,6 +462,7 @@ module.exports = {
   ensureCalendar,
   calendarBounds,
   buildVisibleSnapshot,
+  maskCareerForDate,
   ingestSyncCalendar,
   advanceCalendar,
   flushCalendarToSave,

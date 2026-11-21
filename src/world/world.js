@@ -13,7 +13,7 @@ const { normalizePersona, personaFacts } = require('./persona');
 const { ASSET_CATALOG, estimateStartProfile, ensureLifeHub, calibrateLifeHub: applyCalibration, lifeHubTick, buyAsset, sellAsset, addSponsor, updateSponsor, removeSponsor, answerSponsorOffer, completeObligation, performAction, answerDilemma, lifeHubFacts, clearPendingSaveEffects } = require('./lifeHub');
 const { saveLifeImage, removeLifeImage } = require('./lifeMedia');
 const { buildSceneAndReactions } = require('./lifeScenes');
-const { ensureCalendar, buildVisibleSnapshot, ingestSyncCalendar, advanceCalendar, flushCalendarToSave, addCustomCalendarEvent, removeCustomCalendarEvent } = require('./calendar');
+const { ensureCalendar, buildVisibleSnapshot, maskCareerForDate, ingestSyncCalendar, advanceCalendar, flushCalendarToSave, addCustomCalendarEvent, removeCustomCalendarEvent, daysBetween } = require('./calendar');
 const { applyLifeEffects } = require('../save/lifeEffectsWrite');
 const { DEFAULT_PAPER_ID, normalizePaperOverride, resolveNationalPaper, paperDeskTemplate } = require('./nationalPaper');
 const { updateRival, rivalFacts, rivalInNews } = require('./rival');
@@ -1997,7 +1997,8 @@ async function syncInner({ store, settings, log, t }) {
   t.ai = (p) => { if (p?.model) clock.seen(p.model); hud(p); };
   if (!settings.savePath) throw new Error('Choisis ta sauvegarde BL00000000 dans les réglages.');
   log('Lecture et déchiffrement de la sauvegarde…');
-  const career = readSave(settings.savePath);
+  const rawCareer = readSave(settings.savePath);
+  let career = rawCareer;
   logSaveLayout(career.layout, log);
   const db = playerDb(career, settings, log);
   const names = db?.names || null;
@@ -2026,30 +2027,48 @@ async function syncInner({ store, settings, log, t }) {
 
   const lastEditionDate = state.editions?.at(-1)?.gameDate || null;
   const baseSnap = state.syncedSnapshot
-    || ((state.lastSync?.deferredCalendar || (lastEditionDate && state.snapshot?.gameDate && state.snapshot.gameDate > lastEditionDate))
+    || ((lastEditionDate && (state.lastSync?.deferredCalendar || (state.snapshot?.gameDate && state.snapshot.gameDate > lastEditionDate)))
       ? buildVisibleSnapshot(snapshot, lastEditionDate)
       : state.snapshot);
   const prevGameDate = baseSnap?.gameDate || null;
   const calIngest = ingestSyncCalendar(state, snapshot, { calendarMode: settings.calendarMode || 'basic' });
   let activeSnap = snapshot;
   if (calIngest.deferred) {
-    if (calIngest.queuedCount <= 1) {
-      flushCalendarToSave(state);
-      activeSnap = snapshot;
-    } else {
-      if (!diffSnapshots(baseSnap, state.snapshot).newResults.length && state.calendar?.pendingMatches?.length) {
-        advanceCalendar(state, { mode: 'target', targetDate: state.calendar.pendingMatches[0].date });
-      }
-      activeSnap = state.snapshot || calIngest.visibleSnapshot || snapshot;
-      if (state.calendar?.pendingMatches?.length) {
-        log(`Calendrier complet : publication jusqu’au ${activeSnap.gameDate} (${state.calendar.pendingMatches.length} autre(s) match(s) en attente dans Ma vie › Calendrier).`);
-      }
+    const activeCareer = maskCareerForDate(rawCareer, state.calendar.simDate, state.calendar.pendingMatches);
+    activeSnap = buildVisibleSnapshot(buildSnapshot(activeCareer, db || names), state.calendar.simDate, state.calendar.pendingMatches);
+    if (baseSnap && baseSnap.club?.ref === activeSnap.club?.ref) {
+      activeSnap = {
+        ...activeSnap,
+        player: baseSnap.player,
+        ...(activeSnap.nationalTeam && baseSnap.nationalTeam && activeSnap.nationalTeam.ref === baseSnap.nationalTeam.ref
+          ? { nationalTeam: { ...activeSnap.nationalTeam, inSquad: baseSnap.nationalTeam.inSquad, squad: baseSnap.nationalTeam.squad } }
+          : {}),
+      };
     }
+    career = activeCareer;
   }
   snapshot = activeSnap;
   const changes = diffSnapshots(baseSnap, snapshot);
   // Mise à l'écart écrite par LifeLegend (src/world/conduct.js) : ces jours d'indisponibilité ne sont pas une blessure.
   if (sanctionActive(state, snapshot.gameDate) || endedRecently(state, snapshot.gameDate)) { changes.injury = null; changes.recovered = false; }
+  if (calIngest.deferred && !hasNews(changes) && !state.missedResults?.length) {
+    const daysBehind = Math.max(0, daysBetween(state.calendar.simDate, state.calendar.saveDate));
+    const queuedCount = state.calendar.pendingMatches?.length || 0;
+    state.snapshot = snapshot;
+    // Garde state.syncedSnapshot intact (baseSnap) pour publier les matchs dès que l'utilisateur avancera jusque-là.
+    try { refreshEmblems({ state, career: rawCareer, settings, store }); } catch (err) { log(`Écussons : lecture impossible (${err.message}).`); }
+    state.lastSync = {
+      published: false,
+      deferredCalendar: true,
+      queuedCount,
+      daysBehind,
+      gameDate: state.calendar.simDate,
+      saveDate: state.calendar.saveDate,
+    };
+    store.saveCareer(state);
+    log(`Calendrier complet : sauvegarde chargée jusqu’au ${state.calendar.saveDate} (${queuedCount} match(s), ${daysBehind} jour(s) à avancer dans Ma vie › Calendrier).`);
+    return state;
+  }
   // Le jeu n'efface pas tout de suite le journal du match précédent : on archive chaque chronologie.
   state.timelines ||= {};
   if (snapshot.lastTimeline) state.timelines[snapshot.lastTimeline.matchId] = snapshot.lastTimeline.goals;
@@ -2150,7 +2169,7 @@ async function syncInner({ store, settings, log, t }) {
   // Mercato : effectifs de tous les clubs comparés à ceux de la synchro précédente.
   const clubs = clubMap(career);
   const previousClubs = store.loadAux(careerId, 'clubs');
-  const transfers = detectTransfers(previousClubs, clubs, career, { clubRef: snapshot.club.ref, leagueId: snapshot.league.id, nameOf, gameDate: snapshot.gameDate });
+  const transfers = calIngest.deferred ? [] : detectTransfers(previousClubs, clubs, career, { clubRef: snapshot.club.ref, leagueId: snapshot.league.id, nameOf, gameDate: snapshot.gameDate });
   state.transfers = [...(state.transfers || []), ...transfers].slice(-300);
   // Influence : jauge, formation du club, et sort des décisions (mercato ouvert, écrites, gardées par le jeu ou non).
   const myFormation = career.teams.get(snapshot.club.ref)?.formation;
@@ -2234,11 +2253,11 @@ async function syncInner({ store, settings, log, t }) {
   const scoresNow = () => { if (scoresData === undefined) scoresData = buildScores(career, { nameOf, clubRef: snapshot.club.ref, leagueId: snapshot.league.id, playerId: career.player.id, today: snapshot.gameDate }); return scoresData; };
   const saveAll = () => {
     state.syncedSnapshot = state.snapshot;
-    try { refreshEmblems({ state, career, settings, store }); } catch (err) { log(`Écussons : lecture impossible (${err.message}).`); }
+    try { refreshEmblems({ state, career: rawCareer, settings, store }); } catch (err) { log(`Écussons : lecture impossible (${err.message}).`); }
     recordNotoriety(state, state.snapshot); // abonnés, valeur, image dans la presse du jour (courbes de Scoreline)
     store.saveCareer(state);
     if (settings.pendingBio) store.saveSettings({ pendingBio: null });
-    store.saveAux(careerId, 'clubs', clubs);
+    if (!calIngest.deferred) store.saveAux(careerId, 'clubs', clubs);
     // Page Influence : formations de la base du jeu, effectif et temps de jeu, standing des clubs, joueurs des clubs.
     try {
       const gameDir = gameDirFor(career, settings);
@@ -2583,7 +2602,15 @@ async function syncInner({ store, settings, log, t }) {
   schedulePress(state, changes);
   delete state.missedResults; // rattrapés par cette édition
   state.snapshot = snapshot;
-  state.lastSync = { published: true, gameDate: snapshot.gameDate };
+  state.lastSync = {
+    published: true,
+    gameDate: snapshot.gameDate,
+    ...(calIngest.deferred ? {
+      saveDate: state.calendar.saveDate,
+      remainingQueued: state.calendar.pendingMatches.length,
+      daysBehind: Math.max(0, daysBetween(state.calendar.simDate, state.calendar.saveDate)),
+    } : {}),
+  };
   // On garde l'historique raisonnable.
   state.feed = state.feed.slice(-400);
   state.interactions = []; // les comptes ont pu y réagir dans cette édition
@@ -3529,16 +3556,24 @@ function calendarAdvance({ store, mode = 'day', targetDate = null }) {
       newId,
     });
   } catch { /* ignore */ }
+  let needsPublish = step.revealedFixtures.length > 0;
+  if (!needsPublish && step.reachedSaveDate && state.syncedSnapshot && state.snapshot) {
+    try {
+      const diff = diffSnapshots(state.syncedSnapshot, state.snapshot);
+      needsPublish = hasNews(diff) || diff.newOffers.length > 0;
+    } catch { /* ignore */ }
+  }
   store.saveCareer(state);
-  return { state, step };
+  return { state, step: { ...step, needsPublish } };
 }
 
 function calendarSetMode({ store, mode }) {
   const clean = mode === 'full' ? 'full' : 'basic';
   const nextSettings = store.saveSettings({ calendarMode: clean });
   const state = store.activeCareer();
+  let fl = null;
   if (state && clean === 'basic') {
-    const fl = flushCalendarToSave(state);
+    fl = flushCalendarToSave(state);
     if (fl.flushed) {
       if (fl.revealedFixtures?.length && state.snapshot) {
         try { archiveSeason(state, state.snapshot); } catch { /* ignore */ }
@@ -3547,7 +3582,7 @@ function calendarSetMode({ store, mode }) {
     }
     store.saveCareer(state);
   }
-  return { settings: nextSettings, state };
+  return { settings: nextSettings, state, flushed: Boolean(fl?.flushed), revealedCount: fl?.revealedFixtures?.length || 0 };
 }
 
 const calendarAddEvent = ({ store, payload }) => withCareer(store, (state) => {

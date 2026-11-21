@@ -20,6 +20,7 @@ const {
   calendarBounds,
   advanceCalendar,
   flushCalendarToSave,
+  maskCareerForDate,
   addCustomCalendarEvent,
   removeCustomCalendarEvent,
   dayRhythm,
@@ -56,7 +57,7 @@ function makeSnap(gameDate, fixtures, { ntFixtures = [], windows = [], lastTimel
   return {
     gameDate,
     season: '2026-2027',
-    player: { id: 42, name: 'Lucas Silva', nationality: 'Brazil', salary: 500000, offers: [], interests: [], profile: { age: 21, marketValue: 2500000 } },
+    player: { id: 42, name: 'Lucas Silva', nationality: 'Brazil', salary: 500000, offers: [], interests: [], profile: { age: 21, marketValue: 2500000, abilities: {} } },
     club: { ref: '10', name: 'Sporting Club', short: 'SPC', stadium: 'Stade Parc' },
     league: { id: 1, name: 'Ligue 1' },
     stats: { total: totals, byCompetition: [] },
@@ -267,6 +268,131 @@ describe('Calendrier complet anti-spoilers (Phase D)', () => {
     assert.equal(queuedAfter.deferred, true);
     assert.equal(queuedAfter.queuedCount, 2);
     assert.equal(state.snapshot.stats.total.apps, 1);
+  });
+
+  it('synchro 4 jours plus tard ne saute pas simDate et avance jour par jour via world.calendarAdvance sans spoiler', () => {
+    const dir = makeTmpDir();
+    const store = new Store(dir);
+    const base = makeSnap('2026-08-01', [fx0, { ...fx1, played: false, score: null, me: null }]);
+    base.player.salary = 500000;
+    base.table = [{ pos: 3, ref: '10', team: 'Sporting Club', p: 1, w: 1, d: 0, l: 0, gf: 2, ga: 0, pts: 3, form: ['W'] }];
+    const state = { careerId: 'c_42', snapshot: base, syncedSnapshot: base };
+    ingestSyncCalendar(state, base, { calendarMode: 'full' });
+
+    const real = makeSnap('2026-08-06', [fx0, fx1]);
+    real.player.salary = 999999; // futur non encore atteint
+    real.table = [{ pos: 1, ref: '10', team: 'Sporting Club', p: 2, w: 2, d: 0, l: 0, gf: 5, ga: 1, pts: 6, form: ['W', 'W'] }];
+    const res = ingestSyncCalendar(state, real, { calendarMode: 'full' });
+
+    assert.equal(res.deferred, true);
+    assert.equal(res.queuedCount, 1);
+    assert.equal(state.calendar.simDate, '2026-08-01');
+    assert.equal(state.calendar.saveDate, '2026-08-06');
+    assert.equal(state.snapshot.gameDate, '2026-08-01');
+    assert.equal(state.snapshot.player.salary, 500000);
+    assert.equal(state.snapshot.table[0].pos, 3);
+    assert.equal(state.snapshot.next.played, false);
+    assert.equal(state.snapshot.next.score, null);
+
+    store.saveCareer(state);
+    store.setActiveCareer('c_42');
+
+    for (const expectedDate of ['2026-08-02', '2026-08-03', '2026-08-04']) {
+      const r = world.calendarAdvance({ store, mode: 'day' });
+      assert.equal(r.step.nextDate, expectedDate);
+      assert.equal(r.step.revealedFixtures.length, 0);
+      assert.equal(r.step.needsPublish, false);
+      assert.equal(r.state.snapshot.next.played, false);
+    }
+
+    const matchDay = world.calendarAdvance({ store, mode: 'day' });
+    assert.equal(matchDay.step.nextDate, '2026-08-05');
+    assert.deepEqual(matchDay.step.revealedFixtures.map((f) => f.id), ['m1']);
+    assert.equal(matchDay.step.needsPublish, true);
+    assert.equal(matchDay.step.reachedSaveDate, false);
+    assert.equal(matchDay.state.snapshot.stats.total.apps, 2);
+    assert.equal(calendarBounds(matchDay.state).canAdvance, true);
+    assert.equal(calendarBounds(matchDay.state).maxDate, '2026-08-06');
+  });
+
+  it('deja sur le jour du match (simDate === match.date), la synchro du lendemain revele le match sans sauter simDate', () => {
+    const preMatch = makeSnap('2026-08-05', [fx0, { ...fx1, played: false, score: null, me: null }]);
+    const state = { snapshot: preMatch, syncedSnapshot: preMatch };
+    ingestSyncCalendar(state, preMatch, { calendarMode: 'full' });
+
+    const nextMorning = makeSnap('2026-08-06', [fx0, fx1]);
+    const res = ingestSyncCalendar(state, nextMorning, { calendarMode: 'full' });
+
+    assert.equal(res.deferred, true);
+    assert.equal(res.queuedCount, 0);
+    assert.equal(state.calendar.simDate, '2026-08-05');
+    assert.equal(state.calendar.saveDate, '2026-08-06');
+    assert.equal(state.snapshot.last.id, 'm1');
+    assert.equal(state.snapshot.fixtures.find((f) => f.id === 'm1').played, true);
+    assert.equal(calendarBounds(state).canAdvance, true);
+    assert.equal(calendarBounds(state).maxDate, '2026-08-06');
+  });
+
+  it('maskCareerForDate masque les matchs posterieurs a simDate et efface lastMatchEvents si masque', () => {
+    const career = {
+      save: { date: '2026-08-10', slot: 'BL00000001' },
+      matches: [
+        { key: 1, date: '2026-08-01', competitionId: 1, home: { ref: '10' }, away: { ref: '20' }, played: true, score: [2, 0], homeLineup: [{ playerId: 42 }], awayLineup: [{ playerId: 99 }] },
+        { key: 2, date: '2026-08-05', competitionId: 1, home: { ref: '30' }, away: { ref: '10' }, played: true, score: [1, 3], homeLineup: [{ playerId: 77 }], awayLineup: [{ playerId: 42 }] },
+      ],
+      lastMatchEvents: { matchKey: 2, goals: [{ minute: 12, scorerId: 42 }] },
+    };
+    const masked = maskCareerForDate(career, '2026-08-03', []);
+    assert.equal(masked.save.date, '2026-08-03');
+    assert.equal(masked.matches[0].played, true);
+    assert.equal(masked.matches[1].played, false);
+    assert.equal(masked.matches[1].score, null);
+    assert.deepEqual(masked.matches[1].homeLineup, []);
+    assert.equal(masked.lastMatchEvents, null);
+
+    // Match le jour meme mais marque comme en file d'attente -> masque aussi
+    const pendingId = '2026-08-01|10|20|1';
+    const maskedPending = maskCareerForDate(career, '2026-08-05', [{ id: pendingId }]);
+    assert.equal(maskedPending.matches[0].played, false);
+    assert.equal(maskedPending.matches[1].played, true);
+    assert.ok(maskedPending.lastMatchEvents);
+  });
+
+  it('world.calendarAdvance signale needsPublish quand reachedSaveDate tombe sur matchday ou nouvelle offre', () => {
+    const dir = makeTmpDir();
+    const store = new Store(dir);
+    const fxUpcoming = { id: 'm1', date: '2026-08-06', home: 'Lyon', away: 'Sporting Club', competition: 'Ligue 1', played: false, score: null, me: null };
+    const start = makeSnap('2026-08-04', [fx0, fxUpcoming]);
+    const state = { careerId: 'c_md', snapshot: start, syncedSnapshot: start };
+    ingestSyncCalendar(state, start, { calendarMode: 'full' });
+
+    const saveAtMatchday = makeSnap('2026-08-06', [fx0, fxUpcoming]);
+    ingestSyncCalendar(state, saveAtMatchday, { calendarMode: 'full' });
+    store.saveCareer(state);
+    store.setActiveCareer('c_md');
+
+    const quiet = world.calendarAdvance({ store, mode: 'day' });
+    assert.equal(quiet.step.nextDate, '2026-08-05');
+    assert.equal(quiet.step.needsPublish, false);
+
+    const onMatchday = world.calendarAdvance({ store, mode: 'day' });
+    assert.equal(onMatchday.step.nextDate, '2026-08-06');
+    assert.equal(onMatchday.step.reachedSaveDate, true);
+    assert.equal(onMatchday.step.needsPublish, true);
+
+    // Meme chose avec une nouvelle offre recue a saveDate hors jour de match
+    const base2 = makeSnap('2026-08-04', [fx0]);
+    const state2 = { careerId: 'c_off', snapshot: base2, syncedSnapshot: base2 };
+    ingestSyncCalendar(state2, base2, { calendarMode: 'full' });
+    const saveWithOffer = makeSnap('2026-08-05', [fx0]);
+    saveWithOffer.player.offers = [{ slot: 0, clubRef: '99', club: 'AS Monaco', salary: 1200000, contractUntil: '2029-06-30', status: 'pending' }];
+    ingestSyncCalendar(state2, saveWithOffer, { calendarMode: 'full' });
+    store.saveCareer(state2);
+    store.setActiveCareer('c_off');
+
+    const onOfferDay = world.calendarAdvance({ store, mode: 'day' });
+    assert.equal(onOfferDay.step.reachedSaveDate, true);
+    assert.equal(onOfferDay.step.needsPublish, true);
   });
 });
 
