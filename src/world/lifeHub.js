@@ -1292,7 +1292,7 @@ function addSponsor(state, payload = {}, gameDate = '', newId = () => `id_${Date
   return entry;
 }
 
-function updateSponsor(state, payload = {}, { enforceExclusivity = false } = {}) {
+function updateSponsor(state, payload = {}, { enforceExclusivity = false, gameDate = '', newId = () => `id_${Date.now()}` } = {}) {
   const hub = ensureLifeHub(state, state.snapshot);
   const sp = hub.sponsors.find((s) => s.id === payload.id);
   if (!sp) throw new Error('Élément introuvable.');
@@ -1338,6 +1338,8 @@ function updateSponsor(state, payload = {}, { enforceExclusivity = false } = {})
   for (const ob of hub.obligations) {
     if (ob.sponsorId === sp.id) ob.brand = sp.brand;
   }
+  const giftToday = gameDate || hub.lastTickDate || state?.snapshot?.gameDate || '';
+  if (giftToday && isAutomotiveSponsor(sp)) grantSponsorCars(state, hub, state.snapshot, giftToday, newId);
   return sp;
 }
 
@@ -1386,6 +1388,8 @@ function answerSponsorOffer(state, offerId, choice, gameDate = '', newId = () =>
       target.bonus = offer.bonus;
       target.until = offer.until;
       syncBootSponsor(state, hub);
+      const giftToday = gameDate || hub.lastTickDate || state?.snapshot?.gameDate || '';
+      if (giftToday && isAutomotiveSponsor(target)) grantSponsorCars(state, hub, state.snapshot, giftToday, newId);
       hub.meters.sponsors = clamp(hub.meters.sponsors + 6, 0, 100);
       pushRecent(hub, { date: gameDate, kind: 'sponsor', text: `Upgraded ${target.brand} to Global Partner` });
       return { status: 'signed', sponsor: target };
@@ -1466,6 +1470,8 @@ function answerBiddingWar(state, warId, { action = 'accept', bidId = null } = {}
     curSp.isGlobalPartner = Boolean(war.incumbentMatch.isGlobalPartner);
     curSp.until = war.incumbentMatch.until;
     syncBootSponsor(state, hub);
+    const giftToday = gameDate || hub.lastTickDate || state?.snapshot?.gameDate || '';
+    if (giftToday && isAutomotiveSponsor(curSp)) grantSponsorCars(state, hub, state.snapshot, giftToday, newId);
     hub.meters.sponsors = clamp(hub.meters.sponsors + 6, 0, 100);
     hub.lastSponsorSwitch = {
       kind: 'loyalty_renewal',

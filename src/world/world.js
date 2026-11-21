@@ -278,7 +278,7 @@ const updateLifeSponsor = ({ store, payload = {}, manual = false }) => withCaree
   if (manual && (store.getSettings?.()?.sponsorMode || 'realistic') === 'realistic') {
     throw new Error('Mode sponsors réaliste actif : passe en mode personnalisé dans les réglages pour modifier manuellement.');
   }
-  updateSponsor(state, payload, { enforceExclusivity: Boolean(payload?.enforceExclusivity || manual) });
+  updateSponsor(state, payload, { enforceExclusivity: Boolean(payload?.enforceExclusivity || manual), gameDate: state.snapshot?.gameDate || '', newId });
   ensureBootDealMedia(state, store);
 });
 
@@ -4112,7 +4112,23 @@ async function generateBackstory({ store, settings, persona = null, privacy = nu
   const effPos = String(position || state?.snapshot?.player?.profile?.position || '').trim();
   const effAge = age || state?.snapshot?.player?.profile?.age || null;
 
-  const pFacts = personaFacts(effPersona) || {};
+  const rawFacts = personaFacts(effPersona);
+  let pFacts = rawFacts || {};
+  if (rawFacts && effPrivacy.enabled) {
+    pFacts = {
+      ...rawFacts,
+      ...(Array.isArray(rawFacts.inner_circle)
+        ? {
+            inner_circle: rawFacts.inner_circle.map((c) => {
+              const { dob: _dropDob, ...rest } = c;
+              return rest;
+            }),
+          }
+        : {}),
+    };
+    delete pFacts.player_dob;
+  }
+  const targetLang = ({ fr: 'French', en: 'English', es: 'Spanish', it: 'Italian', pt: 'Portuguese', de: 'German' })[stg.language] || 'French';
   const profileContext = {
     ...(effName ? { name: effName } : {}),
     ...(effAge ? { age: effAge } : {}),
@@ -4131,6 +4147,7 @@ async function generateBackstory({ store, settings, persona = null, privacy = nu
   const system = `You are a football biographer for LifeLegend.
 Write a vivid, grounded, cohesive 1-to-2 paragraph third-person footballer biography (around 350 to 850 characters total, never exceeding 1100 characters) synthesizing ONLY the given profile and persona facts.
 Rules:
+- Write the entire biography in ${targetLang}.
 - Use only the facts, traits, roots, habits, turning point, idol, dream, and named circle contacts provided in FACTS.
 - Never invent new clubs, injuries, trophies, dates, relatives, or statistics not listed in FACTS.
 - Respect the exact spelling of every name, city, and club in FACTS (including pseudonyms/aliases when present).

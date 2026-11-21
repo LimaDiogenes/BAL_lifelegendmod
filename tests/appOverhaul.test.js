@@ -27,6 +27,7 @@ const {
   ASSET_CATALOG,
   ensureLifeHub,
   addSponsor,
+  updateSponsor,
   buyAsset,
   sellAsset,
   grantSponsorCars,
@@ -445,21 +446,38 @@ test('Accent-insensitive Privacy Shield, customWords (+)/(-), 3 new Persona fiel
   store.saveCareer(st);
   store.setActiveCareer(st.careerId);
 
+  const personaWithDob = normalizePersona({
+    playerDob: '2003-04-18',
+    roots: { hometown: 'Guarujá', childhood: 'Bairro da Enseada', academy: 'Santos FC' },
+    rootProtect: { hometown: true, childhood: true, academy: false },
+    flavor: {
+      signature: 'Bandage blanc',
+      turningPoint: 'Écarté à 16 ans avant de percer à Guarujá',
+      idol: 'Ronaldinho',
+      dream: 'Soulever la Coupe du monde',
+    },
+    circle: {
+      family: [{ id: 'f1', role: 'Mère', name: 'Élodie Silva', dob: '1975-09-02', protect: true }],
+    },
+  });
   let sentSystem = '';
   let sentUser = '';
   const res = await generateBackstory({
     store,
-    settings: store.getSettings(),
-    persona,
+    settings: { ...store.getSettings(), language: 'fr' },
+    persona: personaWithDob,
     privacy: { enabled: true, customWords: [{ word: 'Padaria Central', decoy: 'Café do Porto' }] },
     playerName: 'Lucas Silva',
     club: 'Santos FC',
     completeFn: async (_stg, _key, opts) => {
       sentSystem = maskText(opts.system, opts.privacyMap);
       sentUser = maskText(opts.user, opts.privacyMap);
+      assert.ok(sentSystem.includes('Write the entire biography in French.'), 'fr target language enforced in prompt');
       assert.ok(!/Guaruj[áa]/i.test(sentUser), 'real hometown leaked to AI');
       assert.ok(!/[EÉ]lodie Silva/i.test(sentUser), 'real mother name leaked to AI');
       assert.ok(!/Lucas Silva/i.test(sentUser), 'real player name leaked to AI');
+      assert.ok(!sentUser.includes('2003-04-18'), 'real player_dob leaked to AI');
+      assert.ok(!sentUser.includes('1975-09-02'), 'real circle member dob leaked to AI');
       const pDecoy = opts.privacyMap.pairs.find((p) => p.real === 'Lucas Silva')?.decoy || 'Player';
       const hDecoy = opts.privacyMap.pairs.find((p) => p.real === 'Guarujá')?.decoy || 'Town';
       const rawJson = JSON.stringify({
@@ -474,6 +492,20 @@ test('Accent-insensitive Privacy Shield, customWords (+)/(-), 3 new Persona fiel
   assert.ok(res.text.includes('Lucas Silva'));
   assert.ok(res.text.includes('Guarujá'));
   assert.ok(res.text.includes('Ronaldinho'));
+
+  let sentEnSystem = '';
+  await generateBackstory({
+    store,
+    settings: { ...store.getSettings(), language: 'en' },
+    persona: personaWithDob,
+    privacy: { enabled: false },
+    playerName: 'Lucas Silva',
+    completeFn: async (_stg, _key, opts) => {
+      sentEnSystem = opts.system;
+      return JSON.stringify({ bio: 'English bio.' });
+    },
+  });
+  assert.ok(sentEnSystem.includes('Write the entire biography in English.'));
 });
 
 test('Agent two-way sync via world.updateAgent, global sponsors catalog (250+), 8 car categories & sponsor gifted cars', (t) => {
@@ -533,4 +565,9 @@ test('Agent two-way sync via world.updateAgent, global sponsors catalog (250+), 
   assert.strictEqual(nextYear.length, 1);
   assert.strictEqual(nextYear[0].giftedBy, 'Porsche');
   assert.strictEqual(nextYear[0].giftReason, 'annual');
+
+  // Editing an existing sponsor to add automotive category triggers grantSponsorCars immediately
+  const lifeSp = addSponsor(updated, { brand: 'TAG Heuer', categories: ['watches'], fee: 200000, bonus: 3000, until: '2028-09-10' }, '2027-09-15', () => 'tag_1');
+  updateSponsor(updated, { id: lifeSp.id, brand: 'Mercedes-Benz', categories: ['automotive'] }, { gameDate: '2027-09-16', newId: () => 'merc_car_1' });
+  assert.ok(hub.assets.some((a) => a.giftedBy === 'Mercedes-Benz' && a.price === 0));
 });

@@ -1149,7 +1149,7 @@ function bindBioGenerateBtn(prefix, { getPlayer, getHandle, getClub, getNational
 
 function openBioStep(info) {
   const pb = settings.pendingBio?.savePath === settings.savePath ? settings.pendingBio : null;
-  view.setup = { step: 3, newCareer: true, savePath: settings.savePath, info, bio: pb?.text || '', kind: pb?.kind || null, privacy: pb?.privacy || { enabled: true, fields: {}, customPeople: [] }, persona: pb?.persona || null };
+  view.setup = { step: 3, newCareer: true, savePath: settings.savePath, info, bio: pb?.text || '', kind: pb?.kind || null, privacy: pb?.privacy || { enabled: true, fields: {}, customPeople: [], customWords: [] }, persona: pb?.persona || null };
   if (current === 'settings') current = 'mylife';
   render();
   viewScrollTo(0);
@@ -6707,7 +6707,7 @@ const spLongDate = (iso) => fmtDate(iso, { day: 'numeric', month: 'long', year: 
 function spVisual(o) {
   const logo = sponsorLogoUrl(o);
   return `<div class="sp-art sp-art--logo">${logo ? `<img src="${esc(logo)}" alt="${esc(o.brand)}">` : `<span class="sp-art-mono">${esc(brandMonogram(o.brand))}</span>`}</div>
-    <div class="sp-band">${logo ? `<img src="${esc(logo)}" alt="">` : ''}<b>${esc(o.brand)}</b></div>`;
+    <div class="sp-band"><b>${esc(o.brand)}</b></div>`;
 }
 function spTerms(o) {
   return `<div class="sp-terms"><div><small>${tr('Par saison')}</small><b>${esc(spMoney(o.fee))}</b></div><div><small>${tr('Prime par but ou passe D.')}</small><b>${esc(spMoney(o.bonus))}</b></div><div><small>${tr('Fin du contrat')}</small><b>${esc(spLongDate(o.until))}</b></div></div>`;
@@ -8740,12 +8740,12 @@ function mlSponsorCatLabel(cat) {
 }
 
 const ML_SPONSOR_PRESETS_UI = [
-  { category: 'boots', categories: ['boots', 'apparel'], brand: 'Nike Football', fee: 180000, bonus: 3500 },
+  { category: 'boots', categories: ['boots', 'apparel'], brand: 'Nike', fee: 180000, bonus: 3500 },
   { category: 'apparel', categories: ['apparel', 'boots'], brand: 'Adidas Originals', fee: 240000, bonus: 4000 },
   { category: 'boots', categories: ['boots', 'apparel'], brand: 'Puma Sport', fee: 170000, bonus: 3000 },
-  { category: 'beverage', categories: ['beverage', 'health'], brand: 'Gatorade Fuel', fee: 140000, bonus: 2500 },
-  { category: 'automotive', categories: ['automotive', 'lifestyle'], brand: 'Porsche Motorsport', fee: 380000, bonus: 5500 },
-  { category: 'watches', categories: ['watches', 'lifestyle'], brand: 'TAG Heuer Chrono', fee: 420000, bonus: 6000 },
+  { category: 'beverage', categories: ['beverage', 'health'], brand: 'Gatorade', fee: 140000, bonus: 2500 },
+  { category: 'automotive', categories: ['automotive', 'lifestyle'], brand: 'Porsche', fee: 380000, bonus: 5500 },
+  { category: 'watches', categories: ['watches', 'lifestyle'], brand: 'TAG Heuer', fee: 420000, bonus: 6000 },
   { category: 'gaming', categories: ['gaming', 'media'], brand: 'EA Sports', fee: 260000, bonus: 4000 },
   { category: 'airlines', categories: ['airlines'], isGlobalPartner: true, brand: 'Emirates', fee: 650000, bonus: 9000 },
 ];
@@ -10075,8 +10075,8 @@ function renderMyLife(page) {
       </div>
     </div>`;
   }).join('') + catalogFiltered.map((a) => {
-    const owned = (hub.assets || []).find((x) => !x.giftedBy && x.catalogId === a.id);
-    const customImg = owned?.customImage || hub.catalogImages?.[a.id] || null;
+    const owned = (hub.assets || []).find((x) => !x.giftedBy && (x.catalogId === a.id || ML_LEGACY_CAR_MAP[x.catalogId] === a.id));
+    const customImg = owned?.customImage || hub.catalogImages?.[a.id] || (owned?.catalogId ? hub.catalogImages?.[owned.catalogId] : null) || null;
     const imgUrl = mlResolveArtUrl(a.id, customImg, a.category);
     const metaLines = [
       a.price > 0 ? tr('Prix : {p}', { p: euros(a.price) }) : tr('Gratuit'),
@@ -11326,7 +11326,7 @@ function renderPlayerProfile(page) {
     getHandle: () => state.profile?.handle || '',
     getClub: () => state.snapshot?.club?.name || '',
     getNationality: () => state.snapshot?.player?.nationality || '',
-    getPosition: () => state.snapshot?.player?.profile?.positionName || '',
+    getPosition: () => state.snapshot?.player?.profile?.position || '',
     getAge: () => state.snapshot?.player?.profile?.age || '',
     getBioEl: () => $('#pp-bio'),
     getPersona: () => readPersonaForm('pp'),
