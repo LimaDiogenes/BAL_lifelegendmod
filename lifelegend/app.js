@@ -133,12 +133,18 @@ function videoHtml(p) {
 }
 
 // Photo et bannière du profil : fichiers rangés dans le dossier de la carrière (ou image en cours d'édition).
-let appPaths = { careersDir: '' };
+let appPaths = { careersDir: '', mylifeMedia: {} };
 const profileImg = (f) => (!f ? null : String(f).startsWith('data:') ? f : appPaths.careersDir && state ? fileUrl(`${appPaths.careersDir}\\${state.careerId}\\profile\\${f}`) : null);
 // Fiche d'un compte de club (écusson lu dans les fichiers du jeu, stade, championnat), d'après son pseudo.
 const clubPage = (handle) => (handle && state?.clubPages?.[String(handle).toLowerCase()]) || null;
 const emblemUrl = (f) => (!f ? null : String(f).startsWith('data:') ? f : appPaths.careersDir && state ? fileUrl(`${appPaths.careersDir}\\${state.careerId}\\emblems\\${f}`) : null);
 const lifeMediaUrl = (f) => (!f ? null : String(f).startsWith('data:') ? f : appPaths.careersDir && state ? fileUrl(`${appPaths.careersDir}\\${state.careerId}\\life-media\\${f}`) : null);
+const bundledMyLifeUrl = (id) => {
+  if (!id) return null;
+  const f = appPaths.mylifeMedia?.[String(id).toLowerCase()];
+  return f ? `media/mylife/${encodeURI(f)}` : null;
+};
+const mlResolveArtUrl = (id, customFile = null) => lifeMediaUrl(customFile) || bundledMyLifeUrl(id);
 const stadiumUrl = (f) => (!f ? null : String(f).startsWith('data:') ? f : appPaths.careersDir && state ? fileUrl(`${appPaths.careersDir}\\${state.careerId}\\stadiums\\${f}`) : null);
 // Les visages des joueurs et des entraîneurs, lus dans les fichiers du jeu, seulement pour ceux qu'une page affiche : { nom : fichier }.
 let faceFiles = {}, faceAsked = new Set(), faceWanted = new Set(), faceTimer = null, faceCareer = null, faceScope = null;
@@ -1478,7 +1484,11 @@ const GZ_LINK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stro
 
 // Écusson d'un club d'après son nom (fiches lues dans le jeu), pour illustrer la une et les résultats.
 function teamEmblem(name) {
-  const page = Object.values(state.clubPages || {}).find((p) => !p.kind || p.kind === 'national' ? p.name === name : false);
+  if (!name) return null;
+  const pages = Object.values(state.clubPages || {});
+  const low = String(name).toLowerCase();
+  const page = pages.find((p) => (!p.kind || p.kind === 'national') && p.name === name)
+    || pages.find((p) => (!p.kind || p.kind === 'national') && String(p.name || '').toLowerCase() === low);
   return emblemUrl(page?.emblem);
 }
 // Écusson d'un club sur tous les sites (classe crest), avec son initiale quand le jeu n'en a pas.
@@ -3284,8 +3294,9 @@ const isMeAuthor = (a) => Boolean(state?.profile && a.handle && (a.isMe || a.typ
 function avatar(author) {
   const initial = esc((author.name || author.handle || '?').trim()[0] || '?').toUpperCase();
   if (isMeAuthor(author)) return `<div class="avatar t-me">${myFaceIn(initial)}</div>`;
-  // Les clubs : leur écusson, dans un carré arrondi comme les comptes d'organisation.
-  const emblem = emblemUrl(clubPage(author.handle)?.emblem);
+  // Les clubs et compétitions : leur écusson ou logo officiel, dans un carré arrondi comme les comptes d'organisation.
+  const emblem = emblemUrl(clubPage(author.handle)?.emblem)
+    || (ORG_TYPES.has(author.type) ? (teamEmblem(author.name) || compEmblem(author.name)) : null);
   if (emblem) return `<div class="avatar emblem"><img src="${esc(emblem)}" alt=""></div>`;
   return `<div class="avatar t-${esc(author.type || 'fan')}">${authorFace(author, initial)}</div>`;
 }
@@ -8045,7 +8056,7 @@ function renderPantheon(page) {
   // ----- La fiche -----
   const rec = s.player?.careerRecords;
   const aliases = state.clubAliases || {};
-  const recClubNames = (rec?.clubs || []).map((c) => c.name || aliases[String(c.clubRef)]).filter(Boolean);
+  const recClubNames = (rec?.clubs || []).map((c) => aliases[String(c.clubRef)] || c.name).filter(Boolean);
   const clubsPlayed = [...new Set([...recClubNames, ...seasons.map((x) => x.club), club])];
   const facts = [[tr('Nom complet'), p.name], [tr('Âge'), prof.age ? trn(prof.age, '{n} an', '{n} ans') : null], [tr('Taille'), prof.height ? `${prof.height} cm` : null], [tr('Poids'), prof.weight ? `${prof.weight} kg` : null],
     [tr('Nationalité'), p.nationality], [tr('Pied fort'), prof.strongFoot && tr(prof.strongFoot)], [tr('Poste'), position], [tr('Style de jeu'), prof.playingStyle && tr(prof.playingStyle)],
@@ -8083,7 +8094,7 @@ function renderPantheon(page) {
   const route = [];
   if (rec?.clubs?.length) {
     rec.clubs.forEach((c, idx) => {
-      const cname = c.name || aliases[String(c.clubRef)] || tr('Club inconnu');
+      const cname = aliases[String(c.clubRef)] || c.name || tr('Club inconnu');
       const nextClub = rec.clubs[idx + 1];
       const from = c.startYear ? String(c.startYear) : '';
       const to = nextClub?.startYear ? String(nextClub.startYear) : (s.season ? String(s.season).slice(-4) : '');
@@ -8101,17 +8112,17 @@ function renderPantheon(page) {
     const recHead = `<thead><tr><th>${tr('Équipe')}</th><th class="n">${tr('Matchs')}</th><th class="n">${tr('Buts')}</th><th class="n">${tr('Passes D.')}</th><th class="n">${tr('Note')}</th></tr></thead>`;
     const recCells = (x) => `<td class="n">${x.apps ?? 0}</td><td class="n">${x.goals ?? 0}</td><td class="n">${x.assists ?? 0}</td><td class="n">${ratingChip(x.avgRating)}</td>`;
     const clubRows = (rec.clubs || []).map((c) => {
-      const cname = c.name || aliases[String(c.clubRef)] || null;
+      const cname = aliases[String(c.clubRef)] || c.name || null;
       const period = c.startYear ? ` (${c.startYear})` : '';
       const label = cname
         ? `${crestHtml(cname, ' sc-crest s18')}<span>${esc(cname)}${esc(period)}</span>`
         : `<span class="pt-unknown">${esc(tr('Club inconnu'))}${esc(period)}</span> <button type="button" class="btn pt-alias-btn" data-ptalias="${esc(c.clubRef)}">${esc(tr('Nommer'))}</button>`;
       return `<tr><td class="pt-cut">${label}</td>${recCells(c)}</tr>`;
     }).join('');
-    const ntName = rec.international?.name || s.nationalTeam?.name || p.nationality || null;
+    const ntName = (rec.international?.teamRef && aliases[String(rec.international.teamRef)]) || rec.international?.name || s.nationalTeam?.name || p.nationality || null;
     const ntRow = rec.international ? `<tr><td class="pt-cut">${crestHtml(ntName || '', ' sc-crest s18')}<span>${esc(ntName || tr('Sélection nationale'))}</span></td>${recCells(rec.international)}</tr>` : '';
     const combRow = rec.combinedTotals ? `<tr class="sum"><td>${esc(tr('Total combiné (Club + Sélection)'))}</td>${recCells(rec.combinedTotals)}</tr>` : '';
-    return `<div class="pt-grp"><h3>${esc(tr('Bilan complet de carrière (sauvegarde)'))}</h3><div class="pt-tw"><table class="pt-table">${recHead}<tbody>${clubRows}${ntRow}${combRow}</tbody></table></div></div>`;
+    return `<div class="pt-grp"><h3><span>${esc(tr('Bilan complet de carrière (sauvegarde)'))}</span> <button type="button" class="btn" id="pt-edit-clubs">${esc(tr('Renommer les anciens clubs'))}</button></h3><div class="pt-tw"><table class="pt-table">${recHead}<tbody>${clubRows}${ntRow}${combRow}</tbody></table></div></div>`;
   })() : '';
   const statsCard = `<section class="pt-card" id="pt-stats"><h2>${esc(tr('Statistiques de carrière de {name}', { name: p.name }))}</h2>
     ${byComp.size || saveRecHtml ? `${saveRecHtml}${byComp.size ? `<div class="pt-filters"><div class="pt-filt"><button class="${compKey === 'all' ? 'on' : ''}" data-ptcomp="all">${tr('Tout')}</button>${[...byComp.keys()].map((c) => `<button class="${c === compKey ? 'on' : ''}" data-ptcomp="${esc(c)}">${esc(gzShort(c))}</button>`).join('')}</div>
@@ -8170,6 +8181,7 @@ function renderPantheon(page) {
   page.querySelector('#pt-up').onclick = toTop;
   page.querySelectorAll('[data-ptgo]').forEach((a) => { a.onclick = () => { ptPinned = a.dataset.ptgo; if (ptPinned === 'pt-top') toTop(); else document.getElementById(ptPinned)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); ptArrived = false; ptScrollSpy(); }; });
   page.querySelectorAll('[data-ptbio]').forEach((a) => { a.onclick = () => openSettings('rg-mebio'); });
+  if ($('#pt-edit-clubs')) $('#pt-edit-clubs').onclick = () => openSettings('rg-clubaliases');
   page.querySelectorAll('[data-ptsite]').forEach((a) => { a.onclick = () => go(a.dataset.ptsite); });
   page.querySelectorAll('[data-ptcomp]').forEach((b) => { b.onclick = () => { view.ptComp = b.dataset.ptcomp; renderPantheon(page); }; });
   page.querySelectorAll('[data-ptalias]').forEach((btn) => {
@@ -8588,12 +8600,10 @@ function mlMonthCells(monthIso) {
 }
 
 function mlCalendarBounds(s, cal) {
-  const simDate = cal?.simDate || s?.gameDate || '';
-  const saveDate = cal?.saveDate || state?.saveSnapshot?.gameDate || s?.gameDate || simDate;
+  const saveDate = cal?.saveDate || state?.saveSnapshot?.gameDate || s?.gameDate || cal?.simDate || '';
+  const rawSim = cal?.simDate || s?.gameDate || saveDate;
+  const simDate = (rawSim && saveDate && rawSim > saveDate) ? saveDate : rawSim;
   const pending = cal?.pendingMatches?.length || 0;
-  if (simDate && saveDate && (simDate < saveDate || pending > 0)) {
-    return { mode: 'catchup', simDate, saveDate, maxDate: saveDate, canAdvance: true, nextMatch: null, pendingCount: pending };
-  }
   const candidates = [
     ...(s?.fixtures || []),
     ...(s?.nationalTeam?.fixtures || []),
@@ -8602,13 +8612,13 @@ function mlCalendarBounds(s, cal) {
   ].filter((f) => f && !f.played && /^\d{4}-\d{2}-\d{2}$/.test(f.date || '') && (!simDate || f.date >= simDate));
   candidates.sort((a, b) => a.date.localeCompare(b.date));
   const nextMatch = candidates[0] || null;
-  if (nextMatch && nextMatch.date > simDate) {
-    return { mode: 'prematch', simDate, saveDate, maxDate: nextMatch.date, canAdvance: true, nextMatch, pendingCount: 0 };
+  if (simDate && saveDate && (simDate < saveDate || pending > 0)) {
+    const capDate = (nextMatch && nextMatch.date < saveDate) ? nextMatch.date : saveDate;
+    if (capDate > simDate || pending > 0) {
+      return { mode: 'catchup', simDate, saveDate, maxDate: capDate, canAdvance: true, nextMatch, pendingCount: pending };
+    }
   }
-  if (nextMatch && nextMatch.date === simDate) {
-    return { mode: 'matchday', simDate, saveDate, maxDate: simDate, canAdvance: false, nextMatch, pendingCount: 0 };
-  }
-  return { mode: 'synced', simDate, saveDate, maxDate: saveDate, canAdvance: false, nextMatch: null, pendingCount: 0 };
+  return { mode: 'synced', simDate, saveDate, maxDate: saveDate, canAdvance: false, nextMatch, pendingCount: 0 };
 }
 
 function mlFormatAssetName(raw) {
@@ -8830,6 +8840,8 @@ function mlAssetArtSvg(id, category = 'custom') {
 }
 
 function mlActionBadgeSvg(id) {
+  const bundled = bundledMyLifeUrl(id);
+  if (bundled) return `<img class="ml-act-img" src="${esc(bundled)}" alt="">`;
   const iconMap = {
     recovery: 'sparkles',
     extra_training: 'arrowUp',
@@ -8864,7 +8876,7 @@ function openLifeSceneModal(scene) {
   document.querySelectorAll('.ml-scene-back').forEach((el) => el.remove());
   const back = document.createElement('div');
   back.className = 'ml-scene-back';
-  const img = lifeMediaUrl(scene.image);
+  const img = mlResolveArtUrl(scene.refId, scene.image);
   const art = img ? `<img src="${esc(img)}" alt="">` : mlAssetArtSvg(scene.refId, scene.category);
   const deltas = [];
   for (const [k, v] of Object.entries(scene.deltas?.meters || {})) {
@@ -9163,7 +9175,7 @@ function renderMyLife(page) {
   const recentScenes = Array.isArray(hub.scenes) ? hub.scenes : [];
   const scenesHtml = recentScenes.length
     ? `<div class="ml-scenes-list">${recentScenes.slice(0, 6).map((sc, idx) => {
-        const scImg = lifeMediaUrl(sc.image);
+        const scImg = mlResolveArtUrl(sc.refId, sc.image);
         const rCount = Array.isArray(sc.reactions) ? sc.reactions.length : 0;
         return `<button type="button" class="ml-scene-row" data-mlscene="${idx}">
           <span class="ml-scene-thumb">${scImg ? `<img src="${esc(scImg)}" alt="">` : mlAssetArtSvg(sc.refId, sc.category)}</span>
@@ -9185,7 +9197,7 @@ function renderMyLife(page) {
       const cid = a.catalogId || a.id;
       const catItem = !a.custom ? ML_ASSET_CATALOG_UI.find((c) => c.id === cid) : null;
       const label = a.custom ? a.name : (catItem ? catItem.label() : mlFormatAssetName(cid));
-      const img = lifeMediaUrl(a.customImage || (!a.custom && hub.catalogImages?.[cid]));
+      const img = mlResolveArtUrl(cid, a.customImage || (!a.custom && hub.catalogImages?.[cid]));
       return `<button type="button" class="ml-showcase-item" data-mlgo-shop="1">
         <span class="ml-showcase-thumb">${img ? `<img src="${esc(img)}" alt="${esc(label)}">` : mlAssetArtSvg(cid, a.category)}</span>
         <span class="ml-showcase-txt"><b>${esc(label)}</b><small>${esc(a.customCategory || (ML_ASSET_CAT_LABELS[a.category] || ML_ASSET_CAT_LABELS.custom)())}</small></span>
@@ -9254,7 +9266,7 @@ function renderMyLife(page) {
   const catalogCards = catalogFiltered.map((a) => {
     const owned = (hub.assets || []).find((x) => x.catalogId === a.id);
     const customImg = owned?.customImage || hub.catalogImages?.[a.id] || null;
-    const imgUrl = lifeMediaUrl(customImg);
+    const imgUrl = mlResolveArtUrl(a.id, customImg);
     const metaLines = [
       a.price > 0 ? tr('Prix : {p}', { p: euros(a.price) }) : tr('Gratuit'),
       a.monthlyCost > 0 ? tr('Entretien : {p}/mois', { p: euros(a.monthlyCost) }) : '',
@@ -9281,7 +9293,7 @@ function renderMyLife(page) {
       </div>
     </div>`;
   }).join('') + ownedCustom.map((a) => {
-    const imgUrl = lifeMediaUrl(a.customImage);
+    const imgUrl = mlResolveArtUrl(a.id, a.customImage);
     return `<div class="card ml-shop-card owned">
       <div class="ml-card-media">
         ${imgUrl ? `<img src="${esc(imgUrl)}" alt="${esc(a.name)}">` : mlAssetArtSvg(a.id, a.category)}
@@ -9366,14 +9378,12 @@ function renderMyLife(page) {
       ? (pendingCalCount > 0
         ? tr('{n} match(s) en attente sans spoiler', { n: pendingCalCount })
         : tr('{n} jour(s) à rattraper', { n: behindDays }))
-      : calBounds.mode === 'prematch'
-        ? tr('Prochain match dans {n} jour(s) : {match}', { n: daysToMatch, match: nextMatchName })
-        : calBounds.mode === 'matchday'
-          ? tr('Jour de match ({match}) : joue ce match dans le jeu, sauvegarde puis clique sur Synchroniser.', { match: nextMatchName })
-          : tr('À jour avec la sauvegarde : avance dans le jeu puis synchronise pour charger de nouvelles dates.');
-  const calThirdBtnLabel = calBounds.mode === 'prematch' ? tr('Aller au jour de match') : tr('Rattraper tout');
+      : (nextMatchName && daysToMatch === 0)
+        ? tr('Jour de match ({match}) : joue ce match dans le jeu, sauvegarde puis clique sur Synchroniser.', { match: nextMatchName })
+        : tr('À jour avec la sauvegarde : avance dans le jeu puis synchronise pour charger de nouvelles dates.');
+  const calThirdBtnLabel = tr('Rattraper tout');
 
-  const heroBgUrl = lifeMediaUrl(hub.heroImage) || stadiumUrl(state.clubStadiumImage);
+  const heroBgUrl = lifeMediaUrl(hub.heroImage) || bundledMyLifeUrl('hero') || stadiumUrl(state.clubStadiumImage);
   const heroBgHtml = heroBgUrl
     ? `<img class="ml-hero-bg-img" src="${esc(heroBgUrl)}" alt="">`
     : mlHeroStadiumSvg();
@@ -9882,7 +9892,7 @@ const RG_TABS = [
   ['about', 'À propos', ''],
 ];
 // L'onglet de chaque section qu'ouvrent les autres pages (« Réglages de l'IA », « Ajouter ma clé… », la bio de Panthéon).
-const RG_SECTION_TAB = { 'rg-save': 'save', 'rg-key': 'save', 'rg-names': 'save', 'rg-ai': 'ai', 'rg-lang': 'look', 'rg-theme': 'look', 'rg-tone': 'world', 'rg-calmode': 'world', 'rg-replays': 'world', 'rg-mebio': 'me', 'rg-mepersona': 'me', 'rg-privacy': 'me', 'rg-lifeevents': 'me', 'rg-about': 'about', 'rg-credits': 'about', 'rg-update': 'about' };
+const RG_SECTION_TAB = { 'rg-save': 'save', 'rg-key': 'save', 'rg-names': 'save', 'rg-ai': 'ai', 'rg-lang': 'look', 'rg-theme': 'look', 'rg-tone': 'world', 'rg-calmode': 'world', 'rg-replays': 'world', 'rg-mebio': 'me', 'rg-mepersona': 'me', 'rg-privacy': 'me', 'rg-clubaliases': 'me', 'rg-lifeevents': 'me', 'rg-about': 'about', 'rg-credits': 'about', 'rg-update': 'about' };
 const rgRow = (id, label, control, note = '') => `<div class="rg-row"${id ? ` id="${id}"` : ''}><div class="rg-label"><h3>${label}</h3>${note ? `<p>${note}</p>` : ''}</div><div class="rg-ctl">${control}</div></div>`;
 const rgSwitch = (id, on, label, note = '') => `<label class="rg-switch"><input type="checkbox" id="${id}"${on ? ' checked' : ''}><span class="rg-switch-text"><b>${label}</b>${note ? `<small>${note}</small>` : ''}</span></label>`;
 // Miniature d'un thème : le cadre de LifeLegend (rail, barre, blocs), clair ou sombre ; Automatique est coupé en diagonale.
@@ -9971,6 +9981,120 @@ function bindLifeEventsForm(defaultDate = '') {
   };
 }
 
+function collectCareerClubEntries(st) {
+  const rec = st?.snapshot?.player?.careerRecords;
+  const aliases = st?.clubAliases || {};
+  const entries = [];
+  const seen = new Set();
+  for (const c of rec?.clubs || []) {
+    if (!c?.clubRef) continue;
+    const key = String(c.clubRef);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    entries.push({
+      ref: key,
+      saveName: c.name || null,
+      aliasName: aliases[key] || '',
+      startYear: c.startYear || null,
+      apps: c.apps ?? 0,
+      goals: c.goals ?? 0,
+      kind: 'club',
+    });
+  }
+  const intl = rec?.international;
+  if (intl?.teamRef && (!intl.name || aliases[String(intl.teamRef)])) {
+    const key = String(intl.teamRef);
+    if (!seen.has(key)) {
+      seen.add(key);
+      entries.push({
+        ref: key,
+        saveName: intl.name || st?.snapshot?.nationalTeam?.name || st?.snapshot?.player?.nationality || null,
+        aliasName: aliases[key] || '',
+        startYear: null,
+        apps: intl.apps ?? 0,
+        goals: intl.goals ?? 0,
+        kind: 'national',
+      });
+    }
+  }
+  for (const [key, val] of Object.entries(aliases)) {
+    if (!key || seen.has(String(key))) continue;
+    seen.add(String(key));
+    entries.push({
+      ref: String(key),
+      saveName: null,
+      aliasName: val || '',
+      startYear: null,
+      apps: null,
+      goals: null,
+      kind: 'club',
+    });
+  }
+  return entries;
+}
+
+function clubAliasesFormHtml(st) {
+  const entries = collectCareerClubEntries(st);
+  if (!entries.length) {
+    return `<p class="fineprint">${tr('Aucun ancien club enregistré dans le bilan de carrière de cette sauvegarde.')}</p>`;
+  }
+  const rows = entries.map((e) => {
+    const shown = e.aliasName || e.saveName || '';
+    const meta = [
+      e.startYear ? String(e.startYear) : '',
+      e.apps != null ? trn(e.apps, '{n} match', '{n} matchs') : '',
+      e.goals != null ? trn(e.goals, '{n} but', '{n} buts') : '',
+    ].filter(Boolean).join(' · ');
+    const badge = e.saveName
+      ? `<span class="fineprint">${esc(e.saveName)}</span>`
+      : `<span class="priv-badge">${esc(tr('Non reconnu dans la sauvegarde'))}</span>`;
+    return `<div class="club-alias-row" data-aliasrow="${esc(e.ref)}">
+      ${crestHtml(shown || e.saveName || '?', ' sc-crest s22')}
+      <div class="club-alias-meta">
+        <div><b>${esc(shown || tr('Club inconnu'))}</b> ${badge}</div>
+        ${meta ? `<div class="fineprint">${esc(meta)}</div>` : ''}
+      </div>
+      <input type="text" class="club-alias-in" data-aliasref="${esc(e.ref)}" data-savename="${esc(e.saveName || '')}" value="${esc(shown)}" placeholder="${esc(e.saveName || tr('Nom du club'))}" maxlength="80">
+      <button type="button" class="btn club-alias-save" data-aliasref="${esc(e.ref)}">${tr('Enregistrer')}</button>
+    </div>`;
+  }).join('');
+  return `<div class="club-alias-list" id="rg-clubalias-list">${rows}</div>`;
+}
+
+function readClubAliasesForm() {
+  const box = $('#rg-clubalias-list');
+  if (!box) return null;
+  const out = {};
+  box.querySelectorAll('.club-alias-in').forEach((inp) => {
+    const ref = inp.dataset.aliasref;
+    const saveName = inp.dataset.savename || '';
+    const val = inp.value.trim();
+    if (!ref) return;
+    out[ref] = (val && val !== saveName) ? val : (!saveName ? val : '');
+  });
+  return out;
+}
+
+function bindClubAliasesForm() {
+  const box = $('#rg-clubalias-list');
+  if (!box) return;
+  box.querySelectorAll('.club-alias-save').forEach((btn) => {
+    btn.onclick = async () => {
+      const ref = btn.dataset.aliasref;
+      const inp = box.querySelector(`.club-alias-in[data-aliasref="${CSS.escape(ref)}"]`);
+      if (!inp) return;
+      const saveName = inp.dataset.savename || '';
+      const val = inp.value.trim();
+      const toSave = (val && val !== saveName) ? val : (!saveName ? val : '');
+      try {
+        state = await live.setClubAlias(ref, toSave);
+        toast(tr('Nom du club enregistré.'));
+        render();
+      } catch (err) { toast(err.message, true); }
+    };
+  });
+}
+
 async function renderSettings(page) {
   const prov = providers[settings.provider] || {};
   const colors = themeColors(settings.colors);
@@ -10044,6 +10168,8 @@ async function renderSettings(page) {
     rgRow('rg-mepersona', tr('Personnalité & cercle intime'), personaFormHtml('rg', state.persona),
       tr('Choisis un archétype, des traits sur mesure, tes racines et les proches qui comptent. Les éléments marqués Protégé alimentent automatiquement le Bouclier de confidentialité.')),
     rgRow('rg-privacy', tr('Confidentialité'), privacyFormHtml('rg', state.privacy || settings.privacy || { enabled: true, fields: {}, customPeople: [] }, { playerName: state.snapshot?.player?.name || '', handle: state.profile?.handle || '' })),
+    rgRow('rg-clubaliases', tr('Anciens clubs & équipes non reconnues'), clubAliasesFormHtml(state),
+      tr('Si un ancien club de ton parcours a été remplacé ou retiré de la base du jeu par un patch (affiché comme « Club inconnu »), ou si tu préfères personnaliser son nom d’affichage dans Panthéon, Mails et les articles, modifie-le ici.')),
     rgRow('rg-lifeevents', tr('Dates de vie'), lifeEventsFormHtml(state.lifeEvents || [], state.snapshot?.gameDate || ''),
       tr('Ajoute des dates importantes hors football (anniversaire, événement caritatif, déménagement…). Quand le jeu atteint cette date, la presse, les supporters et le vestiaire peuvent réagir.')),
   ]) : ''}
@@ -10169,6 +10295,7 @@ async function renderSettings(page) {
   page.querySelectorAll('input[name=rg-kind]').forEach((r) => { r.onchange = () => syncRealVisibility(r.value === 'real'); });
   if (state) bindPersonaForm('rg');
   if (state) bindPrivacyForm('rg', { getBio: () => $('#bio')?.value || '', getPlayer: () => state.snapshot?.player?.name || '', getHandle: () => state.profile?.handle || '', getPersona: () => readPersonaForm('rg') });
+  if (state) bindClubAliasesForm();
   if (state) bindLifeEventsForm(state.snapshot?.gameDate || '');
   $('#browse-clips').onclick = async () => {
     try {
@@ -10283,6 +10410,8 @@ async function saveSettings() {
       }
       const priv = readPrivacyForm('rg');
       if (priv) state = await live.savePrivacy(priv);
+      const clubAliases = readClubAliasesForm();
+      if (clubAliases && Object.keys(clubAliases).length) state = await live.setClubAlias(clubAliases);
       const lifeEvs = readLifeEventsForm();
       if (lifeEvs) state = await live.saveLifeEvents(lifeEvs);
     }

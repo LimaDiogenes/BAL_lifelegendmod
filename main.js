@@ -434,8 +434,18 @@ app.whenReady().then(() => {
     return state;
   });
   handle('profile:save', (update) => world.updateProfile({ store, update }));
-  // Dossier des carrières : l'interface y lit la photo et la bannière du profil.
-  handle('app:paths', () => ({ careersDir: path.join(store.dir, 'careers') }));
+  // Dossier des carrières : l'interface y lit la photo et la bannière du profil, ainsi que les images déposées dans lifelegend/media/mylife/.
+  handle('app:paths', () => {
+    const mylifeMedia = {};
+    const mylifeDir = path.join(__dirname, 'lifelegend', 'media', 'mylife');
+    try {
+      for (const f of fs.readdirSync(mylifeDir)) {
+        const m = /^([a-z0-9_-]+)\.(png|jpe?g|webp)$/i.exec(f);
+        if (m) mylifeMedia[m[1].toLowerCase()] = f;
+      }
+    } catch { /* dossier optionnel */ }
+    return { careersDir: path.join(store.dir, 'careers'), mylifeMedia };
+  });
   // « Signaler un problème » : le rapport (sans clé, e-mail ni textes personnels), enregistré là où il le choisit, puis
   // montré dans l'Explorateur. Rien n'est envoyé.
   handle('report:make', async ({ title } = {}) => {

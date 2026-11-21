@@ -2444,4 +2444,10 @@ window.LL_I18N.en = {
   "Sauvegarde la plus récente chargée : {player}.": "Most recent save loaded: {player}.",
   "Nouvelle carrière détectée : {player}.": "New career detected: {player}.",
   "Configurer": "Set up",
+  "Renommer les anciens clubs": "Rename past clubs",
+  "Aucun ancien club enregistré dans le bilan de carrière de cette sauvegarde.": "No past clubs recorded in this save's career summary.",
+  "Non reconnu dans la sauvegarde": "Unrecognized in save",
+  "Nom du club enregistré.": "Club name saved.",
+  "Anciens clubs & équipes non reconnues": "Past clubs & unrecognized teams",
+  "Si un ancien club de ton parcours a été remplacé ou retiré de la base du jeu par un patch (affiché comme « Club inconnu »), ou si tu préfères personnaliser son nom d’affichage dans Panthéon, Mails et les articles, modifie-le ici.": "If a former club from your career path was replaced or removed from the game database by a patch (shown as “Unknown club”), or if you want to customize its display name across Pantheon, Mails and articles, edit it here.",
 };

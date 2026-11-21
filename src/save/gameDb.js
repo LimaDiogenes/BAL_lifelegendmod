@@ -42,12 +42,27 @@ function isGameDir(dir) {
   }
 }
 
-// Installations du jeu : PES 2021 de Steam, puis les patchs installés dans leur propre dossier (Football Life…).
-const PATCH_BASES = ['C:\\Program Files (x86)', 'C:\\Program Files', 'C:\\Games', 'D:\\Games', 'D:\\Program Files (x86)'];
+// Installations du jeu : PES 2021 de Steam, puis les patchs installés dans leur propre dossier (Football Life…) sur tous les disques.
+const DRIVE_LETTERS = 'CDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+const SUB_BASES = ['Program Files (x86)', 'Program Files', 'Games', '_Games'];
+function patchSearchBases() {
+  const out = [];
+  for (const l of DRIVE_LETTERS) {
+    const root = `${l}:\\`;
+    try { if (!fs.existsSync(root)) continue; } catch { continue; }
+    out.push(root);
+    for (const sub of SUB_BASES) {
+      const p = path.join(root, sub);
+      try { if (fs.existsSync(p)) out.push(p); } catch { /* dossier absent */ }
+    }
+  }
+  return out;
+}
+
 function detectGameFolders() {
   const steam = steamLibraries().map((lib) => path.join(lib, 'steamapps', 'common', 'eFootball PES 2021'));
   const patches = [];
-  for (const base of PATCH_BASES) {
+  for (const base of patchSearchBases()) {
     let dirs = [];
     try { dirs = fs.readdirSync(base, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name); } catch { continue; }
     patches.push(...dirs.filter((d) => /football ?life|pes ?20\d\d|smoke ?patch/i.test(d)).map((d) => path.join(base, d)));

@@ -2444,4 +2444,10 @@ window.LL_I18N.pt = {
   "Sauvegarde la plus récente chargée : {player}.": "Save mais recente carregado: {player}.",
   "Nouvelle carrière détectée : {player}.": "Nova carreira detectada: {player}.",
   "Configurer": "Configurar",
+  "Renommer les anciens clubs": "Renomear clubes antigos",
+  "Aucun ancien club enregistré dans le bilan de carrière de cette sauvegarde.": "Nenhum clube antigo registrado no histórico de carreira deste save.",
+  "Non reconnu dans la sauvegarde": "Não reconhecido no save",
+  "Nom du club enregistré.": "Nome do clube salvo.",
+  "Anciens clubs & équipes non reconnues": "Clubes antigos & equipes não reconhecidas",
+  "Si un ancien club de ton parcours a été remplacé ou retiré de la base du jeu par un patch (affiché comme « Club inconnu »), ou si tu préfères personnaliser son nom d’affichage dans Panthéon, Mails et les articles, modifie-le ici.": "Se um clube antigo da sua carreira foi substituído ou removido da base do jogo por um patch (exibido como “Clube desconhecido”), ou se você preferir personalizar o nome exibido no Panthéon, nos Mails e nos artigos, edite-o aqui.",
 };

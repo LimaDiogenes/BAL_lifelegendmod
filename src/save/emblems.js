@@ -6,8 +6,9 @@
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
-const { listCpk, readCpkEntry } = require('./cpk');
+const { listCpk, readCpkEntry, unwrapWesys } = require('./cpk');
 const { decryptSave } = require('./pesCrypt');
+const { siderRoots } = require('./gameDb');
 
 // Variantes : _b / _w (même écusson pour fond clair ou sombre), _l = grande taille.
 const EMBLEM_RE = /(?:^|\/)common\/render\/symbol\/flag\/e_(\d{6})_([rf])(_[bw])?(_l)?\.png$/i;
@@ -82,7 +83,30 @@ function customEmblem(saveDir, slot) {
   return rgbaToPng(CUSTOM_SIZE, CUSTOM_SIZE, px);
 }
 
+function siderEmblem(gameDir, id, allowFake) {
+  if (!gameDir) return null;
+  const padId = String(id).padStart(6, '0');
+  const kinds = allowFake ? ['r', 'f'] : ['r'];
+  const suffixes = ['_l', '_ll', ''];
+  for (const root of siderRoots(gameDir)) {
+    const dir = path.join(root, 'common', 'render', 'symbol', 'flag');
+    for (const k of kinds) {
+      for (const suf of suffixes) {
+        const p = path.join(dir, `e_${padId}_${k}${suf}.png`);
+        try {
+          if (!fs.existsSync(p)) continue;
+          const buf = unwrapWesys(fs.readFileSync(p));
+          if (buf && buf.subarray(0, 8).equals(PNG_MAGIC)) return buf;
+        } catch { /* fichier absent ou illisible */ }
+      }
+    }
+  }
+  return null;
+}
+
 function archiveEmblem(gameDir, id, allowFake) {
+  const loose = siderEmblem(gameDir, id, allowFake);
+  if (loose) return loose;
   const e = archiveIndex(gameDir).get(id);
   const pick = e?.r || (allowFake ? e?.f : null);
   if (!pick) return null;
@@ -91,10 +115,11 @@ function archiveEmblem(gameDir, id, allowFake) {
 }
 
 // Écussons des clubs demandés, écrits une fois dans outDir (<numéro>.png). Rend { numéro: fichier }.
-// clubs : [{ id, emblemSlot, fakeOk }] ; fakeOk = le faux écusson de PES est le sien (club inventé par le jeu).
+// clubs : [{ id, emblemSlot, fakeOk }] ; fakeOk = le faux écusson de PES est le sien (club inventé par le jeu, ou jeu patché).
 function ensureEmblems({ gameDir, savePath, clubs, outDir }) {
   const out = {};
   const saveDir = path.dirname(savePath);
+  const patched = gameDir ? isPatchedGame(gameDir) : false;
   fs.mkdirSync(outDir, { recursive: true });
   for (const c of clubs) {
     const name = c.emblemSlot != null ? `${c.id}-t${c.emblemSlot}.png` : `${c.id}.png`; // un autre écusson importé = un autre fichier
@@ -102,7 +127,7 @@ function ensureEmblems({ gameDir, savePath, clubs, outDir }) {
     if (fs.existsSync(file)) { out[c.id] = name; continue; }
     let png = null;
     try {
-      png = (c.emblemSlot != null ? customEmblem(saveDir, c.emblemSlot) : null) || (gameDir ? archiveEmblem(gameDir, c.id, c.fakeOk) : null);
+      png = (c.emblemSlot != null ? customEmblem(saveDir, c.emblemSlot) : null) || (gameDir ? archiveEmblem(gameDir, c.id, Boolean(c.fakeOk || patched)) : null);
     } catch { png = null; }
     if (!png) continue;
     fs.writeFileSync(file, png);

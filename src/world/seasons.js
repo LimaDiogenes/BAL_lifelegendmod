@@ -118,9 +118,13 @@ function resolveCareerRecords(state) {
   const aliases = state?.clubAliases || {};
   const clubs = (rec.clubs || []).map((c) => ({
     ...c,
-    name: c.name || aliases[String(c.clubRef)] || null,
+    name: aliases[String(c.clubRef)] || c.name || null,
   }));
-  return { ...rec, clubs };
+  const international = rec.international ? {
+    ...rec.international,
+    name: aliases[String(rec.international.teamRef)] || rec.international.name || state?.snapshot?.nationalTeam?.name || null,
+  } : null;
+  return { ...rec, clubs, international };
 }
 
 // Pour les rédacteurs : le parcours avant le suivi, chaque saison archivée et les totaux.
