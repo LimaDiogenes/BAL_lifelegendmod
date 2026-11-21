@@ -38,6 +38,7 @@ const PRIVACY_FIELDS = [
 ];
 
 const MAX_CUSTOM_PEOPLE = 10;
+const MAX_CUSTOM_WORDS = 30;
 
 const PARTICLES = new Set(['de', 'da', 'do', 'dos', 'das', 'du', 'des', 'di', 'del', 'della', 'la', 'le', 'les', 'van', 'von', 'den', 'der', 'el', 'al', 'y', 'e']);
 
@@ -45,6 +46,29 @@ const stripAccents = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u
 const cleanVal = (s) => String(s || '').replace(/["\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
 const cleanMulti = (s) => String(s || '').replace(/["]+/g, ' ').trim().slice(0, 1000);
 const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const ACCENT_CLASSES = {
+  a: '[aàáâãäå]',
+  e: '[eèéêë]',
+  i: '[iìíîï]',
+  o: '[oòóôõö]',
+  u: '[uùúûü]',
+  y: '[yýÿ]',
+  c: '[cç]',
+  n: '[nñ]',
+  s: '[sśš]',
+  z: '[zźž]',
+};
+
+function accentInsensitivePattern(term) {
+  const folded = stripAccents(String(term || '').normalize('NFC'));
+  let out = '';
+  for (const ch of folded) {
+    const cls = ACCENT_CLASSES[ch.toLowerCase()];
+    out += cls || escapeRe(ch);
+  }
+  return out;
+}
 
 function hashStr(s) {
   let h = 2166136261;
@@ -67,6 +91,20 @@ function normalizeCustomPeople(list) {
   return out;
 }
 
+function normalizeCustomWords(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  for (const item of list) {
+    if (out.length >= MAX_CUSTOM_WORDS) break;
+    if (!item || typeof item !== 'object') continue;
+    const real = cleanVal(item.real || item.word).slice(0, 120);
+    const decoy = cleanVal(item.decoy).slice(0, 120);
+    if (!real && !decoy) continue;
+    out.push({ real, decoy });
+  }
+  return out;
+}
+
 function normalizePrivacy(raw) {
   const fields = {};
   const overrides = {};
@@ -80,6 +118,7 @@ function normalizePrivacy(raw) {
     enabled: raw?.enabled !== false,
     fields,
     customPeople: normalizeCustomPeople(raw?.customPeople),
+    customWords: normalizeCustomWords(raw?.customWords),
     overrides,
   };
 }
@@ -112,8 +151,15 @@ function parseOverridePair(entry, explicitOverride) {
 
 function collectTokens(real, realLowers) {
   if (!real) return;
-  realLowers.add(real.toLowerCase());
-  for (const tok of real.split(/\s+/)) if (tok.length >= 3) realLowers.add(tok.toLowerCase());
+  const nfc = String(real).normalize('NFC');
+  realLowers.add(nfc.toLowerCase());
+  realLowers.add(stripAccents(nfc).toLowerCase());
+  for (const tok of nfc.split(/\s+/)) {
+    if (tok.length >= 3) {
+      realLowers.add(tok.toLowerCase());
+      realLowers.add(stripAccents(tok).toLowerCase());
+    }
+  }
 }
 
 function buildPrivacyMap(privacy, { careerId = '', playerName = '', handle = '', persona = null } = {}) {
@@ -133,7 +179,7 @@ function buildPrivacyMap(privacy, { careerId = '', playerName = '', handle = '',
   const mergeRoot = (shieldKey, kind, val) => {
     if (!val || val.length < 2) return;
     if (!effectiveFields[shieldKey]) effectiveFields[shieldKey] = val;
-    else if (effectiveFields[shieldKey].toLowerCase() !== val.toLowerCase()) extraRoots.push({ val, kind });
+    else if (stripAccents(effectiveFields[shieldKey].normalize('NFC')).toLowerCase() !== stripAccents(val.normalize('NFC')).toLowerCase()) extraRoots.push({ val, kind });
   };
   mergeRoot('hometown', 'hometown', pInfo.roots.hometown);
   mergeRoot('youthClub', 'youthClub', pInfo.roots.academy);
@@ -151,12 +197,13 @@ function buildPrivacyMap(privacy, { careerId = '', playerName = '', handle = '',
   }
   for (const r of extraRoots) collectTokens(r.val, realLowers);
   for (const person of norm.customPeople) collectTokens(person.real, realLowers);
+  for (const cw of norm.customWords) collectTokens(cw.real, realLowers);
   for (const person of pInfo.people) collectTokens(person.real, realLowers);
 
   const addPair = (real, decoy, kind) => {
-    const r = cleanVal(real);
-    const d = cleanVal(decoy);
-    if (!r || !d || r.toLowerCase() === d.toLowerCase()) return;
+    const r = cleanVal(real).normalize('NFC');
+    const d = cleanVal(decoy).normalize('NFC');
+    if (!r || !d || stripAccents(r).toLowerCase() === stripAccents(d).toLowerCase()) return;
     rawEntries.push({ real: r, decoy: d, kind });
   };
 
@@ -301,37 +348,49 @@ function buildPrivacyMap(privacy, { careerId = '', playerName = '', handle = '',
     });
   }
 
-  // Deduplicate by lowercase `real` (longest/most-specific kept first).
+  for (const [idx, cw] of norm.customWords.entries()) {
+    if (!cw.real || cw.real.length < 2) continue;
+    const decoy = cw.decoy || pickFrom(DECOYS.generic, `${careerId}:customWord:${idx}:${cw.real}`, usedDecoys, cw.real.toLowerCase());
+    usedDecoys.add(decoy.toLowerCase());
+    addPair(cw.real, decoy, 'customWord');
+  }
+
+  // Deduplicate by accent-folded lowercase `real` (longest/most-specific kept first).
   const byReal = new Map();
   for (const p of rawEntries) {
-    const k = p.real.toLowerCase();
+    const k = stripAccents(p.real.normalize('NFC')).toLowerCase();
     if (!byReal.has(k)) byReal.set(k, p);
   }
   const pairs = [...byReal.values()].sort((a, b) => b.real.length - a.real.length);
 
-  // Build single-pass lookup tables (including accent-insensitive aliases for outgoing masking).
+  // Build single-pass lookup tables & accent-insensitive regexes for outgoing masking.
   const maskLookup = new Map();
+  const maskPatternSet = new Set();
   for (const p of pairs) {
-    maskLookup.set(p.real.toLowerCase(), p.decoy);
-    const ascii = stripAccents(p.real).toLowerCase();
-    if (ascii !== p.real.toLowerCase() && !maskLookup.has(ascii)) maskLookup.set(ascii, p.decoy);
+    const exactLow = p.real.toLowerCase();
+    const asciiLow = stripAccents(exactLow);
+    maskLookup.set(exactLow, p.decoy);
+    if (!maskLookup.has(asciiLow)) maskLookup.set(asciiLow, p.decoy);
+    maskPatternSet.add(asciiLow);
   }
-  const maskTerms = [...maskLookup.keys()].sort((a, b) => b.length - a.length);
+  const maskTerms = [...maskPatternSet].sort((a, b) => b.length - a.length);
   const maskRegex = maskTerms.length
-    ? new RegExp(`(?<![\\p{L}\\p{N}_])(${maskTerms.map(escapeRe).join('|')})(?![\\p{L}\\p{N}_])`, 'giu')
+    ? new RegExp(`(?<![\\p{L}\\p{N}_])(${maskTerms.map(accentInsensitivePattern).join('|')})(?![\\p{L}\\p{N}_])`, 'giu')
     : null;
 
-  // Build single-pass lookup for unmasking (`decoy -> real`).
+  // Build single-pass lookup & accent-insensitive regex for incoming unmasking (`decoy -> real`).
   const unmaskLookup = new Map();
+  const unmaskPatternSet = new Set();
   for (const p of pairs) {
     const dk = p.decoy.toLowerCase();
+    const ascii = stripAccents(dk);
     if (!unmaskLookup.has(dk)) unmaskLookup.set(dk, p.real);
-    const ascii = stripAccents(p.decoy).toLowerCase();
-    if (ascii !== dk && !unmaskLookup.has(ascii)) unmaskLookup.set(ascii, p.real);
+    if (!unmaskLookup.has(ascii)) unmaskLookup.set(ascii, p.real);
+    unmaskPatternSet.add(ascii);
   }
-  const unmaskTerms = [...unmaskLookup.keys()].sort((a, b) => b.length - a.length);
+  const unmaskTerms = [...unmaskPatternSet].sort((a, b) => b.length - a.length);
   const unmaskRegex = unmaskTerms.length
-    ? new RegExp(`(?<![\\p{L}\\p{N}_])(${unmaskTerms.map(escapeRe).join('|')})(?![\\p{L}\\p{N}_])`, 'giu')
+    ? new RegExp(`(?<![\\p{L}\\p{N}_])(${unmaskTerms.map(accentInsensitivePattern).join('|')})(?![\\p{L}\\p{N}_])`, 'giu')
     : null;
 
   return { enabled: true, pairs, maskLookup, maskRegex, unmaskLookup, unmaskRegex };
@@ -355,7 +414,8 @@ function matchCase(matched, replacement) {
 
 function maskText(text, map) {
   if (!map?.enabled || !map.maskRegex || typeof text !== 'string' || !text) return text;
-  return text.replace(map.maskRegex, (m) => {
+  const nfc = text.normalize('NFC');
+  return nfc.replace(map.maskRegex, (m) => {
     const hit = map.maskLookup.get(m.toLowerCase()) || map.maskLookup.get(stripAccents(m).toLowerCase());
     return hit ? matchCase(m, hit) : m;
   });
@@ -363,7 +423,8 @@ function maskText(text, map) {
 
 function unmaskText(text, map) {
   if (!map?.enabled || !map.unmaskRegex || typeof text !== 'string' || !text) return text;
-  return text.replace(map.unmaskRegex, (m) => {
+  const nfc = text.normalize('NFC');
+  return nfc.replace(map.unmaskRegex, (m) => {
     const hit = map.unmaskLookup.get(m.toLowerCase()) || map.unmaskLookup.get(stripAccents(m).toLowerCase());
     return hit ? matchCase(m, hit) : m;
   });
@@ -389,6 +450,7 @@ function privacyWords(privacy, persona = null) {
     }
   }
   for (const person of norm.customPeople) addWordTokens(words, person.real, true);
+  for (const cw of norm.customWords) addWordTokens(words, cw.real, false);
   if (persona) {
     const pInfo = personaPrivacyEntries(persona);
     if (pInfo.roots.hometown) addWordTokens(words, pInfo.roots.hometown, false);
@@ -411,6 +473,7 @@ module.exports = {
   DECOYS,
   PRIVACY_FIELDS,
   MAX_CUSTOM_PEOPLE,
+  MAX_CUSTOM_WORDS,
   normalizePrivacy,
   buildPrivacyMap,
   maskText,

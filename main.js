@@ -398,6 +398,8 @@ app.whenReady().then(() => {
   });
   handle('privacy:save', (privacy) => world.savePrivacy({ store, privacy }));
   handle('persona:save', (persona) => world.savePersona({ store, persona }));
+  handle('agent:update', (payload) => world.updateAgent({ store, ...(payload || {}) }));
+  handle('bio:generate', (payload) => world.generateBackstory({ store, settings: store.getSettings(), ...(payload || {}) }));
   handle('lifeHub:calibrate', (payload) => world.calibrateCareerLifeHub({ store, payload }));
   handle('lifeHub:buyAsset', (payload) => world.buyLifeAsset({ store, payload }));
   handle('lifeHub:sellAsset', (assetId) => world.sellLifeAsset({ store, assetId }));
@@ -464,7 +466,7 @@ app.whenReady().then(() => {
     return state;
   });
   handle('profile:save', (update) => world.updateProfile({ store, update }));
-  // Dossier des carrières : l'interface y lit la photo et la bannière du profil, ainsi que les images déposées dans lifelegend/media/mylife/.
+  // Dossier des carrières : l'interface y lit la photo et la bannière du profil, ainsi que les images déposées dans lifelegend/media/mylife/ et les logos dans lifelegend/media/sponsors/.
   handle('app:paths', () => {
     const mylifeMedia = {};
     const mylifeDir = path.join(__dirname, 'lifelegend', 'media', 'mylife');
@@ -474,7 +476,15 @@ app.whenReady().then(() => {
         if (m) mylifeMedia[m[1].toLowerCase()] = f;
       }
     } catch { /* dossier optionnel */ }
-    return { careersDir: path.join(store.dir, 'careers'), mylifeMedia };
+    const sponsorLogos = {};
+    const sponsorsDir = path.join(__dirname, 'lifelegend', 'media', 'sponsors');
+    try {
+      for (const f of fs.readdirSync(sponsorsDir)) {
+        const m = /^([a-z0-9_-]+)\.(svg|png|jpe?g|webp)$/i.exec(f);
+        if (m) sponsorLogos[m[1].toLowerCase()] = f;
+      }
+    } catch { /* dossier optionnel */ }
+    return { careersDir: path.join(store.dir, 'careers'), mylifeMedia, sponsorLogos };
   });
   // « Signaler un problème » : le rapport (sans clé, e-mail ni textes personnels), enregistré là où il le choisit, puis
   // montré dans l'Explorateur. Rien n'est envoyé.

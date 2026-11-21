@@ -10,19 +10,27 @@ const { Store } = require('../src/store');
 const {
   normalizeDob,
   normalizePersona,
+  personaFacts,
   extractPersonaAgent,
   personaPrivacyEntries,
 } = require('../src/world/persona');
 const { syncAgentWithPersona } = require('../src/world/agent');
 const {
   SPONSOR_CATEGORIES,
+  BRAND_CATALOG,
+  brandSlug,
   isBettingAllowed,
   brandsForCategory,
   findSponsorConflicts,
 } = require('../src/world/sponsorCatalog');
 const {
+  ASSET_CATALOG,
   ensureLifeHub,
   addSponsor,
+  buyAsset,
+  sellAsset,
+  grantSponsorCars,
+  ownedMonthlyCost,
   syncBootSponsor,
   maybeStartBiddingWar,
   answerBiddingWar,
@@ -30,7 +38,7 @@ const {
   answerOneTimeDeal,
   rescheduleObligation,
 } = require('../src/world/lifeHub');
-const { addLifeSponsor, advanceCalendar } = require('../src/world/world');
+const { addLifeSponsor, advanceCalendar, updateAgent, generateBackstory } = require('../src/world/world');
 const {
   birthdaysForYear,
   flipBirthdayShift,
@@ -42,7 +50,7 @@ const {
 const { calendarAgenda } = require('../src/world/calendar');
 const { runProceduralDailyPulse, runHybridAiDailyPulse } = require('../src/world/dailyPulse');
 const { detectDramaCandidates } = require('../src/world/dramaEngine');
-const { buildPrivacyMap, maskText, unmaskText } = require('../src/ai/privacyShield');
+const { MAX_CUSTOM_WORDS, buildPrivacyMap, maskText, unmaskText } = require('../src/ai/privacyShield');
 
 function mkTmpStore(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'll-overhaul-'));
@@ -389,4 +397,140 @@ test('Daily Pulse (spoiler-free Tier 1 & Privacy-shielded Tier 2) + Drama Engine
   assert.strictEqual(aiRes.ok, true);
   assert.ok(st.dailyBriefs.some((b) => b.source === 'ai' && b.headline.includes('Guarujá Secret')));
   assert.ok(st.huddles[0].messages.some((m) => m.dailyPulse && m.from === 'Bruno Costa'));
+});
+
+test('Accent-insensitive Privacy Shield, customWords (+)/(-), 3 new Persona fields & strict Privacy-Filtered AI backstory', async (t) => {
+  const persona = normalizePersona({
+    roots: { hometown: 'Guarujá', childhood: 'Bairro da Enseada', academy: 'Santos FC' },
+    rootProtect: { hometown: true, childhood: true, academy: false },
+    flavor: {
+      signature: 'Bandage blanc',
+      turningPoint: 'Écarté à 16 ans avant de percer à Guarujá',
+      idol: 'Ronaldinho',
+      dream: 'Soulever la Coupe du monde',
+    },
+    circle: {
+      family: [{ id: 'f1', role: 'Mère', name: 'Élodie Silva', protect: true }],
+    },
+  });
+  const facts = personaFacts(persona);
+  assert.ok(facts.flavor.turning_point.includes('Guarujá'));
+  assert.strictEqual(facts.flavor.football_idol, 'Ronaldinho');
+  assert.strictEqual(facts.flavor.career_dream, 'Soulever la Coupe du monde');
+
+  // Verify customWords dynamic rows (capped at MAX_CUSTOM_WORDS) and NFC/accent-insensitive matching
+  const overflowing = Array.from({ length: MAX_CUSTOM_WORDS + 5 }, (_, i) => ({ word: `SecretPlace${i}`, decoy: `Alias${i}` }));
+  const map = buildPrivacyMap(
+    { enabled: true, customWords: [{ word: 'Padaria Central', decoy: 'Café do Porto' }, ...overflowing] },
+    { careerId: 'c1', playerName: 'Lucas Silva', handle: 'lucassilva', persona },
+  );
+  assert.ok(map.pairs.some((p) => p.real === 'Padaria Central' && p.decoy === 'Café do Porto'));
+  const overflowCount = map.pairs.filter((p) => p.real.startsWith('SecretPlace')).length;
+  assert.ok(overflowCount <= MAX_CUSTOM_WORDS);
+
+  // Unaccented / accented mixed casing variants must mask & restore cleanly
+  const sampleIn = 'lucassilva et Elodie Silva viennent de Guaruja pres de Padaria Central et GUARUJÁ.';
+  const maskedSample = maskText(sampleIn, map);
+  assert.ok(!/Guaruja/i.test(maskedSample));
+  assert.ok(!/Elodie Silva/i.test(maskedSample));
+  assert.ok(maskedSample.includes('Café do Porto'));
+  const restored = unmaskText(maskedSample, map);
+  assert.ok(restored.includes('Padaria Central'));
+
+  // generateBackstory strictly masks prompt sent to completeFn and unmasks back for user editing
+  const store = mkTmpStore(t);
+  store.saveSettings({ provider: 'groq', model: 'llama-3.3-70b-versatile' });
+  const st = baseState();
+  st.persona = persona;
+  store.saveCareer(st);
+  store.setActiveCareer(st.careerId);
+
+  let sentSystem = '';
+  let sentUser = '';
+  const res = await generateBackstory({
+    store,
+    settings: store.getSettings(),
+    persona,
+    privacy: { enabled: true, customWords: [{ word: 'Padaria Central', decoy: 'Café do Porto' }] },
+    playerName: 'Lucas Silva',
+    club: 'Santos FC',
+    completeFn: async (_stg, _key, opts) => {
+      sentSystem = maskText(opts.system, opts.privacyMap);
+      sentUser = maskText(opts.user, opts.privacyMap);
+      assert.ok(!/Guaruj[áa]/i.test(sentUser), 'real hometown leaked to AI');
+      assert.ok(!/[EÉ]lodie Silva/i.test(sentUser), 'real mother name leaked to AI');
+      assert.ok(!/Lucas Silva/i.test(sentUser), 'real player name leaked to AI');
+      const pDecoy = opts.privacyMap.pairs.find((p) => p.real === 'Lucas Silva')?.decoy || 'Player';
+      const hDecoy = opts.privacyMap.pairs.find((p) => p.real === 'Guarujá')?.decoy || 'Town';
+      const rawJson = JSON.stringify({
+        bio: `${pDecoy} grew up in ${hDecoy}, inspired by Ronaldinho, aiming to win the World Cup.`,
+      });
+      return unmaskText(rawJson, opts.privacyMap);
+    },
+  });
+  assert.ok(sentSystem.length > 0 && sentUser.length > 0);
+  assert.strictEqual(res.masked, true);
+  assert.ok(res.pairs >= 3);
+  assert.ok(res.text.includes('Lucas Silva'));
+  assert.ok(res.text.includes('Guarujá'));
+  assert.ok(res.text.includes('Ronaldinho'));
+});
+
+test('Agent two-way sync via world.updateAgent, global sponsors catalog (250+), 8 car categories & sponsor gifted cars', (t) => {
+  const store = mkTmpStore(t);
+  assert.strictEqual(store.getSettings().autoUpdateCheck, true);
+
+  const st = baseState();
+  st.agent = { name: 'Old Agent', agency: 'Old Agency' };
+  st.mail = [{ id: 'm_agent_1', role: 'agent', from: 'Old Agent', subject: 'Contract', messages: [] }];
+  st.persona = normalizePersona({});
+  store.saveCareer(st);
+  store.setActiveCareer(st.careerId);
+
+  const updated = updateAgent({ store, name: 'Jorge Costa', agency: 'Gestifute' });
+  assert.strictEqual(updated.agent.name, 'Jorge Costa');
+  assert.strictEqual(updated.agent.agency, 'Gestifute');
+  assert.strictEqual(updated.mail[0].from, 'Jorge Costa');
+  assert.ok(updated.persona.circle.business.some((p) => /agent/i.test(p.role) && p.name === 'Jorge Costa'));
+
+  // Expanded global sponsor catalog & logo slug helper
+  assert.ok(BRAND_CATALOG.length >= 250, `expected >= 250 global brands, got ${BRAND_CATALOG.length}`);
+  assert.strictEqual(brandSlug('Oi Ocha (Ito En)'), 'oi_ocha_ito_en');
+  assert.strictEqual(brandSlug('Air France / KLM'), 'air_france_klm');
+
+  // 8 refactored car categories + backward compatibility alias
+  const carIds = ASSET_CATALOG.filter((a) => a.category === 'car').map((a) => a.id);
+  assert.deepStrictEqual(carIds, ['car_hatch', 'car_sedan', 'car_minivan', 'car_suv', 'car_electric_gt', 'car_sports', 'car_classic', 'car_supercar']);
+
+  const hub = ensureLifeHub(updated, updated.snapshot);
+  hub.calibrated = true;
+  hub.stage = 'superstar';
+  hub.cash = 1000000;
+  updated.snapshot.stats.season = { apps: 28, goals: 22, assists: 12, avgRating: 8.1 }; // 34 G+A -> unlocks milestone cars
+
+  // Buying legacy ID resolves transparently
+  const afterBuy = buyAsset(updated, { catalogId: 'exotic_supercar' }, '2026-09-10', () => 'a_legacy');
+  assert.strictEqual(afterBuy.assets.find((a) => a.catalogId === 'car_supercar')?.catalogId, 'car_supercar');
+
+  // Signing an automotive sponsor automatically gifts annual company car + high-profile milestone cars at €0 cost/upkeep
+  addSponsor(updated, { brand: 'Porsche', categories: ['automotive'], fee: 450000, bonus: 6000, isGlobalPartner: true, until: '2028-09-10' }, '2026-09-10', (() => { let n = 0; return () => `auto_${++n}`; })());
+  const gifted = hub.assets.filter((a) => a.giftedBy === 'Porsche');
+  assert.ok(gifted.length >= 2, 'high-profile automotive deal gifts annual + milestone cars');
+  for (const g of gifted) {
+    assert.strictEqual(g.price, 0);
+    assert.strictEqual(g.monthlyCost, 0);
+    assert.strictEqual(g.resaleValue, 0);
+  }
+  const cashBeforeReturn = hub.cash;
+  sellAsset(updated, gifted[0].id, '2026-09-11', () => 'ret_1');
+  assert.ok(!hub.assets.some((a) => a.id === gifted[0].id));
+  assert.strictEqual(hub.cash, cashBeforeReturn);
+  assert.strictEqual(ownedMonthlyCost({ assets: gifted }), 0);
+
+  // Next year (>365d, early new season) grants another annual car cleanly
+  updated.snapshot.stats.season = { apps: 3, goals: 2, assists: 1, avgRating: 7.2 };
+  const nextYear = grantSponsorCars(updated, hub, updated.snapshot, '2027-09-15', () => 'yr2_car');
+  assert.strictEqual(nextYear.length, 1);
+  assert.strictEqual(nextYear[0].giftedBy, 'Porsche');
+  assert.strictEqual(nextYear[0].giftReason, 'annual');
 });

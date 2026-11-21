@@ -199,22 +199,22 @@ describe('Phase H Living My Life: stadium thumbnails, custom media importer & in
     store.setActiveCareer(state.careerId);
 
     // 1. Purchase supercar -> generates scene, Kop post & Vestiaire banter
-    world.buyLifeAsset({ store, payload: { catalogId: 'exotic_supercar' } });
+    world.buyLifeAsset({ store, payload: { catalogId: 'car_supercar' } });
     let loaded = store.activeCareer();
     assert.equal(loaded.lifeHub.scenes.length, 1);
     const carScene = loaded.lifeHub.scenes[0];
-    assert.match(carScene.headline, /Exotic supercar/);
-    assert.equal(carScene.headline.includes('exotic_supercar'), false);
+    assert.match(carScene.headline, /Supercar/);
+    assert.equal(carScene.headline.includes('car_supercar'), false);
     assert.equal(loaded.feed.length, 1);
     assert.equal(loaded.feed[0].lifeScene, true);
-    assert.ok(loaded.feed[0].text.includes('Exotic supercar'));
+    assert.ok(loaded.feed[0].text.includes('Supercar'));
     assert.equal(loaded.huddles[0].messages.length, 1);
     assert.equal(loaded.huddles[0].unread, 1);
 
     // 2. Check FACTS.off_pitch_hub has zero raw snake_case variable leaks
     const facts = lifeHubFacts(loaded);
-    assert.ok(facts.notable_lifestyle.includes('Exotic supercar'));
-    assert.equal(facts.notable_lifestyle.includes('exotic_supercar'), false);
+    assert.ok(facts.notable_lifestyle.includes('Supercar'));
+    assert.equal(facts.notable_lifestyle.includes('car_supercar'), false);
 
     // 3. Days-off actions: team_dinner -> Vestiaire thank-you using squad mate; inner_circle -> private (zero Kop post!)
     const feedBeforeInner = loaded.feed.length;

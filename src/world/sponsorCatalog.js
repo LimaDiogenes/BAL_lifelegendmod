@@ -19,6 +19,15 @@ const CATEGORY_ALIASES = {
   tech: 'gaming',
 };
 
+function brandSlug(brand) {
+  return String(brand || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '');
+}
+
 function canonicalCategory(raw) {
   const clean = String(raw || '').trim();
   const low = clean.toLowerCase();
@@ -64,6 +73,15 @@ const BRAND_CATALOG = [
   { brand: 'Umbro', category: 'boots', categories: ['boots', 'apparel'], minStage: 'rookie', baseFee: 90000, bonus: 1800, globalEligible: false },
   { brand: 'Lotto', category: 'boots', categories: ['boots', 'apparel'], minStage: 'rookie', baseFee: 80000, bonus: 1500, globalEligible: false },
   { brand: 'Diadora', category: 'boots', categories: ['boots', 'apparel'], minStage: 'rookie', baseFee: 82000, bonus: 1600, globalEligible: false },
+  { brand: 'Asics', category: 'boots', categories: ['boots', 'apparel'], minStage: 'rookie', baseFee: 125000, bonus: 2300, globalEligible: true },
+  { brand: 'On', category: 'boots', categories: ['boots', 'apparel'], minStage: 'rising', baseFee: 185000, bonus: 3200, globalEligible: true },
+  { brand: 'Castore', category: 'boots', categories: ['boots', 'apparel'], minStage: 'rising', baseFee: 155000, bonus: 2800, globalEligible: false },
+  { brand: 'Joma', category: 'boots', categories: ['boots', 'apparel'], minStage: 'rookie', baseFee: 88000, bonus: 1700, globalEligible: false },
+  { brand: 'Kelme', category: 'boots', categories: ['boots', 'apparel'], minStage: 'rookie', baseFee: 78000, bonus: 1500, globalEligible: false },
+  { brand: 'Li-Ning', category: 'boots', categories: ['boots', 'apparel'], minStage: 'rising', baseFee: 170000, bonus: 3000, globalEligible: true },
+  { brand: 'Anta', category: 'boots', categories: ['boots', 'apparel'], minStage: 'rising', baseFee: 165000, bonus: 2900, globalEligible: true },
+  { brand: 'Penalty', category: 'boots', categories: ['boots', 'apparel'], minStage: 'rookie', baseFee: 72000, bonus: 1400, globalEligible: false },
+  { brand: 'Topper', category: 'boots', categories: ['boots', 'apparel'], minStage: 'rookie', baseFee: 70000, bonus: 1350, globalEligible: false },
 
   // 2. Sportswear standalone (blocks cross-brand conflict with boots)
   { brand: 'Nike Sportswear', category: 'apparel', categories: ['apparel', 'boots'], minStage: 'rising', baseFee: 210000, bonus: 3500, globalEligible: true },
@@ -71,6 +89,9 @@ const BRAND_CATALOG = [
   { brand: 'Puma Sport', category: 'apparel', categories: ['apparel', 'boots'], minStage: 'rookie', baseFee: 150000, bonus: 2800, globalEligible: true },
   { brand: 'Kappa', category: 'apparel', categories: ['apparel'], minStage: 'rookie', baseFee: 75000, bonus: 1500, globalEligible: false },
   { brand: 'Macron', category: 'apparel', categories: ['apparel'], minStage: 'rookie', baseFee: 70000, bonus: 1400, globalEligible: false },
+  { brand: 'Hummel', category: 'apparel', categories: ['apparel'], minStage: 'rookie', baseFee: 85000, bonus: 1600, globalEligible: false },
+  { brand: 'Erreà', category: 'apparel', categories: ['apparel'], minStage: 'rookie', baseFee: 68000, bonus: 1350, globalEligible: false },
+  { brand: 'Uniqlo', category: 'apparel', categories: ['apparel', 'lifestyle'], minStage: 'established', baseFee: 330000, bonus: 4600, globalEligible: true },
 
   // 3. Luxury Fashion (separated from sportswear)
   { brand: 'Louis Vuitton', category: 'fashion', categories: ['fashion'], minStage: 'superstar', baseFee: 580000, bonus: 7500, globalEligible: true },
@@ -83,6 +104,12 @@ const BRAND_CATALOG = [
   { brand: 'Versace', category: 'fashion', categories: ['fashion'], minStage: 'established', baseFee: 380000, bonus: 4800, globalEligible: false },
   { brand: 'Burberry', category: 'fashion', categories: ['fashion'], minStage: 'rising', baseFee: 310000, bonus: 4000, globalEligible: true },
   { brand: 'Ralph Lauren', category: 'fashion', categories: ['fashion'], minStage: 'rising', baseFee: 260000, bonus: 3500, globalEligible: false },
+  { brand: 'Zegna', category: 'fashion', categories: ['fashion'], minStage: 'established', baseFee: 340000, bonus: 4600, globalEligible: true },
+  { brand: 'Moncler', category: 'fashion', categories: ['fashion'], minStage: 'established', baseFee: 350000, bonus: 4700, globalEligible: true },
+  { brand: 'Stone Island', category: 'fashion', categories: ['fashion'], minStage: 'rising', baseFee: 240000, bonus: 3400, globalEligible: false },
+  { brand: 'Lululemon', category: 'fashion', categories: ['fashion', 'lifestyle'], minStage: 'rising', baseFee: 220000, bonus: 3200, globalEligible: true },
+  { brand: 'American Eagle', category: 'fashion', categories: ['fashion'], minStage: 'rookie', baseFee: 130000, bonus: 2200, globalEligible: false },
+  { brand: 'Havaianas', category: 'fashion', categories: ['fashion', 'lifestyle'], minStage: 'rookie', baseFee: 115000, bonus: 2000, globalEligible: true },
 
   // 4. Eyewear
   { brand: 'Oakley', category: 'eyewear', categories: ['eyewear'], minStage: 'rookie', baseFee: 130000, bonus: 2200, globalEligible: true },
@@ -92,6 +119,8 @@ const BRAND_CATALOG = [
   { brand: 'Carrera', category: 'eyewear', categories: ['eyewear'], minStage: 'rookie', baseFee: 105000, bonus: 1800, globalEligible: false },
   { brand: 'Maui Jim', category: 'eyewear', categories: ['eyewear'], minStage: 'rising', baseFee: 140000, bonus: 2400, globalEligible: false },
   { brand: 'Gentle Monster', category: 'eyewear', categories: ['eyewear'], minStage: 'established', baseFee: 230000, bonus: 3400, globalEligible: true },
+  { brand: 'Hawkers', category: 'eyewear', categories: ['eyewear'], minStage: 'rookie', baseFee: 90000, bonus: 1700, globalEligible: false },
+  { brand: 'Warby Parker', category: 'eyewear', categories: ['eyewear'], minStage: 'rookie', baseFee: 100000, bonus: 1800, globalEligible: false },
 
   // 5. Watches
   { brand: 'Rolex', category: 'watches', categories: ['watches'], minStage: 'superstar', baseFee: 680000, bonus: 8500, globalEligible: true },
@@ -103,6 +132,11 @@ const BRAND_CATALOG = [
   { brand: 'Tissot', category: 'watches', categories: ['watches'], minStage: 'rising', baseFee: 210000, bonus: 3200, globalEligible: true },
   { brand: 'Breitling', category: 'watches', categories: ['watches'], minStage: 'established', baseFee: 360000, bonus: 4800, globalEligible: false },
   { brand: 'Jacob & Co.', category: 'watches', categories: ['watches'], minStage: 'superstar', baseFee: 540000, bonus: 7000, globalEligible: false },
+  { brand: 'Seiko', category: 'watches', categories: ['watches'], minStage: 'rising', baseFee: 195000, bonus: 3000, globalEligible: true },
+  { brand: 'Grand Seiko', category: 'watches', categories: ['watches'], minStage: 'established', baseFee: 330000, bonus: 4500, globalEligible: true },
+  { brand: 'Casio G-Shock', category: 'watches', categories: ['watches'], minStage: 'rookie', baseFee: 120000, bonus: 2100, globalEligible: true },
+  { brand: 'Citizen', category: 'watches', categories: ['watches'], minStage: 'rookie', baseFee: 135000, bonus: 2300, globalEligible: false },
+  { brand: 'Tudor', category: 'watches', categories: ['watches'], minStage: 'established', baseFee: 380000, bonus: 5200, globalEligible: true },
 
   // 6. Automotive
   { brand: 'Porsche', category: 'automotive', categories: ['automotive'], minStage: 'established', baseFee: 420000, bonus: 5800, globalEligible: true },
@@ -114,6 +148,17 @@ const BRAND_CATALOG = [
   { brand: 'Cupra', category: 'automotive', categories: ['automotive'], minStage: 'rookie', baseFee: 165000, bonus: 2600, globalEligible: false },
   { brand: 'Hyundai', category: 'automotive', categories: ['automotive'], minStage: 'rookie', baseFee: 155000, bonus: 2500, globalEligible: true },
   { brand: 'Volvo', category: 'automotive', categories: ['automotive'], minStage: 'rising', baseFee: 220000, bonus: 3200, globalEligible: true },
+  { brand: 'Toyota', category: 'automotive', categories: ['automotive'], minStage: 'rising', baseFee: 270000, bonus: 3900, globalEligible: true },
+  { brand: 'Honda', category: 'automotive', categories: ['automotive'], minStage: 'rookie', baseFee: 190000, bonus: 2900, globalEligible: true },
+  { brand: 'Lexus', category: 'automotive', categories: ['automotive'], minStage: 'established', baseFee: 310000, bonus: 4300, globalEligible: true },
+  { brand: 'BYD', category: 'automotive', categories: ['automotive'], minStage: 'rising', baseFee: 260000, bonus: 3800, globalEligible: true },
+  { brand: 'MG Motor', category: 'automotive', categories: ['automotive'], minStage: 'rookie', baseFee: 145000, bonus: 2300, globalEligible: false },
+  { brand: 'Tata Motors', category: 'automotive', categories: ['automotive'], minStage: 'rookie', baseFee: 135000, bonus: 2100, globalEligible: false },
+  { brand: 'Mahindra', category: 'automotive', categories: ['automotive'], minStage: 'rookie', baseFee: 130000, bonus: 2000, globalEligible: false },
+  { brand: 'Kia', category: 'automotive', categories: ['automotive'], minStage: 'rookie', baseFee: 160000, bonus: 2500, globalEligible: true },
+  { brand: 'Ford', category: 'automotive', categories: ['automotive'], minStage: 'rising', baseFee: 230000, bonus: 3400, globalEligible: true },
+  { brand: 'Rivian', category: 'automotive', categories: ['automotive'], minStage: 'rising', baseFee: 210000, bonus: 3100, globalEligible: false },
+  { brand: 'Lamborghini', category: 'automotive', categories: ['automotive'], minStage: 'superstar', baseFee: 590000, bonus: 7600, globalEligible: false },
 
   // 7. Soft & Energy Beverages
   { brand: 'Gatorade', category: 'beverage', categories: ['beverage'], minStage: 'rookie', baseFee: 145000, bonus: 2500, globalEligible: true },
@@ -124,15 +169,22 @@ const BRAND_CATALOG = [
   { brand: 'Monster Energy', category: 'beverage', categories: ['beverage'], minStage: 'rising', baseFee: 210000, bonus: 3400, globalEligible: true },
   { brand: 'Prime Hydration', category: 'beverage', categories: ['beverage'], minStage: 'rising', baseFee: 230000, bonus: 3600, globalEligible: false },
   { brand: 'BodyArmor', category: 'beverage', categories: ['beverage'], minStage: 'rookie', baseFee: 120000, bonus: 2000, globalEligible: false },
+  { brand: 'Guaraná Antarctica', category: 'beverage', categories: ['beverage'], minStage: 'rookie', baseFee: 155000, bonus: 2700, globalEligible: true },
+  { brand: 'Celsius', category: 'beverage', categories: ['beverage', 'healthy_beverage'], minStage: 'rising', baseFee: 195000, bonus: 3100, globalEligible: true },
+  { brand: 'Suntory', category: 'beverage', categories: ['beverage'], minStage: 'rising', baseFee: 175000, bonus: 2900, globalEligible: true },
+  { brand: 'Walovi (Wanglaoji)', category: 'beverage', categories: ['beverage', 'healthy_beverage'], minStage: 'rising', baseFee: 170000, bonus: 2800, globalEligible: true },
 
   // 8. Healthy Beverages (multi-brand allowed)
   { brand: 'Oi Ocha (Ito En)', category: 'healthy_beverage', categories: ['healthy_beverage'], minStage: 'rising', baseFee: 180000, bonus: 3000, globalEligible: true },
   { brand: 'Evian', category: 'healthy_beverage', categories: ['healthy_beverage'], minStage: 'rising', baseFee: 150000, bonus: 2400, globalEligible: true },
   { brand: 'San Pellegrino', category: 'healthy_beverage', categories: ['healthy_beverage'], minStage: 'rising', baseFee: 145000, bonus: 2300, globalEligible: false },
   { brand: 'Vita Coco', category: 'healthy_beverage', categories: ['healthy_beverage'], minStage: 'rookie', baseFee: 95000, bonus: 1700, globalEligible: false },
-  { brand: 'AG1', category: 'healthy_beverage', categories: ['healthy_beverage'], minStage: 'rising', baseFee: 175000, bonus: 2800, globalEligible: true },
-  { brand: 'Pocari Sweat', category: 'healthy_beverage', categories: ['healthy_beverage'], minStage: 'rookie', baseFee: 110000, bonus: 1900, globalEligible: false },
+  { brand: 'AG1', category: 'healthy_beverage', categories: ['healthy_beverage', 'health'], minStage: 'rising', baseFee: 175000, bonus: 2800, globalEligible: true },
+  { brand: 'Pocari Sweat', category: 'healthy_beverage', categories: ['healthy_beverage'], minStage: 'rookie', baseFee: 110000, bonus: 1900, globalEligible: true },
   { brand: 'Fiji Water', category: 'healthy_beverage', categories: ['healthy_beverage'], minStage: 'established', baseFee: 165000, bonus: 2500, globalEligible: false },
+  { brand: 'Liquid I.V.', category: 'healthy_beverage', categories: ['healthy_beverage'], minStage: 'rookie', baseFee: 115000, bonus: 1950, globalEligible: false },
+  { brand: 'Yakult', category: 'healthy_beverage', categories: ['healthy_beverage', 'health'], minStage: 'rookie', baseFee: 120000, bonus: 2100, globalEligible: true },
+  { brand: 'Nongfu Spring', category: 'healthy_beverage', categories: ['healthy_beverage'], minStage: 'rising', baseFee: 155000, bonus: 2500, globalEligible: false },
 
   // 9. Health, Nutrition & Recovery (multi-brand allowed)
   { brand: 'Herbalife Nutrition', category: 'health', categories: ['health'], minStage: 'established', baseFee: 320000, bonus: 4500, globalEligible: true },
@@ -143,6 +195,8 @@ const BRAND_CATALOG = [
   { brand: 'Optimum Nutrition', category: 'health', categories: ['health'], minStage: 'rookie', baseFee: 125000, bonus: 2200, globalEligible: false },
   { brand: 'Myprotein', category: 'health', categories: ['health'], minStage: 'rookie', baseFee: 105000, bonus: 1800, globalEligible: false },
   { brand: 'Oura', category: 'health', categories: ['health'], minStage: 'established', baseFee: 210000, bonus: 3400, globalEligible: true },
+  { brand: 'Cimed', category: 'health', categories: ['health'], minStage: 'rookie', baseFee: 115000, bonus: 2000, globalEligible: false },
+  { brand: 'Garmin', category: 'health', categories: ['health'], minStage: 'rising', baseFee: 175000, bonus: 2800, globalEligible: true },
 
   // 10. Smartphones (separated from gaming)
   { brand: 'Samsung Galaxy', category: 'phones', categories: ['phones', 'appliances'], minStage: 'established', baseFee: 450000, bonus: 6000, globalEligible: true, umbrellaNote: 'Smartphones + Appliances' },
@@ -153,6 +207,10 @@ const BRAND_CATALOG = [
   { brand: 'Vivo', category: 'phones', categories: ['phones'], minStage: 'rookie', baseFee: 175000, bonus: 2800, globalEligible: true },
   { brand: 'OnePlus', category: 'phones', categories: ['phones'], minStage: 'rookie', baseFee: 145000, bonus: 2300, globalEligible: false },
   { brand: 'Honor', category: 'phones', categories: ['phones'], minStage: 'rookie', baseFee: 140000, bonus: 2200, globalEligible: false },
+  { brand: 'Huawei', category: 'phones', categories: ['phones'], minStage: 'rising', baseFee: 245000, bonus: 3700, globalEligible: true },
+  { brand: 'Nothing', category: 'phones', categories: ['phones'], minStage: 'rookie', baseFee: 135000, bonus: 2200, globalEligible: false },
+  { brand: 'Motorola', category: 'phones', categories: ['phones'], minStage: 'rookie', baseFee: 150000, bonus: 2400, globalEligible: true },
+  { brand: 'Sony Xperia', category: 'phones', categories: ['phones'], minStage: 'rising', baseFee: 185000, bonus: 2900, globalEligible: false },
 
   // 11. Gaming (separated from phones; multi-brand allowed)
   { brand: 'EA Sports', category: 'gaming', categories: ['gaming'], minStage: 'rising', baseFee: 260000, bonus: 4000, globalEligible: true },
@@ -163,6 +221,9 @@ const BRAND_CATALOG = [
   { brand: 'Razer', category: 'gaming', categories: ['gaming'], minStage: 'rookie', baseFee: 120000, bonus: 2000, globalEligible: false },
   { brand: 'HyperX', category: 'gaming', categories: ['gaming'], minStage: 'rookie', baseFee: 110000, bonus: 1900, globalEligible: false },
   { brand: 'SteelSeries', category: 'gaming', categories: ['gaming'], minStage: 'rookie', baseFee: 105000, bonus: 1800, globalEligible: false },
+  { brand: 'Logitech G', category: 'gaming', categories: ['gaming'], minStage: 'rookie', baseFee: 130000, bonus: 2200, globalEligible: true },
+  { brand: 'ASUS ROG', category: 'gaming', categories: ['gaming'], minStage: 'rising', baseFee: 165000, bonus: 2700, globalEligible: false },
+  { brand: 'Tencent Games', category: 'gaming', categories: ['gaming'], minStage: 'established', baseFee: 275000, bonus: 4200, globalEligible: true },
 
   // 12. Telecommunication
   { brand: 'Starlink', category: 'telecom', categories: ['telecom'], minStage: 'established', baseFee: 460000, bonus: 6000, globalEligible: true },
@@ -175,6 +236,12 @@ const BRAND_CATALOG = [
   { brand: 'BT / EE', category: 'telecom', categories: ['telecom'], minStage: 'rising', baseFee: 225000, bonus: 3300, globalEligible: false },
   { brand: 'NTT Docomo', category: 'telecom', categories: ['telecom'], minStage: 'rising', baseFee: 230000, bonus: 3400, globalEligible: false },
   { brand: 'Claro', category: 'telecom', categories: ['telecom'], minStage: 'rookie', baseFee: 165000, bonus: 2600, globalEligible: false },
+  { brand: 'Jio', category: 'telecom', categories: ['telecom'], minStage: 'rising', baseFee: 230000, bonus: 3500, globalEligible: true },
+  { brand: 'Airtel', category: 'telecom', categories: ['telecom'], minStage: 'rookie', baseFee: 175000, bonus: 2700, globalEligible: false },
+  { brand: 'SoftBank', category: 'telecom', categories: ['telecom'], minStage: 'rising', baseFee: 240000, bonus: 3500, globalEligible: true },
+  { brand: 'Verizon', category: 'telecom', categories: ['telecom'], minStage: 'established', baseFee: 320000, bonus: 4400, globalEligible: true },
+  { brand: 'AT&T', category: 'telecom', categories: ['telecom'], minStage: 'established', baseFee: 310000, bonus: 4300, globalEligible: true },
+  { brand: 'China Mobile', category: 'telecom', categories: ['telecom'], minStage: 'rising', baseFee: 225000, bonus: 3300, globalEligible: false },
 
   // 13. Airlines (Top 25+ global carriers, separated from hospitality)
   { brand: 'Emirates', category: 'airlines', categories: ['airlines'], minStage: 'superstar', baseFee: 650000, bonus: 8500, globalEligible: true },
@@ -203,6 +270,10 @@ const BRAND_CATALOG = [
   { brand: 'EVA Air', category: 'airlines', categories: ['airlines'], minStage: 'rising', baseFee: 260000, bonus: 3600, globalEligible: false },
   { brand: 'Virgin Atlantic', category: 'airlines', categories: ['airlines'], minStage: 'established', baseFee: 350000, bonus: 4700, globalEligible: false },
   { brand: 'Saudia', category: 'airlines', categories: ['airlines'], minStage: 'established', baseFee: 450000, bonus: 6000, globalEligible: true },
+  { brand: 'Riyadh Air', category: 'airlines', categories: ['airlines'], minStage: 'established', baseFee: 430000, bonus: 5800, globalEligible: true },
+  { brand: 'Air India', category: 'airlines', categories: ['airlines'], minStage: 'rising', baseFee: 270000, bonus: 3700, globalEligible: true },
+  { brand: 'IndiGo', category: 'airlines', categories: ['airlines'], minStage: 'rookie', baseFee: 190000, bonus: 2900, globalEligible: false },
+  { brand: 'GOL Linhas Aéreas', category: 'airlines', categories: ['airlines'], minStage: 'rookie', baseFee: 175000, bonus: 2700, globalEligible: false },
 
   // 14. Hospitality (separated from airlines)
   { brand: 'Marriott Bonvoy', category: 'hospitality', categories: ['hospitality'], minStage: 'established', baseFee: 340000, bonus: 4600, globalEligible: true },
@@ -213,6 +284,9 @@ const BRAND_CATALOG = [
   { brand: 'Ritz-Carlton', category: 'hospitality', categories: ['hospitality'], minStage: 'superstar', baseFee: 460000, bonus: 6100, globalEligible: false },
   { brand: 'Hyatt', category: 'hospitality', categories: ['hospitality'], minStage: 'rising', baseFee: 240000, bonus: 3400, globalEligible: false },
   { brand: 'Rosewood', category: 'hospitality', categories: ['hospitality'], minStage: 'established', baseFee: 330000, bonus: 4500, globalEligible: false },
+  { brand: 'Airbnb', category: 'hospitality', categories: ['hospitality'], minStage: 'rising', baseFee: 275000, bonus: 3800, globalEligible: true },
+  { brand: 'Booking.com', category: 'hospitality', categories: ['hospitality'], minStage: 'rising', baseFee: 280000, bonus: 3900, globalEligible: true },
+  { brand: 'Taj Hotels', category: 'hospitality', categories: ['hospitality'], minStage: 'established', baseFee: 310000, bonus: 4200, globalEligible: false },
 
   // 15. House Appliances
   { brand: 'Bosch', category: 'appliances', categories: ['appliances'], minStage: 'rising', baseFee: 220000, bonus: 3200, globalEligible: true },
@@ -225,6 +299,10 @@ const BRAND_CATALOG = [
   { brand: 'Whirlpool', category: 'appliances', categories: ['appliances'], minStage: 'rookie', baseFee: 145000, bonus: 2200, globalEligible: false },
   { brand: 'Haier', category: 'appliances', categories: ['appliances'], minStage: 'rising', baseFee: 210000, bonus: 3000, globalEligible: true },
   { brand: 'Electrolux', category: 'appliances', categories: ['appliances'], minStage: 'rookie', baseFee: 150000, bonus: 2300, globalEligible: false },
+  { brand: 'Hisense', category: 'appliances', categories: ['appliances'], minStage: 'rising', baseFee: 230000, bonus: 3400, globalEligible: true },
+  { brand: 'Midea', category: 'appliances', categories: ['appliances'], minStage: 'rising', baseFee: 220000, bonus: 3200, globalEligible: true },
+  { brand: 'Panasonic', category: 'appliances', categories: ['appliances'], minStage: 'rising', baseFee: 225000, bonus: 3300, globalEligible: true },
+  { brand: 'WEG', category: 'appliances', categories: ['appliances'], minStage: 'rookie', baseFee: 135000, bonus: 2100, globalEligible: false },
 
   // 16. Grooming & Personal Care
   { brand: 'Gillette', category: 'grooming', categories: ['grooming'], minStage: 'rookie', baseFee: 175000, bonus: 2900, globalEligible: true },
@@ -237,6 +315,9 @@ const BRAND_CATALOG = [
   { brand: 'Chanel Bleu', category: 'grooming', categories: ['grooming'], minStage: 'superstar', baseFee: 460000, bonus: 6200, globalEligible: true },
   { brand: 'Dove Men+Care', category: 'grooming', categories: ['grooming'], minStage: 'rookie', baseFee: 135000, bonus: 2200, globalEligible: false },
   { brand: 'Adidas Body Care', category: 'grooming', categories: ['grooming', 'boots', 'apparel'], minStage: 'rookie', baseFee: 150000, bonus: 2500, globalEligible: true },
+  { brand: 'Natura', category: 'grooming', categories: ['grooming'], minStage: 'rookie', baseFee: 140000, bonus: 2300, globalEligible: false },
+  { brand: 'O Boticário', category: 'grooming', categories: ['grooming'], minStage: 'rookie', baseFee: 135000, bonus: 2200, globalEligible: false },
+  { brand: 'Shiseido', category: 'grooming', categories: ['grooming'], minStage: 'established', baseFee: 295000, bonus: 4100, globalEligible: true },
 
   // 17. Finance & Banking
   { brand: 'Visa', category: 'finance', categories: ['finance'], minStage: 'established', baseFee: 410000, bonus: 5500, globalEligible: true },
@@ -245,8 +326,15 @@ const BRAND_CATALOG = [
   { brand: 'Santander', category: 'finance', categories: ['finance'], minStage: 'rising', baseFee: 280000, bonus: 4000, globalEligible: true },
   { brand: 'Revolut', category: 'finance', categories: ['finance'], minStage: 'rookie', baseFee: 190000, bonus: 3000, globalEligible: true },
   { brand: 'HSBC', category: 'finance', categories: ['finance'], minStage: 'established', baseFee: 350000, bonus: 4700, globalEligible: true },
-  { brand: 'Nubank', category: 'finance', categories: ['finance'], minStage: 'rising', baseFee: 250000, bonus: 3700, globalEligible: false },
+  { brand: 'Nubank', category: 'finance', categories: ['finance'], minStage: 'rising', baseFee: 250000, bonus: 3700, globalEligible: true },
   { brand: 'Itaú', category: 'finance', categories: ['finance'], minStage: 'rising', baseFee: 240000, bonus: 3600, globalEligible: false },
+  { brand: 'Alipay', category: 'finance', categories: ['finance'], minStage: 'established', baseFee: 380000, bonus: 5200, globalEligible: true },
+  { brand: 'Rakuten', category: 'finance', categories: ['finance', 'lifestyle'], minStage: 'established', baseFee: 350000, bonus: 4800, globalEligible: true },
+  { brand: 'Mercado Livre', category: 'finance', categories: ['finance', 'lifestyle'], minStage: 'rising', baseFee: 265000, bonus: 3900, globalEligible: true },
+  { brand: 'Klarna', category: 'finance', categories: ['finance'], minStage: 'rookie', baseFee: 185000, bonus: 2900, globalEligible: true },
+  { brand: 'Cash App', category: 'finance', categories: ['finance'], minStage: 'rising', baseFee: 215000, bonus: 3300, globalEligible: false },
+  { brand: 'PayPal', category: 'finance', categories: ['finance'], minStage: 'established', baseFee: 330000, bonus: 4500, globalEligible: true },
+  { brand: 'HDFC Bank', category: 'finance', categories: ['finance'], minStage: 'rising', baseFee: 220000, bonus: 3300, globalEligible: false },
 
   // 18. Betting (subject to isBettingAllowed)
   { brand: 'Bet365', category: 'betting', categories: ['betting'], minStage: 'rising', baseFee: 360000, bonus: 5000, globalEligible: true },
@@ -257,6 +345,10 @@ const BRAND_CATALOG = [
   { brand: 'Sportingbet', category: 'betting', categories: ['betting'], minStage: 'rookie', baseFee: 220000, bonus: 3300, globalEligible: false },
   { brand: 'Betfair', category: 'betting', categories: ['betting'], minStage: 'rising', baseFee: 310000, bonus: 4500, globalEligible: false },
   { brand: 'Codere', category: 'betting', categories: ['betting'], minStage: 'rookie', baseFee: 210000, bonus: 3100, globalEligible: false },
+  { brand: 'KTO', category: 'betting', categories: ['betting'], minStage: 'rookie', baseFee: 195000, bonus: 2900, globalEligible: false },
+  { brand: 'Betnacional', category: 'betting', categories: ['betting'], minStage: 'rookie', baseFee: 205000, bonus: 3000, globalEligible: false },
+  { brand: 'Dream11', category: 'betting', categories: ['betting', 'gaming'], minStage: 'rising', baseFee: 260000, bonus: 3800, globalEligible: false },
+  { brand: 'DraftKings', category: 'betting', categories: ['betting'], minStage: 'rising', baseFee: 280000, bonus: 4100, globalEligible: false },
 
   // 19. Media & Audio (multi-brand allowed)
   { brand: 'Beats by Dre', category: 'media', categories: ['media'], minStage: 'rising', baseFee: 260000, bonus: 3800, globalEligible: true },
@@ -266,6 +358,9 @@ const BRAND_CATALOG = [
   { brand: 'Sony Audio', category: 'media', categories: ['media'], minStage: 'rookie', baseFee: 165000, bonus: 2600, globalEligible: true },
   { brand: 'Bose', category: 'media', categories: ['media'], minStage: 'rising', baseFee: 195000, bonus: 3000, globalEligible: false },
   { brand: 'Amazon Prime Video', category: 'media', categories: ['media'], minStage: 'established', baseFee: 350000, bonus: 4900, globalEligible: true },
+  { brand: 'JBL', category: 'media', categories: ['media'], minStage: 'rookie', baseFee: 155000, bonus: 2500, globalEligible: true },
+  { brand: 'boAt', category: 'media', categories: ['media'], minStage: 'rookie', baseFee: 120000, bonus: 2000, globalEligible: false },
+  { brand: 'Noise', category: 'media', categories: ['media'], minStage: 'rookie', baseFee: 110000, bonus: 1900, globalEligible: false },
 
   // 20. Lifestyle & Luxury Accessories (multi-brand allowed)
   { brand: 'Rimowa', category: 'lifestyle', categories: ['lifestyle'], minStage: 'established', baseFee: 280000, bonus: 4000, globalEligible: true },
@@ -274,6 +369,9 @@ const BRAND_CATALOG = [
   { brand: 'Nespresso', category: 'lifestyle', categories: ['lifestyle'], minStage: 'established', baseFee: 270000, bonus: 3900, globalEligible: true },
   { brand: 'Tumi', category: 'lifestyle', categories: ['lifestyle'], minStage: 'rising', baseFee: 190000, bonus: 2900, globalEligible: false },
   { brand: 'Montblanc', category: 'lifestyle', categories: ['lifestyle'], minStage: 'superstar', baseFee: 330000, bonus: 4500, globalEligible: true },
+  { brand: 'DoorDash', category: 'lifestyle', categories: ['lifestyle'], minStage: 'rising', baseFee: 185000, bonus: 2800, globalEligible: false },
+  { brand: 'Uber', category: 'lifestyle', categories: ['lifestyle'], minStage: 'rising', baseFee: 230000, bonus: 3400, globalEligible: true },
+  { brand: 'Infosys', category: 'lifestyle', categories: ['lifestyle', 'finance'], minStage: 'established', baseFee: 275000, bonus: 3900, globalEligible: true },
 ];
 
 const ONE_TIME_DEALS = [
@@ -412,6 +510,7 @@ function catalogForUi(state = null, snapshot = null) {
   for (const cat of SPONSOR_CATEGORIES) {
     byCategory[cat] = brandsForCategory(cat, { state, snapshot }).map((b) => ({
       brand: b.brand,
+      slug: brandSlug(b.brand),
       category: b.category,
       categories: b.categories,
       minStage: b.minStage,
@@ -441,6 +540,7 @@ module.exports = {
   CATEGORY_META,
   BRAND_CATALOG,
   ONE_TIME_DEALS,
+  brandSlug,
   canonicalCategory,
   isBettingAllowed,
   generateLocalSponsors,

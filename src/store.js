@@ -19,6 +19,7 @@ const DEFAULT_SETTINGS = {
   calendarMode: 'basic', // 'basic' (synchro directe) ou 'full' (calendrier jour par jour sans spoiler)
   sponsorMode: 'realistic', // 'realistic' (offres, enchères, exclusivités) ou 'custom' (édition manuelle)
   eventMode: 'realistic', // 'realistic' (anniversaires, vie quotidienne, décisions) ou 'games_only' (matchs seulement)
+  autoUpdateCheck: true, // vérifier discrètement les nouvelles versions GitHub au lancement
   clipsDir: '',      // dossier des vidéos enregistrées (vide = Vidéos\Captures, captures du jeu seulement)
   provider: 'google',
   model: 'gemini-3.6-flash',

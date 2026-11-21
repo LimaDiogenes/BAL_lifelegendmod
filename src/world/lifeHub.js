@@ -49,9 +49,14 @@ const ASSET_CATALOG = [
   { id: 'city_apartment', category: 'home', minStage: 'rookie', price: 240000, monthlyCost: 1400, passiveReturn: 0, perks: { fans: 1 } },
   { id: 'penthouse', category: 'home', minStage: 'rising', price: 950000, monthlyCost: 3500, passiveReturn: 0, perks: { sponsors: 2, media: 2 } },
   { id: 'luxury_villa', category: 'home', minStage: 'established', price: 2800000, monthlyCost: 8500, passiveReturn: 0, perks: { sponsors: 4, fans: 2 } },
-  { id: 'sport_coupe', category: 'car', minStage: 'rookie', price: 65000, monthlyCost: 650, passiveReturn: 0, perks: { media: 1 } },
-  { id: 'luxury_gt', category: 'car', minStage: 'rising', price: 185000, monthlyCost: 1500, passiveReturn: 0, perks: { sponsors: 2, media: 2 } },
-  { id: 'exotic_supercar', category: 'car', minStage: 'established', price: 460000, monthlyCost: 3200, passiveReturn: 0, perks: { sponsors: 3, fans: 2 } },
+  { id: 'car_hatch', category: 'car', minStage: 'rookie', price: 28000, monthlyCost: 280, passiveReturn: 0, perks: { fans: 1 } },
+  { id: 'car_sedan', category: 'car', minStage: 'rookie', price: 55000, monthlyCost: 520, passiveReturn: 0, perks: { media: 1, fans: 1 } },
+  { id: 'car_minivan', category: 'car', minStage: 'rookie', price: 62000, monthlyCost: 580, passiveReturn: 0, perks: { squad: 2, fans: 1 } },
+  { id: 'car_suv', category: 'car', minStage: 'rising', price: 85000, monthlyCost: 780, passiveReturn: 0, perks: { media: 2, fans: 2 } },
+  { id: 'car_electric_gt', category: 'car', minStage: 'rising', price: 130000, monthlyCost: 900, passiveReturn: 0, perks: { media: 3, sponsors: 3, fans: 2 } },
+  { id: 'car_sports', category: 'car', minStage: 'rising', price: 145000, monthlyCost: 1250, passiveReturn: 0, perks: { media: 3, fans: 3, sponsors: 2 } },
+  { id: 'car_classic', category: 'car', minStage: 'established', price: 220000, monthlyCost: 1600, passiveReturn: 0, perks: { media: 4, fans: 4, sponsors: 3 } },
+  { id: 'car_supercar', category: 'car', minStage: 'superstar', price: 460000, monthlyCost: 3200, passiveReturn: 0, perks: { media: 5, fans: 5, sponsors: 4 } },
   { id: 'personal_chef', category: 'staff', minStage: 'rookie', price: 12000, monthlyCost: 4200, passiveReturn: 0, perks: { manager: 2, squad: 1 } },
   { id: 'personal_physio', category: 'staff', minStage: 'rising', price: 18000, monthlyCost: 5800, passiveReturn: 0, perks: { manager: 3 } },
   { id: 'pr_manager', category: 'staff', minStage: 'rising', price: 25000, monthlyCost: 7500, passiveReturn: 0, perks: { media: 3, sponsors: 3 } },
@@ -269,9 +274,9 @@ function estimateStartProfile(snapshot, state = null) {
   const effectiveWage = salary > 0 ? salary : ({ rookie: 120000, rising: 650000, established: 2800000, superstar: 7500000 }[stage]);
   const bundleMap = {
     rookie: ['rented_studio'],
-    rising: ['city_apartment', 'sport_coupe'],
-    established: ['penthouse', 'luxury_gt', 'personal_physio'],
-    superstar: ['luxury_villa', 'exotic_supercar', 'personal_physio', 'pr_manager', 'brand_portfolio'],
+    rising: ['city_apartment', 'car_sedan'],
+    established: ['penthouse', 'car_sports', 'personal_physio'],
+    superstar: ['luxury_villa', 'car_supercar', 'personal_physio', 'pr_manager', 'brand_portfolio'],
   };
   const bundleAssetIds = bundleMap[stage];
   const cashOnlyRaw = {
@@ -638,6 +643,96 @@ function scheduleNextObligation(hub, today, newId) {
   });
 }
 
+const LEGACY_CAR_ALIAS = {
+  sport_coupe: 'car_sports',
+  luxury_gt: 'car_electric_gt',
+  exotic_supercar: 'car_supercar',
+};
+
+const AUTO_STAGE_CARS = {
+  rookie: ['car_hatch', 'car_sedan', 'car_suv'],
+  rising: ['car_sedan', 'car_suv', 'car_electric_gt'],
+  established: ['car_sports', 'car_suv', 'car_electric_gt', 'car_classic'],
+  superstar: ['car_supercar', 'car_sports', 'car_classic', 'car_electric_gt'],
+};
+
+function isAutomotiveSponsor(sp) {
+  if (!sp) return false;
+  if (String(sp.category || '').toLowerCase() === 'automotive') return true;
+  return Array.isArray(sp.categories) && sp.categories.some((c) => String(c || '').toLowerCase() === 'automotive');
+}
+
+function pushGiftedSponsorCar(state, hub, sp, catId, reason, today, newId) {
+  const cat = ASSET_CATALOG.find((a) => a.id === catId) || ASSET_CATALOG.find((a) => a.id === 'car_sports');
+  if (!cat) return null;
+  const asset = {
+    id: newId(),
+    catalogId: cat.id,
+    category: 'car',
+    name: `${sp.brand} — ${cat.id}`,
+    price: 0,
+    resaleValue: 0,
+    monthlyCost: 0,
+    passiveReturn: 0,
+    perks: { ...(cat.perks || {}) },
+    since: today,
+    custom: false,
+    giftedBy: sp.brand,
+    giftSponsorId: sp.id,
+    giftReason: reason,
+  };
+  hub.assets.push(asset);
+  if (cat.perks) applyEffects(state, hub, cat.perks, {}, today, `sponsor_car:${sp.brand}`);
+  pushRecent(hub, { date: today, kind: 'asset', text: `Received sponsor vehicle from ${sp.brand}` });
+  return asset;
+}
+
+function grantSponsorCars(state, hub, snapshot, today, newId = () => `id_${Date.now()}`) {
+  if (!hub || !today) return [];
+  const stage = hub.stage || (snapshot ? detectCareerStage(snapshot, state).stage : 'rookie');
+  const season = String(snapshot?.season || today.slice(0, 4) || '');
+  const stSeason = snapshot?.stats?.season || {};
+  const gA = (Number(stSeason.goals) || 0) + (Number(stSeason.assists) || 0);
+  const seasonTrophies = Array.isArray(snapshot?.trophies) ? snapshot.trophies.length : 0;
+  const potmList = state?.paperAwards?.potm || [];
+  const pName = String(snapshot?.player?.name || '').toLowerCase();
+  const wonPotm = Boolean(pName && potmList.some((m) => m?.overall?.player?.toLowerCase() === pName));
+
+  const granted = [];
+  for (const sp of hub.sponsors || []) {
+    if (!isAutomotiveSponsor(sp)) continue;
+    if (sp.until && sp.until <= today) continue;
+
+    // 1. Annual company car (on signing & every 365 days)
+    if (!sp.lastCarGiftOn || daysBetween(sp.lastCarGiftOn, today) >= 365) {
+      const pool = AUTO_STAGE_CARS[stage] || AUTO_STAGE_CARS.rising;
+      const count = Number(sp.carGiftsCount) || 0;
+      const catId = pool[count % pool.length];
+      sp.lastCarGiftOn = today;
+      sp.carGiftsCount = count + 1;
+      const gift = pushGiftedSponsorCar(state, hub, sp, catId, 'annual', today, newId);
+      if (gift) granted.push(gift);
+    }
+
+    // 2. High-profile / Global Partner objective milestone bonus cars
+    if (stage === 'established' || stage === 'superstar' || Boolean(sp.isGlobalPartner)) {
+      sp.carMilestonesGranted = Array.isArray(sp.carMilestonesGranted) ? sp.carMilestonesGranted : [];
+      const milestones = [];
+      if (gA >= 15) milestones.push(['15ga', 'car_sports']);
+      if (gA >= 30) milestones.push(['30ga', stage === 'superstar' ? 'car_supercar' : 'car_classic']);
+      if (seasonTrophies > 0 || wonPotm) milestones.push(['award_trophy', stage === 'superstar' ? 'car_supercar' : 'car_sports']);
+      for (const [mKey, mCat] of milestones) {
+        const trackKey = `${season}:${mKey}`;
+        if (sp.carMilestonesGranted.includes(trackKey)) continue;
+        sp.carMilestonesGranted.push(trackKey);
+        const gift = pushGiftedSponsorCar(state, hub, sp, mCat, mKey, today, newId);
+        if (gift) granted.push(gift);
+      }
+    }
+  }
+  return granted;
+}
+
 function calibrateLifeHub(state, snapshot, payload = {}, newId = () => `id_${Date.now()}`) {
   const hub = ensureLifeHub(state, snapshot);
   const est = estimateStartProfile(snapshot, state);
@@ -695,7 +790,10 @@ function calibrateLifeHub(state, snapshot, payload = {}, newId = () => `id_${Dat
 
   hub.ledger = [];
   addLedger(hub, { date: today, amount: chosenCash, kind: 'opening', label: `calibration:${startMode}` });
-  if (hub.sponsors.length) scheduleNextObligation(hub, today, newId);
+  if (hub.sponsors.length) {
+    scheduleNextObligation(hub, today, newId);
+    grantSponsorCars(state, hub, snapshot, today, newId);
+  }
   return hub;
 }
 
@@ -1063,6 +1161,9 @@ function lifeHubTick(state, snapshot, { changes = {}, newId = () => `id_${Date.n
   if (hub.sponsors.length > 0 && (results.length > 0 || days >= 10)) {
     scheduleNextObligation(hub, today, newId);
   }
+  if (hub.sponsors.length > 0) {
+    grantSponsorCars(state, hub, snapshot, today, newId);
+  }
 
   // Déclenche un dilemme hors-terrain périodique (au plus un en attente).
   const dilReady = !hub.pendingDilemma && (!hub.dilemmaCooldownUntil || today >= hub.dilemmaCooldownUntil);
@@ -1096,12 +1197,13 @@ function buyAsset(state, payload = {}, gameDate = '', newId = () => `id_${Date.n
     const customImage = payload.customImage ? cleanText(payload.customImage, 120) : '';
     item = { id: newId(), catalogId: null, category, ...(customCategory ? { customCategory } : {}), ...(customImage ? { customImage } : {}), name, price, resaleValue: price, monthlyCost, passiveReturn: 0, perks: { fans: category === 'charity' ? 4 : 1, media: 1 }, custom: true };
   } else {
-    const cat = ASSET_CATALOG.find((a) => a.id === payload.catalogId);
+    const resolvedId = LEGACY_CAR_ALIAS[payload.catalogId] || payload.catalogId;
+    const cat = ASSET_CATALOG.find((a) => a.id === resolvedId);
     if (!cat) throw new Error('Élément introuvable.');
-    if (cat.category !== 'charity' && hub.assets.some((a) => a.catalogId === cat.id)) {
+    if (cat.category !== 'charity' && hub.assets.some((a) => !a.giftedBy && (a.catalogId === cat.id || LEGACY_CAR_ALIAS[a.catalogId] === cat.id))) {
       throw new Error('Élément déjà possédé.');
     }
-    const savedImg = cleanText(payload.customImage || hub.catalogImages?.[cat.id], 120);
+    const savedImg = cleanText(payload.customImage || hub.catalogImages?.[cat.id] || hub.catalogImages?.[payload.catalogId], 120);
     item = { id: cat.category === 'charity' ? newId() : cat.id, catalogId: cat.id, category: cat.category, name: cat.id, price: cat.price, resaleValue: cat.price, monthlyCost: cat.monthlyCost, passiveReturn: cat.passiveReturn, perks: { ...cat.perks }, ...(savedImg ? { customImage: savedImg } : {}), custom: false };
   }
 
@@ -1120,7 +1222,7 @@ function sellAsset(state, assetId, gameDate = '') {
   if (idx < 0) throw new Error('Élément introuvable.');
   const asset = hub.assets[idx];
   const isStaff = asset.category === 'staff';
-  const refund = isStaff || asset.category === 'charity' ? 0 : Math.round((asset.resaleValue ?? asset.price ?? 0) * (asset.category === 'investment' ? 0.9 : 0.75));
+  const refund = isStaff || asset.category === 'charity' || asset.giftedBy ? 0 : Math.round((asset.resaleValue ?? asset.price ?? 0) * (asset.category === 'investment' ? 0.9 : 0.75));
   if (refund > 0) {
     hub.cash += refund;
     addLedger(hub, { date: gameDate, amount: refund, kind: 'asset_sell', label: asset.name });
@@ -1185,6 +1287,8 @@ function addSponsor(state, payload = {}, gameDate = '', newId = () => `id_${Date
   hub.meters.sponsors = clamp(hub.meters.sponsors + 4, 0, 100);
   scheduleNextObligation(hub, gameDate, newId);
   pushRecent(hub, { date: gameDate, kind: 'sponsor', text: `Signed sponsor deal with ${entry.brand}${entry.isGlobalPartner ? ' (Global Partner)' : ''}` });
+  const giftToday = gameDate || hub.lastTickDate || state?.snapshot?.gameDate || '';
+  if (giftToday) grantSponsorCars(state, hub, state.snapshot, giftToday, newId);
   return entry;
 }
 
@@ -1579,7 +1683,11 @@ function lifeHubFacts(state) {
     .map((w) => `${w.category} bidding war (${w.bids.filter((b) => !b.walkedAway).map((b) => b.brand).join(' vs ')})`);
   const notableAssets = (hub.assets || [])
     .filter((a) => ['home', 'car', 'charity', 'staff'].includes(a.category) || a.custom)
-    .map((a) => (a.custom ? a.name : (CATALOG_ENGLISH_NAMES[a.catalogId || a.name] || a.name)))
+    .map((a) => {
+      if (a.custom) return a.name;
+      const baseName = CATALOG_ENGLISH_NAMES[a.catalogId || a.name] || a.name;
+      return a.giftedBy ? `${a.giftedBy} ${baseName}` : baseName;
+    })
     .filter(Boolean)
     .slice(0, 6);
   const recent = (hub.recentEvents || []).slice(0, 3).map((e) => e.text);
@@ -1612,6 +1720,8 @@ module.exports = {
   addLedger,
   syncBootSponsor,
   isBootCategorySponsor,
+  isAutomotiveSponsor,
+  grantSponsorCars,
   calibrateLifeHub,
   lifeHubTick,
   buyAsset,

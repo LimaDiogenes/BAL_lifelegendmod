@@ -569,7 +569,7 @@ const { archiveSeason, careerFacts } = require('./seasons');
 const { clubMap, detectTransfers, windowOpen } = require('./mercato');
 const { bindPromise, resolvePromises, openPromises } = require('./promises');
 const { mentionDirectory, findMentions, playerReaction, clubHandle, slugHandle } = require('./mentions');
-const { ensureAgent, syncAgentWithPersona, extensionByStance, computeMarket, applyStance, reportDue, agentFacts, clubPrestige } = require('./agent');
+const { ensureAgent, syncAgentWithPersona, updateCustomAgent, extensionByStance, computeMarket, applyStance, reportDue, agentFacts, clubPrestige } = require('./agent');
 const { ensureInfluence, influenceScore, assess, decide, syncInfluence, influenceFacts, buildAux, requestFacts, fallbackReply, currentWindow, nextWindow, directorOf, playingTimeKnown } = require('./influence');
 const { applyFormation, applyTransfer } = require('../save/influenceWrite');
 const { applyUnavailable } = require('../save/conductWrite');
@@ -4090,4 +4090,80 @@ const syncCommercialMailThreads = (state, language = 'en') => {
   }
 };
 
-module.exports = { getNarrativeMemory, dismissNarrativeArc, clearNarrativeQuestions, savePrivacy, savePersona, saveSquadBirthdays, resetCareer, saveNationalPaper, saveClubAlias, saveLifeEvents, calibrateCareerLifeHub, buyLifeAsset, sellLifeAsset, getSponsorCatalog, addLifeSponsor, updateLifeSponsor, removeLifeSponsor, answerLifeSponsorOffer, answerLifeBiddingWar, answerLifeOneTimeDeal, completeLifeObligation, rescheduleLifeObligation, doLifeAction, answerLifeDilemma, setLifeMedia, ensureLifeHub, calendarAdvance, getCalendarAgenda, resolveLifeCalendarDecision, flipCalendarBirthdayShift, scheduleCalendarActivity, runDailyAiPulse, calendarSetMode, calendarAddEvent, calendarRemoveEvent, applyLifeSaveEffects, dismissLifeSaveEffects, noteKeyMemory, privacyMapFor, previewMasked, getAiAuditLog, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };
+function updateAgent({ store, name = '', agency = '' }) {
+  const state = store.activeCareer();
+  if (!state) throw new Error('Synchronise ta sauvegarde une première fois.');
+  updateCustomAgent(state, { name, agency });
+  store.saveCareer(state);
+  return state;
+}
+
+async function generateBackstory({ store, settings, persona = null, privacy = null, playerName = '', club = '', nationality = '', position = '', age = null, handle = '', completeFn = complete } = {}) {
+  const state = store?.activeCareer?.() || null;
+  const stg = settings || store?.getSettings?.() || {};
+  const apiKey = store?.getKey?.(stg.provider) || '';
+  const effPersona = normalizePersona(persona || state?.persona || null);
+  const pending = stg?.pendingBio?.savePath === stg?.savePath ? stg.pendingBio : null;
+  const effPrivacy = normalizePrivacy(privacy || state?.privacy || pending?.privacy || stg?.privacy || { enabled: true });
+  const effName = String(playerName || state?.snapshot?.player?.name || '').trim();
+  const effHandle = String(handle || state?.profile?.handle || '').trim();
+  const effClub = String(club || state?.snapshot?.club?.name || '').trim();
+  const effNat = String(nationality || state?.snapshot?.player?.nationality || state?.snapshot?.nationalTeam?.name || '').trim();
+  const effPos = String(position || state?.snapshot?.player?.profile?.position || '').trim();
+  const effAge = age || state?.snapshot?.player?.profile?.age || null;
+
+  const pFacts = personaFacts(effPersona) || {};
+  const profileContext = {
+    ...(effName ? { name: effName } : {}),
+    ...(effAge ? { age: effAge } : {}),
+    ...(effPos ? { position: effPos } : {}),
+    ...(effClub ? { current_club: effClub } : {}),
+    ...(effNat ? { nationality: effNat } : {}),
+  };
+
+  const privacyMap = buildPrivacyMap(effPrivacy, {
+    careerId: state?.careerId || 'setup',
+    playerName: effName,
+    handle: effHandle,
+    persona: effPersona,
+  });
+
+  const system = `You are a football biographer for LifeLegend.
+Write a vivid, grounded, cohesive 1-to-2 paragraph third-person footballer biography (around 350 to 850 characters total, never exceeding 1100 characters) synthesizing ONLY the given profile and persona facts.
+Rules:
+- Use only the facts, traits, roots, habits, turning point, idol, dream, and named circle contacts provided in FACTS.
+- Never invent new clubs, injuries, trophies, dates, relatives, or statistics not listed in FACTS.
+- Respect the exact spelling of every name, city, and club in FACTS (including pseudonyms/aliases when present).
+- Output STRICTLY a JSON object: {"bio": "<biography text>"} with no extra keys or markdown.`;
+
+  const user = JSON.stringify({
+    FACTS: {
+      player: profileContext,
+      persona: pFacts,
+    },
+  });
+
+  const raw = await completeFn(stg, apiKey, {
+    light: true,
+    maxTokens: 1200,
+    privacyMap,
+    system,
+    user,
+  });
+
+  let bio = '';
+  try {
+    const parsed = parseJson(raw);
+    bio = String(parsed?.bio || parsed?.biography || parsed?.backstory || parsed?.text || '').trim();
+  } catch {
+    bio = String(raw || '').replace(/^\s*```(?:\w+)?|```\s*$/g, '').trim();
+  }
+  if (!bio) throw new Error('L’IA n’a renvoyé aucune biographie.');
+  return {
+    text: bio.slice(0, 3000),
+    masked: Boolean(privacyMap?.enabled),
+    pairs: privacyMap?.pairs?.length || 0,
+  };
+}
+
+module.exports = { getNarrativeMemory, dismissNarrativeArc, clearNarrativeQuestions, savePrivacy, savePersona, updateAgent, generateBackstory, saveSquadBirthdays, resetCareer, saveNationalPaper, saveClubAlias, saveLifeEvents, calibrateCareerLifeHub, buyLifeAsset, sellLifeAsset, getSponsorCatalog, addLifeSponsor, updateLifeSponsor, removeLifeSponsor, answerLifeSponsorOffer, answerLifeBiddingWar, answerLifeOneTimeDeal, completeLifeObligation, rescheduleLifeObligation, doLifeAction, answerLifeDilemma, setLifeMedia, ensureLifeHub, calendarAdvance, getCalendarAgenda, resolveLifeCalendarDecision, flipCalendarBirthdayShift, scheduleCalendarActivity, runDailyAiPulse, calendarSetMode, calendarAddEvent, calendarRemoveEvent, applyLifeSaveEffects, dismissLifeSaveEffects, noteKeyMemory, privacyMapFor, previewMasked, getAiAuditLog, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };

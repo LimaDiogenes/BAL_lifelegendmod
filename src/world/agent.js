@@ -5,7 +5,7 @@
 
 const { leagueTable } = require('../save/blReader');
 const { windowOpen } = require('./mercato');
-const { extractPersonaAgent } = require('./persona');
+const { extractPersonaAgent, upsertPersonaAgent } = require('./persona');
 
 // Niveau des championnats suivis (0 à 1) : Angleterre, Espagne, Italie, Allemagne, France, puis Portugal, Pays-Bas.
 const LEAGUE_LEVEL = { 0x11: 0.62, 0x13: 0.58, 0x12: 0.56, 0x32: 0.56, 0x14: 0.5, 0x16: 0.4, 0x15: 0.38 };
@@ -87,6 +87,38 @@ function ensureAgent(state) {
     state.agent = { name, agency, stance: 'open', lastReportOn: null, reported: null, market: null };
   }
   syncAgentWithPersona(state);
+  return state.agent;
+}
+
+function updateCustomAgent(state, { name = '', agency = '' } = {}) {
+  if (!state || typeof state !== 'object') return null;
+  if (!state.agent) {
+    const [defName, defAgency] = AGENTS[hash(state.careerId || '') % AGENTS.length];
+    state.agent = { name: defName, agency: defAgency, stance: 'open', lastReportOn: null, reported: null, market: null };
+  }
+  const cleanName = String(name || '').replace(/["\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
+  const cleanAgency = String(agency || '').replace(/["\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
+
+  if (!cleanName) {
+    const [defName, defAgency] = AGENTS[hash(state.careerId || '') % AGENTS.length];
+    state.agent.name = defName;
+    state.agent.agency = cleanAgency || defAgency;
+    delete state.agent.customFromPersona;
+    state.persona = upsertPersonaAgent(state.persona, '');
+  } else {
+    const surname = cleanName.split(/\s+/).at(-1);
+    const fallbackAgency = surname ? `${surname} Sports Management` : state.agent.agency;
+    state.agent.name = cleanName;
+    state.agent.agency = cleanAgency || fallbackAgency;
+    state.agent.customFromPersona = true;
+    state.persona = upsertPersonaAgent(state.persona, cleanName);
+  }
+
+  if (Array.isArray(state.mail)) {
+    for (const m of state.mail) {
+      if (m && m.role === 'agent') m.from = state.agent.name;
+    }
+  }
   return state.agent;
 }
 
@@ -345,4 +377,4 @@ function agentFacts(agent) {
   };
 }
 
-module.exports = { ensureAgent, syncAgentWithPersona, computeMarket, applyStance, extensionByStance, reportDue, agentFacts, STANCES, clubPrestige, formIndex, monthsBetween, hash };
+module.exports = { ensureAgent, syncAgentWithPersona, updateCustomAgent, computeMarket, applyStance, extensionByStance, reportDue, agentFacts, STANCES, clubPrestige, formIndex, monthsBetween, hash };

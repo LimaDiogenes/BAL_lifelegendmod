@@ -114,6 +114,7 @@ const SITES = [
   { id: 'local', label: () => state?.localPaper?.name || tr('Journal local') },
   { id: 'tribune', label: () => 'Kop' },
   { id: 'mail', label: () => 'Mails' },
+  { id: 'dossier', label: () => tr('Dossier de carrière') },
   { id: 'huddle', label: () => 'Vestiaire' },
   { id: 'stats', label: () => 'Scoreline' },
   { id: 'pantheon', label: () => 'Panthéon' },
@@ -134,7 +135,7 @@ function videoHtml(p) {
 }
 
 // Photo et bannière du profil : fichiers rangés dans le dossier de la carrière (ou image en cours d'édition).
-let appPaths = { careersDir: '', mylifeMedia: {} };
+let appPaths = { careersDir: '', mylifeMedia: {}, sponsorLogos: {} };
 const profileImg = (f) => (!f ? null : String(f).startsWith('data:') ? f : appPaths.careersDir && state ? fileUrl(`${appPaths.careersDir}\\${state.careerId}\\profile\\${f}`) : null);
 // Fiche d'un compte de club (écusson lu dans les fichiers du jeu, stade, championnat), d'après son pseudo.
 const clubPage = (handle) => (handle && state?.clubPages?.[String(handle).toLowerCase()]) || null;
@@ -144,6 +145,35 @@ const bundledMyLifeUrl = (id) => {
   if (!id) return null;
   const f = appPaths.mylifeMedia?.[String(id).toLowerCase()];
   return f ? `media/mylife/${encodeURI(f)}` : null;
+};
+const brandSlugUi = (brand) => String(brand || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, '_')
+  .replace(/^_|_$/g, '');
+const bundledSponsorLogoUrl = (brand) => {
+  const slug = brandSlugUi(brand);
+  const f = slug && appPaths.sponsorLogos?.[slug];
+  return f ? `media/sponsors/${encodeURI(f)}` : null;
+};
+const brandMonogram = (brand) => {
+  const s = String(brand || '?').trim();
+  const words = s.split(/\s+/).filter(Boolean);
+  return (words.length > 1 ? `${words[0][0] || ''}${words[1][0] || ''}` : s.slice(0, 2)).toUpperCase();
+};
+const sponsorLogoUrl = (o) => {
+  if (!o) return null;
+  const brand = o.brand || o;
+  const matched = typeof o === 'object'
+    ? (state?.lifeHub?.sponsors || []).find((s) => s?.customImage && s.brand && brand && s.brand.toLowerCase() === String(brand).toLowerCase())
+    : null;
+  const slug = brandSlugUi(brand);
+  return lifeMediaUrl(o?.customImage || matched?.customImage)
+    || bundledSponsorLogoUrl(brand)
+    || (slug && bundledMyLifeUrl(slug))
+    || (o?.logo ? bootFile(o.logo) : null)
+    || null;
 };
 const mlResolveArtUrl = (id, customFile = null, category = null, name = null) => {
   const nameSlug = name ? String(name).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') : '';
@@ -189,6 +219,9 @@ function faceIn(name, fallback = '', key = name) {
 const coachFaceIn = (name, fallback = '') => faceIn(name, fallback, `coach|${name}`);
 // Un compte de Kop : son visage s'il est joueur ou entraîneur. Jamais pour un supporter, même s'il porte le même nom.
 const authorFace = (a, fallback) => (a?.type === 'player' || a?.type === 'me' ? faceIn(a.name, fallback) : a?.type === 'coach' ? coachFaceIn(a.name, fallback) : fallback);
+function playerSilhouetteHtml() {
+  return '<svg class="face-silhouette" viewBox="0 0 120 120" role="img" aria-hidden="true"><circle cx="60" cy="39" r="21" fill="currentColor" fill-opacity=".86"/><path d="M51 58h18v12c0 4-4 7-9 7s-9-3-9-7V58Z" fill="currentColor" fill-opacity=".76"/><path d="M18 118c3-27 19-41 42-41s39 14 42 41H18Z" fill="currentColor" fill-opacity=".68"/><path d="M47 77l13 11 13-11-13 18-13-18Z" fill="currentColor" fill-opacity=".28"/></svg>';
+}
 // Le joueur lui-même : une photo choisie dans Kop passe avant son visage du jeu.
 function myFaceIn(fallback = '') {
   const photo = profileImg(state?.profile?.avatar);
@@ -458,14 +491,24 @@ const setupActive = () => !state || Boolean(view.setup?.newCareer);
 const SETUP_STEPS = ['Ta sauvegarde', 'Ta clé d’IA', 'Sa biographie'];
 const BIO_MAX = 3000;
 
-function privacyNoticeHtml(prefix) {
-  return `<div class="priv-notice">
-    <span>${tr('Confidentialité activée par défaut : le nom de ton joueur issu de la sauvegarde est déjà remplacé automatiquement avant tout envoi à l’IA. Si tu mentionnes ta vraie ville, ta famille ou des proches dans cette histoire, ajoute-les dans le bouclier ci-dessous.')}</span>
-    <button type="button" class="btn" id="${prefix}-priv-open-btn">${tr('Configurer le bouclier')}</button>
-  </div>`;
+function parseLegacyCustomMaskWords(priv) {
+  if (Array.isArray(priv?.customWords) && priv.customWords.length) {
+    return priv.customWords.slice(0, 30).map((e) => ({
+      word: String(e?.word || e?.real || '').trim(),
+      decoy: String(e?.decoy || '').trim(),
+    })).filter((e) => e.word);
+  }
+  const raw = String(priv?.fields?.custom || '').trim();
+  if (!raw) return [];
+  return raw.split(/[,;\n]+/).map((part) => {
+    const eq = part.indexOf('=');
+    return eq >= 0
+      ? { word: part.slice(0, eq).trim(), decoy: part.slice(eq + 1).trim() }
+      : { word: part.trim(), decoy: '' };
+  }).filter((e) => e.word).slice(0, 30);
 }
 
-function countAutoProtectedItems(persona, playerName = '', handle = '') {
+function countAutoProtectedItems(persona, playerName = '', handle = '', priv = null) {
   let n = 0;
   if (playerName) n++;
   if (handle) n++;
@@ -480,63 +523,108 @@ function countAutoProtectedItems(persona, playerName = '', handle = '') {
       if (p?.name && p.protect !== false) n++;
     }
   }
+  n += parseLegacyCustomMaskWords(priv).length;
   return n;
 }
 
-function privacyFormHtml(prefix, priv, { playerName = '', handle = '', persona = null } = {}) {
+function privacyCustomWordRowHtml(entry = {}) {
+  return `<div class="per-cw-row">
+    <input type="text" class="per-cw-word" value="${esc(entry.word || '')}" placeholder="${esc(tr('Mot ou lieu à masquer (ex. Rue des Lilas)'))}" maxlength="80">
+    <input type="text" class="per-cw-decoy" value="${esc(entry.decoy || '')}" placeholder="${esc(tr('Pseudonyme (auto)'))}" maxlength="80">
+    <button type="button" class="per-p-del per-cw-del" title="${esc(tr('Retirer'))}" aria-label="${esc(tr('Retirer'))}">−</button>
+  </div>`;
+}
+
+function privacyBarHtml(prefix, priv, { playerName = '', handle = '', persona = null } = {}) {
   const on = priv?.enabled !== false;
-  const f = priv?.fields || {};
-  const autoCount = countAutoProtectedItems(persona || state?.persona, playerName, handle);
-  const hasCustom = Boolean(f.custom);
-  return `<details class="priv-box" id="${prefix}-priv-box"${hasCustom ? ' open' : ''}>
-    <summary><span>${tr('Bouclier de confidentialité')}</span><span class="priv-badge${on ? ' on' : ''}" id="${prefix}-priv-badge">${on ? tr('Activé') : tr('Désactivé')}</span></summary>
-    <div class="priv-body">
-      ${rgSwitch(`${prefix}-priv-on`, on, tr('Protéger mes informations personnelles (remplacées par des pseudonymes avant tout envoi à l’IA)'),
-        tr('Tout reste sur ce PC : ton nom, ton pseudo, tes origines protégées et les proches cochés ci-dessus sont remplacés automatiquement par des pseudonymes avant l’envoi à l’IA, puis rétablis au retour.'))}
-      <div class="priv-auto-summary">
-        <span class="per-shield-pill">${hi('shieldCheck')} ${esc(trn(autoCount, '{n} élément protégé automatiquement depuis le profil', '{n} éléments protégés automatiquement depuis le profil'))}</span>
-        <span class="fineprint">${esc(tr('Coche ou décoche les boucliers directement sur tes racines et ton cercle intime.'))}</span>
+  const autoCount = countAutoProtectedItems(persona || state?.persona, playerName, handle, priv);
+  return `<section class="priv-bar-wrap" id="${prefix}-priv-box">
+    <div class="priv-bar">
+      <div class="priv-bar-left">
+        <span class="priv-bar-title">${hi('shieldCheck')}<b>${esc(tr('Bouclier de confidentialité'))}</b></span>
+        <label class="priv-bar-toggle" title="${esc(tr('Protéger mes informations personnelles (remplacées par des pseudonymes avant tout envoi à l’IA)'))}">
+          <input type="checkbox" id="${prefix}-priv-on"${on ? ' checked' : ''}>
+          <span class="priv-badge${on ? ' on' : ''}" id="${prefix}-priv-badge">${on ? tr('Activé') : tr('Désactivé')}</span>
+        </label>
+        <span class="per-shield-pill" id="${prefix}-priv-autocnt">${hi('shieldCheck')} ${esc(trn(autoCount, '{n} protégé', '{n} protégés'))}</span>
       </div>
-      <label class="priv-custom"><span>${tr('Autres mots à masquer (optionnel)')}</span><input id="${prefix}-priv-custom" value="${esc(f.custom || '')}" placeholder="${esc(tr('ex. Rue des Lilas, Rex = Bolt'))}" maxlength="500"></label>
-      <div class="priv-actions">
-        <button type="button" class="btn" id="${prefix}-priv-preview-btn">${tr('Aperçu de ce que voit l’IA')}</button>
-        <button type="button" class="btn" id="${prefix}-priv-audit-btn">${tr('Voir les derniers envois IA')}</button>
+      <div class="priv-bar-acts">
+        <button type="button" class="btn" id="${prefix}-priv-preview-btn">${tr('Aperçu IA')}</button>
+        <button type="button" class="btn" id="${prefix}-priv-audit-btn">${tr('Journal IA')}</button>
       </div>
-      <div class="priv-preview hidden" id="${prefix}-priv-preview"></div>
     </div>
-  </details>`;
+    <div class="priv-preview hidden" id="${prefix}-priv-preview"></div>
+  </section>`;
 }
 
 function readPrivacyForm(prefix) {
   const toggle = $(`#${prefix}-priv-on`);
   if (!toggle) return null;
-  const prev = (state?.privacy || view.setup?.privacy || {});
-  const fields = { ...(prev.fields || {}) };
-  fields.custom = $(`#${prefix}-priv-custom`)?.value.trim() || '';
+  const prev = (state?.privacy || view.setup?.privacy || settings?.privacy || {});
+  const fields = { ...(prev.fields || {}), custom: '' };
   const customPeople = Array.isArray(prev.customPeople) ? prev.customPeople : [];
-  return { enabled: toggle.checked, fields, customPeople };
+  const customWords = [];
+  const list = $(`#${prefix}-priv-cw-list`);
+  if (list) {
+    list.querySelectorAll('.per-cw-row').forEach((row) => {
+      if (customWords.length >= 30) return;
+      const word = row.querySelector('.per-cw-word')?.value.trim() || '';
+      const decoy = row.querySelector('.per-cw-decoy')?.value.trim() || '';
+      if (word) customWords.push({ real: word, decoy });
+    });
+  }
+  return { enabled: toggle.checked, fields, customPeople, customWords };
 }
 
 function bindPrivacyForm(prefix, { getBio, getPlayer, getHandle, getPersona, onChange } = {}) {
-  const openBtn = $(`#${prefix}-priv-open-btn`);
-  if (openBtn) {
-    openBtn.onclick = () => {
-      const box = $(`#${prefix}-priv-box`);
-      if (box) { box.open = true; box.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
-    };
-  }
   const toggle = $(`#${prefix}-priv-on`);
   if (!toggle) return;
+  const list = $(`#${prefix}-priv-cw-list`);
+  const addBtn = $(`#${prefix}-priv-cw-add`);
+
+  const refreshAutoCount = () => {
+    const cnt = $(`#${prefix}-priv-autocnt`);
+    if (!cnt) return;
+    const priv = readPrivacyForm(prefix);
+    const pers = getPersona?.() || state?.persona;
+    const n = countAutoProtectedItems(pers, getPlayer?.() || '', getHandle?.() || '', priv);
+    cnt.innerHTML = `${hi('shieldCheck')} ${esc(trn(n, '{n} protégé', '{n} protégés'))}`;
+  };
+
   const syncBadge = () => {
     const badge = $(`#${prefix}-priv-badge`);
     if (!badge) return;
     badge.classList.toggle('on', toggle.checked);
     badge.textContent = toggle.checked ? tr('Activé') : tr('Désactivé');
   };
-  const notify = () => { syncBadge(); onChange?.(readPrivacyForm(prefix)); };
+  const notify = () => { syncBadge(); refreshAutoCount(); onChange?.(readPrivacyForm(prefix)); };
   toggle.onchange = notify;
-  const custom = $(`#${prefix}-priv-custom`);
-  if (custom) custom.oninput = () => onChange?.(readPrivacyForm(prefix));
+
+  if (list) {
+    const syncCwAdd = () => {
+      if (addBtn) addBtn.disabled = list.querySelectorAll('.per-cw-row').length >= 30;
+    };
+    const bindCwRow = (row) => {
+      row.querySelectorAll('input').forEach((inp) => { inp.oninput = notify; });
+      const del = row.querySelector('.per-cw-del');
+      if (del) del.onclick = () => { row.remove(); syncCwAdd(); notify(); };
+    };
+    list.querySelectorAll('.per-cw-row').forEach(bindCwRow);
+    if (addBtn) {
+      addBtn.onclick = () => {
+        if (list.querySelectorAll('.per-cw-row').length >= 30) return;
+        const wrap = document.createElement('div');
+        wrap.innerHTML = privacyCustomWordRowHtml({});
+        const row = wrap.firstElementChild;
+        list.appendChild(row);
+        bindCwRow(row);
+        syncCwAdd();
+        row.querySelector('.per-cw-word')?.focus();
+        notify();
+      };
+    }
+    syncCwAdd();
+  }
 
   const btn = $(`#${prefix}-priv-preview-btn`);
   if (btn) {
@@ -580,6 +668,10 @@ function bindPrivacyForm(prefix, { getBio, getPlayer, getHandle, getPersona, onC
       } catch (err) { toast(err.message, true); }
     };
   }
+
+  const perBox = $(`#${prefix}-per-box`);
+  if (perBox) perBox.addEventListener('input', refreshAutoCount);
+  if (perBox) perBox.addEventListener('change', refreshAutoCount);
 }
 
 const PERSONA_GROUP_MAX = 10;
@@ -690,6 +782,22 @@ const PERSONA_FLAVORS_UI = [
     () => tr('Affamé à chaque jour de match'),
     () => tr('La pression est un privilège'),
   ] },
+  { key: 'turningPoint', label: () => tr('Obstacle ou tournant décisif'), hint: () => tr('ex. Rejeté en centre de formation à 16 ans, grave blessure au genou'), suggestions: [
+    () => tr('Écarté à 16 ans avant de rebondir en division inférieure'),
+    () => tr('Grave blessure au genou surmontée à force de rééducation'),
+    () => tr('Départ loin de sa famille dès l’adolescence'),
+  ] },
+  { key: 'idol', label: () => tr('Idole de football'), hint: () => tr('ex. Ronaldinho, Zinédine Zidane, Thierry Henry'), suggestions: [
+    () => tr('Ronaldinho'),
+    () => tr('Zinédine Zidane'),
+    () => tr('Cristiano Ronaldo'),
+    () => tr('Lionel Messi'),
+  ] },
+  { key: 'dream', label: () => tr('Rêve ultime de carrière'), hint: () => tr('ex. Gagner la Coupe du monde, soulever le Ballon d’Or'), suggestions: [
+    () => tr('Soulever la Ligue des champions avec son club'),
+    () => tr('Remporter la Coupe du monde avec son pays'),
+    () => tr('Offrir une maison à sa famille et marquer l’histoire'),
+  ] },
 ];
 
 const PERSONA_CIRCLE_UI = [
@@ -757,7 +865,7 @@ function personaPersonRowHtml(person = {}, groupKey = '') {
   </div>`;
 }
 
-function personaFormHtml(prefix, rawPersona) {
+function personaFormHtml(prefix, rawPersona, rawPriv = null) {
   const d = personaDraft(rawPersona);
   const activePreset = d.preset || detectPersonaPreset(d.traits);
   const presetCards = PERSONA_PRESETS_UI.map((p) => `<button type="button" class="per-preset${activePreset === p.id ? ' on' : ''}" data-preset="${p.id}"><b>${esc(p.label())}</b><small>${esc(p.sub())}</small></button>`).join('');
@@ -790,7 +898,7 @@ function personaFormHtml(prefix, rawPersona) {
     const dlId = `${prefix}-per-dl-${f.key}`;
     return `<label class="per-field">
       <span>${esc(f.label())}</span>
-      <input id="${prefix}-per-flv-${f.key}" list="${dlId}" value="${esc(d.flavor[f.key] || '')}" placeholder="${esc(f.hint())}" maxlength="140">
+      <input id="${prefix}-per-flv-${f.key}" list="${dlId}" value="${esc(d.flavor[f.key] || '')}" placeholder="${esc(f.hint())}" maxlength="160">
       <datalist id="${dlId}">${f.suggestions.map((s) => `<option value="${esc(s())}">`).join('')}</datalist>
     </label>`;
   }).join('');
@@ -811,8 +919,16 @@ function personaFormHtml(prefix, rawPersona) {
     </details>`;
   }).join('');
 
+  const customWords = parseLegacyCustomMaskWords(rawPriv || state?.privacy || settings?.privacy);
+  const customMaskHtml = `<div class="per-sec">
+    <h4>${esc(tr('Autres mots à masquer (optionnel)'))}</h4>
+    <p class="fineprint">${esc(tr('Ajoute des lieux, surnoms, entreprises ou mots précis que le Bouclier de confidentialité remplacera avant tout envoi à l’IA.'))}</p>
+    <div class="per-cw-list" id="${prefix}-priv-cw-list">${customWords.map((w) => privacyCustomWordRowHtml(w)).join('')}</div>
+    <button type="button" class="btn per-cw-add" id="${prefix}-priv-cw-add"${customWords.length >= 30 ? ' disabled' : ''}>+ ${esc(tr('Ajouter un mot'))}</button>
+  </div>`;
+
   return `<details class="per-box" id="${prefix}-per-box" open>
-    <summary><span>${tr('Personnalité, racines & cercle intime')}</span><span class="priv-badge${activePreset ? ' on' : ''}" id="${prefix}-per-badge">${esc(personaBadgeLabel(activePreset))}</span></summary>
+    <summary><span>${tr('Personnalité, anniversaire & cercle intime')}</span><span class="priv-badge${activePreset ? ' on' : ''}" id="${prefix}-per-badge">${esc(personaBadgeLabel(activePreset))}</span></summary>
     <div class="per-body">
       <div class="per-shield-tip">${hi('shieldCheck')}<span>${esc(tr('Protégé automatiquement : les racines et les proches cochés sont masqués par le Bouclier de confidentialité avant tout envoi à l’IA. L’agent renseigné dans Contacts pro synchronise son nom avec Mails.'))}</span></div>
       <div class="per-sec"><h4>${esc(tr('Date de naissance du joueur'))}</h4><div class="per-grid per-grid-2"><label class="per-field"><span>${esc(tr('Anniversaire (ajouté au calendrier)'))}</span><input type="date" id="${prefix}-per-playerdob" value="${esc(d.playerDob || '')}"></label></div></div>
@@ -821,6 +937,7 @@ function personaFormHtml(prefix, rawPersona) {
       <div class="per-sec"><h4>${esc(tr('Origines & racines'))}</h4><div class="per-grid per-grid-2">${rootsHtml}</div></div>
       <div class="per-sec"><h4>${esc(tr('Habitudes, goûts & devise'))}</h4><div class="per-grid per-grid-2">${flavorsHtml}</div></div>
       <div class="per-sec"><h4>${esc(tr('Cercle intime'))}</h4><div class="per-circle">${circleHtml}</div></div>
+      ${customMaskHtml}
     </div>
   </details>`;
 }
@@ -989,6 +1106,47 @@ function bindPersonaForm(prefix, { onChange } = {}) {
   }
 }
 
+function bindBioGenerateBtn(prefix, { getPlayer, getHandle, getClub, getNationality, getPosition, getAge, getBioEl, getPersona, getPrivacy, onGenerated } = {}) {
+  const btn = $(`#${prefix}-bio-gen`);
+  if (!btn) return;
+  btn.onclick = async () => {
+    const ta = getBioEl?.() || $(`#${prefix}-bio`);
+    if (!ta) return;
+    btn.disabled = true;
+    const origHtml = btn.innerHTML;
+    btn.textContent = tr('Génération…');
+    try {
+      const persona = getPersona?.() || readPersonaForm(prefix);
+      const privacy = getPrivacy?.() || readPrivacyForm(prefix);
+      const r = await live.generateBackstory({
+        persona,
+        privacy,
+        playerName: getPlayer?.() || '',
+        handle: getHandle?.() || '',
+        club: getClub?.() || '',
+        nationality: getNationality?.() || '',
+        position: getPosition?.() || '',
+        age: getAge?.() || '',
+      });
+      const generated = r?.text || r?.bio || '';
+      if (generated) {
+        ta.value = generated;
+        onGenerated?.(generated);
+        const cnt = $(`#${prefix}-count`) || $(`#${prefix}-bio-count`);
+        if (cnt) cnt.textContent = `${ta.value.length} / ${BIO_MAX}`;
+        toast(r.masked
+          ? tr('Biographie générée (Bouclier actif : {n} mot(s) masqué(s)).', { n: r.pairs })
+          : tr('Biographie générée.'));
+      }
+    } catch (err) {
+      toast(err.message, true);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+    }
+  };
+}
+
 function openBioStep(info) {
   const pb = settings.pendingBio?.savePath === settings.savePath ? settings.pendingBio : null;
   view.setup = { step: 3, newCareer: true, savePath: settings.savePath, info, bio: pb?.text || '', kind: pb?.kind || null, privacy: pb?.privacy || { enabled: true, fields: {}, customPeople: [] }, persona: pb?.persona || null };
@@ -1087,14 +1245,18 @@ function setupBioHtml(su) {
         </select></label>
       </div>
       ${written ? `<p class="su-text">${tr('Définis le caractère de ton joueur, ses origines et son cercle intime : dans ce monde, tout cela sera vrai dès la première édition.')}</p>
-      ${personaFormHtml('su', su.persona)}
-      <p class="su-ask">${tr('Histoire libre (optionnel)')}</p>
-      <p class="fineprint">${tr('Complète librement ce que le questionnaire ne dit pas : anecdotes, blessure fondatrice, rêve précis… Tout reste optionnel.')}</p>
-      ${privacyNoticeHtml('su')}
+      ${privacyBarHtml('su', su.privacy, { playerName: su.info?.player || '', persona: su.persona })}
+      ${personaFormHtml('su', su.persona, su.privacy)}
+      <div class="pp-bio-head">
+        <div>
+          <p class="su-ask">${tr('Histoire libre (optionnel)')}</p>
+          <p class="fineprint">${tr('Complète librement ce que le questionnaire ne dit pas : anecdotes, blessure fondatrice, rêve précis… Tout reste optionnel.')}</p>
+        </div>
+        <button type="button" class="btn" id="su-bio-gen"${su.busy ? ' disabled' : ''}>${hi('sparkles')} ${tr('Générer la biographie (IA)')}</button>
+      </div>
       <textarea id="su-bio" rows="6" maxlength="${BIO_MAX}" placeholder="${tr('Il est né à… Il a grandi dans… Il a commencé le football à…')}"${su.busy ? ' disabled' : ''}>${esc(su.bio)}</textarea>
       <p class="su-count" id="su-count">${su.bio.length} / ${BIO_MAX}</p>
-      <p class="fineprint">${tr('Si elle contredit la sauvegarde (âge, club, sélection), c’est la sauvegarde qui l’emporte. Tu pourras l’écrire ou la modifier plus tard dans le Profil du joueur.')}</p>
-      ${privacyFormHtml('su', su.privacy, { playerName: su.info?.player || '', persona: su.persona })}` : ''}
+      <p class="fineprint">${tr('Si elle contredit la sauvegarde (âge, club, sélection), c’est la sauvegarde qui l’emporte. Tu pourras l’écrire ou la modifier plus tard dans le Profil du joueur.')}</p>` : ''}
     </section>
     <div class="su-nav"><button class="btn big" id="su-back"${su.busy ? ' disabled' : ''}>${su.newCareer ? tr('Annuler') : tr('Retour')}</button><button class="btn primary big" id="su-publish"${su.busy ? ' disabled' : ''}>${su.busy ? tr('Première édition en préparation…') : tr('Publier la première édition')}</button></div>`;
 }
@@ -1261,6 +1423,14 @@ function renderSetup(page) {
     if (ta) ta.oninput = () => { su.bio = ta.value; $('#su-count').textContent = `${ta.value.length} / ${BIO_MAX}`; };
     bindPersonaForm('su', { onChange: (p) => { su.persona = p; } });
     bindPrivacyForm('su', { getBio: () => su.bio, getPlayer: () => su.info?.player || '', getPersona: () => readPersonaForm('su') || su.persona, onChange: (p) => { su.privacy = p; } });
+    bindBioGenerateBtn('su', {
+      getPlayer: () => su.info?.player || '',
+      getClub: () => su.info?.club || '',
+      getBioEl: () => $('#su-bio'),
+      getPersona: () => readPersonaForm('su') || su.persona,
+      getPrivacy: () => readPrivacyForm('su') || su.privacy,
+      onGenerated: (txt) => { su.bio = txt; },
+    });
     $('#su-publish').onclick = setupPublish;
   }
 }
@@ -1352,11 +1522,11 @@ function llEnter(page) {
 }
 
 // Le cadre de LifeLegend : le rail des sites et son encoche, l'onglet du site ouvert, les outils et le profil.
-const SITE_ICON = { national: 'newspaper', local: 'pencil', tribune: 'hashtag', mail: 'envelope', huddle: 'chat', stats: 'poll', pantheon: 'trophy', mylife: 'sparkles', playerprofile: 'user' };
+const SITE_ICON = { national: 'newspaper', local: 'pencil', tribune: 'hashtag', mail: 'envelope', dossier: 'dossier', huddle: 'chat', stats: 'poll', pantheon: 'trophy', mylife: 'sparkles', playerprofile: 'user' };
 // La page défile dans la feuille du cadre, plus dans la fenêtre.
 const llView = () => document.getElementById('ll-view');
 const viewScrollTo = (top, smooth = false) => llView()?.scrollTo({ top, behavior: smooth ? 'smooth' : 'auto' });
-let tabY = null, tabWasOff = true, shellMenu = false, shellCalOpen = false, shellNotifOpen = false;
+let tabY = null, tabWasOff = true, shellMenu = false, shellCalOpen = false, shellNotifOpen = false, availableUpdate = null;
 function placeTabLine(tabs, animate) {
   const on = tabs.querySelector('.tab.active'), line = tabs.querySelector('.tab-line');
   if (!line) return;
@@ -1519,12 +1689,19 @@ function paintShell() {
     }
   }
 
+  const updWrap = $('#ll-update-wrap');
+  if (updWrap) {
+    updWrap.innerHTML = availableUpdate?.newer
+      ? `<a class="ll-upd-pill" href="${esc(availableUpdate.url)}" target="_blank" rel="noopener" title="${esc(tr('Nouvelle version disponible : {v}', { v: availableUpdate.latest }))}">${esc(tr('MàJ {v}', { v: availableUpdate.latest }))}</a>`
+      : '';
+  }
+
   const me = s ? state.profile?.displayName || s.player.name : '';
   const initials = me ? fbInitials(me) : hi('user');
   const items = [
     [tr('Profil du joueur'), 'playerprofile', null],
     [tr('Profil social Kop'), 'tribune', '[data-twnav="mine"]'],
-    [tr('Dossier de carrière'), 'mail', '[data-smdossier]'],
+    [tr('Dossier de carrière'), 'dossier', null],
     [tr('Influence'), 'mail', '[data-sminfluence]'],
     ['Panthéon', 'pantheon', null],
     [tr('Ma vie'), 'mylife', null],
@@ -1563,7 +1740,7 @@ function render() {
   const page = $('#page');
   page.className = `site site-${current}`;
   if (setupActive() && current !== 'settings') { renderSetup(page); paintShell(); return; }
-  const renderers = { national: renderNational, local: renderLocal, tribune: renderTribune, mail: renderMail, huddle: renderHuddle, stats: renderStats, pantheon: renderPantheon, mylife: renderMyLife, playerprofile: renderPlayerProfile, settings: renderSettings };
+  const renderers = { national: renderNational, local: renderLocal, tribune: renderTribune, mail: renderMail, dossier: renderDossier, huddle: renderHuddle, stats: renderStats, pantheon: renderPantheon, mylife: renderMyLife, playerprofile: renderPlayerProfile, settings: renderSettings };
   renderers[current](page);
   llEnter(page);
   paintShell();
@@ -1653,13 +1830,13 @@ function gzFrame(x, ratio = '3x2') {
   if (v.mode === 'person') {
     // Son visage, l'écusson de son club en filigrane, et (grandes vignettes) son nom : le prénom au-dessus, le nom en gros ;
     // au-dessus encore sa distinction (joueur du mois…) ou son club.
-    const fallback = crest(one), club = one ? teamEmblem(one) : null;
+    const fallback = playerSilhouetteHtml(), club = one ? teamEmblem(one) : null;
     const words = String(v.person).trim().split(/\s+/), family = words.pop(), given = words.join(' ');
     const kicker = v.caption && v.caption !== v.person ? v.caption : one || '';
     inner = `${club ? `<img class="gz-frame-wm" src="${esc(club)}" alt="">` : ''}<span class="gz-frame-who">${kicker ? `<span class="gz-frame-kick">${club ? gzCrest(one) : ''}${esc(kicker)}</span>` : ''}<b class="gz-frame-name">${given ? `<span>${esc(given)}</span>` : ''}${esc(family)}</b></span><span class="gz-frame-face">${v.isCoach ? coachFaceIn(v.person, fallback) : v.person === state.snapshot.player?.name ? myFaceIn(fallback) : faceIn(v.person, fallback)}</span>`;
   } else if (v.mode === 'duel') {
-    const face = (n, i) => `<span class="gz-frame-face">${n === state.snapshot.player?.name ? myFaceIn(crest(v.teams[i])) : faceIn(n, crest(v.teams[i]))}</span>`;
-    inner = `${face(v.persons[0], 0)}<span class="gz-frame-mid gz-frame-vs gz-frame-score">vs</span>${face(v.persons[1], 1)}`;
+    const face = (n) => `<span class="gz-frame-face">${n === state.snapshot.player?.name ? myFaceIn(playerSilhouetteHtml()) : faceIn(n, playerSilhouetteHtml())}</span>`;
+    inner = `${face(v.persons[0])}<span class="gz-frame-mid gz-frame-vs gz-frame-score">vs</span>${face(v.persons[1])}`;
   } else if (logo) inner = `<span class="gz-frame-plate"><img src="${esc(logo)}" alt=""></span>${mid}`;
   else if (two) inner = `${crest(one)}${mid}${crest(two)}`;
   else inner = `${one ? crest(one) : ''}${mid}`;
@@ -2211,8 +2388,9 @@ function gzAwardsBlocks(d) {
   const s = state.snapshot;
   const potm = (state.paperAwards?.potm || []).at(-1);
   const who = (p) => `${esc(p.team)} · ${esc(trn(p.apps, '{n} match', '{n} matchs'))} · ${esc(trn(p.goals, '{n} but', '{n} buts'))} · ${esc(trn(p.assists, '{n} passe D.', '{n} passes D.'))}`;
+  const potmFace = (name) => (name === s.player?.name ? myFaceIn(playerSilhouetteHtml()) : faceIn(name, playerSilhouetteHtml()));
   const months = potm ? `<section class="gz-wrap gz-sec"><div class="gz-sec-head"><div class="gz-sec-title"><h2>${tr('Les joueurs du mois')}</h2><span class="gz-mc-sub">${esc(monthYear(potm.month))}</span></div></div>
-    <div class="gz-potm-grid">${potm.overall ? `<article class="gz-mc-card gz-potm-main"><span class="gz-kicker">${tr('Joueur du mois')}</span><span class="gz-potm-face">${faceIn(potm.overall.player, gzCrest(potm.overall.team, ' gz-crest--big'))}</span><h3>${esc(potm.overall.player)}</h3><p>${who(potm.overall)}</p><div class="gz-potm-note"><span>${tr('Meilleure note moyenne du mois')}</span>${ratingChip(potm.overall.avg, true)}</div></article>` : ''}
+    <div class="gz-potm-grid">${potm.overall ? `<article class="gz-mc-card gz-potm-main"><span class="gz-kicker">${tr('Joueur du mois')}</span><span class="gz-potm-face">${potmFace(potm.overall.player)}</span><h3>${esc(potm.overall.player)}</h3><p>${who(potm.overall)}</p><div class="gz-potm-note"><span>${tr('Meilleure note moyenne du mois')}</span>${ratingChip(potm.overall.avg, true)}</div></article>` : ''}
       <ul class="gz-potm-list">${(potm.leagues || []).map((p) => `<li${p.competition === s.league?.name ? ' class="mine"' : ''}>${gzCompLogo(p.competition, 'gz-potm-logo') || `<span class="gz-potm-logo gz-potm-logo--none">${hi('trophy')}</span>`}<span><small>${esc(gzShort(p.competition))}</small><strong>${esc(p.player)}</strong><em>${who(p)}</em></span>${ratingChip(p.avg)}</li>`).join('')}</ul></div></section>`
     : `<section class="gz-wrap gz-sec"><div class="gz-sec-head"><h2>${tr('Les joueurs du mois')}</h2></div><p class="gz-empty">${tr('Le joueur du mois sera annoncé au début du mois prochain.')}</p></section>`;
   if (d === undefined) return `${months}<section class="gz-wrap gz-sec"><p class="gz-empty">${tr('Chargement des scores…')}</p></section>`;
@@ -2223,7 +2401,7 @@ function gzAwardsBlocks(d) {
   const pts = (n) => esc(trn(n, '{n} point', '{n} points'));
   const last = potyList[0];
   const year = last ? `<section class="gz-wrap gz-sec"><div class="gz-sec-head"><div class="gz-sec-title"><h2>${tr('Footballeur de l’année')}</h2><span class="gz-mc-sub">${esc(String(last.year))}</span></div></div>
-    <div class="gz-potm-grid"><article class="gz-mc-card gz-potm-main"><span class="gz-kicker">${tr('Lauréat {year}', { year: last.year })}</span><span class="gz-potm-face">${faceIn(last.podium[0][0], gzCrest(club(last.podium[0][1]), ' gz-crest--big'))}</span><h3>${esc(last.podium[0][0])}</h3><p>${esc(club(last.podium[0][1]))} · ${pts(last.podium[0][2])}</p></article>
+    <div class="gz-potm-grid"><article class="gz-mc-card gz-potm-main"><span class="gz-kicker">${tr('Lauréat {year}', { year: last.year })}</span><span class="gz-potm-face">${potmFace(last.podium[0][0])}</span><h3>${esc(last.podium[0][0])}</h3><p>${esc(club(last.podium[0][1]))} · ${pts(last.podium[0][2])}</p></article>
       <ul class="gz-potm-list">${last.podium.slice(1).filter(([n]) => n).map(([n, ref, p, me], i) => `<li${me ? ' class="mine"' : ''}><span class="gz-poty-rank">${i + 2}</span><span><small>${esc(club(ref))}</small><strong>${esc(n)}</strong></span><b class="gz-poty-pts">${pts(p)}</b></li>`).join('')}
         ${potyList.slice(1).map((y) => `<li class="gz-poty-past${y.podium[0][3] ? ' mine' : ''}"><span class="gz-poty-rank gz-poty-year">${esc(String(y.year))}</span><span><small>${tr('Lauréat {year}', { year: y.year })}</small><strong>${esc(y.podium[0][0])}</strong><em>${esc(club(y.podium[0][1]))}</em></span><b class="gz-poty-pts">${pts(y.podium[0][2])}</b></li>`).join('')}</ul></div></section>` : '';
   // Les équipes types de chaque grand championnat et du sien : de la dernière journée, du mois fini ou de la saison en
@@ -3090,7 +3268,7 @@ function fbVignette(a, date, cls = '') {
   if (v.kind === 'press') { solo = !two; inner = `${crest(one)}${badge('mic')}${two ? crest(two) : ''}`; }
   if (v.kind === 'mercato') inner = `${crest(one)}${badge('swap')}`;
   if (v.kind === 'person') inner = `${crest(one)}<span class="fb-banner-name">${esc(v.person)}</span>`;
-  if (v.kind === 'me') inner = `<span class="fb-banner-face">${myFaceIn(crest(one))}</span><span class="fb-banner-mark">${crestHtml(one)}</span>`;
+  if (v.kind === 'me') inner = `<span class="fb-banner-face">${myFaceIn(playerSilhouetteHtml())}</span><span class="fb-banner-mark">${crestHtml(one)}</span>`;
   if (v.kind === 'league') { const logo = compEmblem(v.league); inner = `${crest(one)}${logo ? `<span class="fb-banner-plate"><img src="${esc(logo)}" alt=""></span>` : `<span class="fb-banner-name">${esc(gzShort(v.league))}</span>`}`; }
   return `<div class="fb-banner${cls}"><div class="fb-banner-crests${solo && v.kind === 'club' ? ' solo' : ''}">${inner}</div><span class="fb-banner-cap">${esc(v.caption)}</span></div>`;
 }
@@ -3518,6 +3696,7 @@ const HI = {
   plus: 'M12 4.5v15m7.5-7.5h-15',
   language: 'm10.5 21 5.25-11.25L21 21m-9-3h7.5M3 5.621a48.474 48.474 0 0 1 6-.371m0 0c1.12 0 2.233.038 3.334.114M9 5.25V3m3.334 2.364C11.176 10.658 7.69 15.08 3 17.502m9.334-12.138c.896.061 1.785.147 2.666.257m-4.589 8.495a18.023 18.023 0 0 1-3.827-5.802',
   sparkles: 'M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z',
+  dossier: 'M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z',
 };
 const hi = (k) => `<svg class="hi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="${HI[k]}"/></svg>`;
 
@@ -5705,12 +5884,12 @@ function dsSponsor() {
     const cats = (Array.isArray(s.categories) && s.categories.length ? s.categories : [s.category]).filter(Boolean).map(mlSponsorCatLabel).join(' · ');
     const gpTag = s.isGlobalPartner ? ` <span class="priv-badge on">${esc(tr('Partenaire mondial'))}</span>` : '';
     const fee = Number(s.fee) ? `${euros(s.fee)} / ${tr('Par saison').toLowerCase()}` : '';
-    return `<div class="ds-partner-row"><div><b>${esc(s.brand)}</b>${gpTag}${cats ? `<small>${esc(cats)}</small>` : ''}</div>${fee ? `<span>${esc(fee)}</span>` : ''}</div>`;
+    return `<div class="ds-partner-row"><div class="ds-partner-id">${mlSponsorMedallionHtml(s)}<div><b>${esc(s.brand)}</b>${gpTag}${cats ? `<small>${esc(cats)}</small>` : ''}</div></div>${fee ? `<span>${esc(fee)}</span>` : ''}</div>`;
   }).join('');
   return `${bootHtml}<div class="ds-partners"><div class="ds-partners-head"><span class="ib-eyebrow">${tr('Autres partenaires commerciaux')}</span><button class="sm-btn sm-btn-ghost" data-dsmylife="sponsors">${tr('Gérer dans Ma vie')}</button></div><div class="ds-partners-list">${rows}</div></div>`;
 }
 
-function dossierPage() {
+function dossierPage({ standalone = false } = {}) {
   const a = state.agent, v = a.view, s = state.snapshot;
   const club = v.club, months = v.monthsLeft, today = s.gameDate;
   const offers = v.offers || [];
@@ -5820,8 +5999,18 @@ function dossierPage() {
   const thread = [...state.mail].reverse().find((t) => t.role === 'agent');
   const said = thread?.messages.filter((m) => m.who !== 'me').at(-1);
   const note = `<section class="ds-note">
-    <span class="ib-eyebrow">${esc(tr('Le dernier mot de {agent}', { agent: agentFirst() }))}</span>
+    <div class="ds-note-top"><span class="ib-eyebrow">${esc(tr('Le dernier mot de {agent}', { agent: agentFirst() }))}</span><button type="button" class="btn dc-agent-edit-btn" id="dc-agent-edit-btn">${hi('pencil')} ${tr('Modifier')}</button></div>
     <header>${smAvatar(a.name, 'agent')}<div><b>${esc(a.name)}</b><span>${esc(a.agency || tr('Agent'))}</span></div>${said ? `<time>${esc(dsDay(said.gameDate))}</time>` : ''}</header>
+    <div class="dc-agent-edit hidden" id="dc-agent-form">
+      <div class="dc-agent-edit-grid">
+        <label class="per-field"><span>${tr('Nom de l’agent')}</span><input id="dc-agent-name" value="${esc(a.name || '')}" maxlength="120"></label>
+        <label class="per-field"><span>${tr('Agence')}</span><input id="dc-agent-agency" value="${esc(a.agency || '')}" maxlength="120"></label>
+      </div>
+      <div class="dc-agent-edit-acts">
+        <button type="button" class="btn primary" id="dc-agent-save">${tr('Enregistrer')}</button>
+        <button type="button" class="btn" id="dc-agent-cancel">${tr('Annuler')}</button>
+      </div>
+    </div>
     ${said ? `<blockquote>${esc(said.body)}</blockquote><button class="btn" data-dsthread="${esc(thread.id)}">${tr('Lire et répondre')}</button>` : `<p class="ds-none">${esc(tr('Le premier point de {agent} arrive avec une prochaine édition.', { agent: agentFirst() }))}</p>`}
     <p class="fineprint">${tr('Agent · offres et clubs lus dans ta sauvegarde, le reste est estimé')}</p>
   </section>`;
@@ -5854,13 +6043,15 @@ function dossierPage() {
   const dcGroup = (title, rows) => (rows.length ? `<div class="dc-group"><h4>${esc(title)}</h4>${rows.join('')}</div>` : '');
   const clubRow = (prefix, c, extra = {}) => dcRow({ key: `${prefix}:${c.team || c.club}`, media: crestHtml(c.team || c.club), name: c.team || c.club, sub: c.league || '', go: 'dc-transfer', dsclub: c.team || c.club, ...extra });
   const spDeal = activeBootSponsor(state), spOne = spDeal || state.sponsor?.offer;
-  const spMedia = spOne && bootFile(spOne.photo) ? `<img class="dc-boot" src="${esc(bootFile(spOne.photo))}" alt="">` : esc(String(spOne?.brand || '?')[0]);
+  const spLogo = spOne ? sponsorLogoUrl(spOne) : null;
+  const spMedia = spLogo ? `<img class="dc-sp-logo" src="${esc(spLogo)}" alt="">` : esc(spOne ? brandMonogram(spOne.brand) : '?');
   const sidePath = rec?.clubs?.length
     ? rec.clubs.map((c, idx) => dcRow({ key: `rec:${c.clubRef || idx}`, media: crestHtml(clubLabel(c)), name: clubLabel(c), sub: c.startYear ? String(c.startYear) : '', go: 'dc-path' }))
     : seasons.map((x) => dcRow({ key: `season:${x.season}`, media: crestHtml(x.club), name: x.club, sub: x.season, go: 'dc-path' }));
   const side = `<aside class="dc-side"><p class="dc-eyebrow">${tr('Ta carrière')}</p><div class="dc-club">${crestHtml(club)}<b>${esc(club)}</b></div>
       <label class="dc-search">${hi('search')}<input type="search" id="dc-q" placeholder="${tr('Chercher')}" aria-label="${tr('Chercher')}" autocomplete="off"></label>
       ${dcGroup(tr('Ton contrat'), [dcRow({ key: 'me', media: myFaceIn(fbInitials(s.player.name)), name: s.player.name, sub: months !== null ? trn(months, '{n} mois restant', '{n} mois restants') : '', go: 'dc-over' }), dcRow({ key: 'ext', media: hi('contract'), name: tr('Prolongation'), end: v.extension !== null && v.extension !== undefined ? pct(v.extension) : '', go: 'dc-contract' })])}
+      ${dcGroup(tr('Ton parcours'), sidePath)}
       ${dcGroup(tr('Offres reçues'), [...(a.plannedMove ? [clubRow('deal', { club: a.plannedMove.club }, { sub: tr('Transfert conclu') })] : []), ...offers.map((o) => clubRow('offer', o, { sub: o.kind === 'extension' ? tr('Prolongation') : tr('Offre de transfert') }))])}
       ${dcGroup(tr('Clubs qui suivent ton dossier'), v.clubs.map((c) => clubRow('follow', c)))}
       ${dcGroup(tr('Où demander ton transfert'), askable.map((c) => clubRow('ask', c, { end: c.chance != null ? pct(c.chance) : '' })))}
@@ -5868,21 +6059,21 @@ function dossierPage() {
       ${dcGroup(tr('Objectifs'), [dcRow({ key: 'goals', media: hi('flag'), name: tr('Tes objectifs'), sub: [state.objectives?.season, state.objectives?.comeback].filter(Boolean).length ? tr(OBJ_TITLE[(state.objectives.comeback || state.objectives.season).kind]) : tr('Aucun pour l’instant'), go: 'dc-goals' })])}
       ${dcGroup(tr('Relation avec le club'), [dcRow({ key: 'rel', media: hi('user'), name: tr('Ton entraîneur et tes coéquipiers'), sub: tr(REL_LABEL[dsRelationState().coach]), go: 'dc-relation' })])}
       ${dcGroup(tr('Agent'), [dcRow({ key: 'agent', media: fbInitials(a.name), name: a.name, sub: a.agency || '', go: 'dc-agent' })])}
-      ${dcGroup(tr('Ton parcours'), sidePath)}
       <p class="dc-none" id="dc-none">${tr('Rien ne correspond.')}</p>
-      <div class="dc-side-foot"><button class="dc-back" data-smback>${hi('back')}Mails</button></div></aside>`;
-  const tabs = [['dc-over', tr('Aperçu')], ['dc-contract', tr('Contrat')], ['dc-transfer', tr('Transfert')], ['dc-sponsor', tr('Équipementier')], ['dc-goals', tr('Objectifs')], ['dc-relation', tr('Relation')], ['dc-agent', tr('Agent')], ['dc-path', tr('Parcours')]];
+      <div class="dc-side-foot">${standalone ? `<button type="button" class="dc-back" data-dc-tomail>${hi('back')}Mails</button>` : `<button class="dc-back" data-smback>${hi('back')}Mails</button>`}</div></aside>`;
+  const tabs = [['dc-over', tr('Aperçu')], ['dc-path', tr('Parcours')], ['dc-contract', tr('Contrat')], ['dc-transfer', tr('Transfert')], ['dc-sponsor', tr('Équipementier')], ['dc-goals', tr('Objectifs')], ['dc-relation', tr('Relation')], ['dc-agent', tr('Agent')]];
   return `<div class="ds dc${view.dsRingFrom !== undefined ? ' ds-just' : ''}">${side}
     <div class="dc-main">${head}
       <nav class="dc-tabs" aria-label="${tr('Sommaire')}">${tabs.map(([id, l], k) => `<button type="button" class="${k ? '' : 'on'}" data-dctab="${id}">${esc(l)}</button>`).join('')}</nav>
       <div class="dc-body">
         <section class="dc-sec" id="dc-over">${info}${alerts}${dcChart(s, v)}</section>
+        <section class="dc-sec dc-anchor" id="dc-path">${path}</section>
         <section class="dc-sec" id="dc-contract"><p class="dc-label">${tr('Ton contrat')}</p>${fate}</section>
         <section class="dc-sec" id="dc-transfer"><div class="ib-sec"><i class="${winOpen ? 'open' : ''}"></i><span class="ib-eyebrow">${tr('Le marché')}</span></div>${deal}${offersHtml}${redirectBlock(a, v)}${followHtml}${askHtml}</section>
         <section class="dc-sec" id="dc-sponsor">${dsSponsor()}</section>
         <section class="dc-sec" id="dc-goals"><p class="dc-label">${tr('Tes objectifs')}</p>${dsGoals()}</section>
         <section class="dc-sec" id="dc-relation"><p class="dc-label">${tr('Relation avec le club')}</p>${dsRelation()}</section>
-        <div class="ds-foot"><div id="dc-agent" class="dc-anchor">${note}</div><div id="dc-path" class="dc-anchor">${path}</div></div>
+        <section class="dc-sec dc-anchor" id="dc-agent">${note}</section>
       </div>
     </div>
   </div>`;
@@ -5891,7 +6082,7 @@ function dossierPage() {
 // Redessine la page : la fiche garde sa position (view.dsY).
 const dsRedraw = () => render();
 // La fiche : position gardée, onglets qui suivent la lecture, colonne qui conduit aux blocs, recherche dans la colonne.
-function bindDossierSheet(page, root) {
+function bindDossierSheet(page, root, { standalone = false } = {}) {
   const main = root.querySelector('.dc-main');
   if (!main) return;
   const tabs = [...root.querySelectorAll('[data-dctab]')];
@@ -5947,7 +6138,16 @@ function bindDossierSheet(page, root) {
   }
   root.querySelectorAll('[data-gpct]').forEach((i) => { i.style.width = `${i.dataset.gpct}%`; });
   const inf = root.querySelector('[data-dcinf]');
-  if (inf) inf.onclick = () => page.querySelector('[data-sminfluence]')?.click();
+  if (inf) {
+    inf.onclick = () => {
+      if (standalone) {
+        Object.assign(view, { smInfluence: true, smDossier: false, smReading: true });
+        go('mail');
+      } else {
+        page.querySelector('[data-sminfluence]')?.click();
+      }
+    };
+  }
 }
 // Les couleurs des écussons, posées à mesure qu'elles arrivent.
 function dsPaintColors() {
@@ -5958,7 +6158,7 @@ function dsPaintColors() {
     el.style.setProperty('--ds-c2', c.secondary);
   });
 }
-function bindDossier(page) {
+function bindDossier(page, { standalone = false } = {}) {
   const root = page.querySelector('.ds');
   if (!root) return;
   dsPaintColors();
@@ -5968,7 +6168,7 @@ function bindDossier(page) {
   root.querySelectorAll('.ib-bar [data-pct]').forEach((i) => { i.style.width = `${i.dataset.pct}%`; });
   root.querySelectorAll('[data-h]').forEach((el) => { el.style.height = `${el.dataset.h}%`; });
   root.querySelectorAll('.dc-axis [data-b]').forEach((el) => { el.style.bottom = `${el.dataset.b}%`; });
-  bindDossierSheet(page, root);
+  bindDossierSheet(page, root, { standalone });
   // Une autre attitude : l'estimation glisse de l'ancienne valeur à la nouvelle.
   const ring = root.querySelector('.ds-ring');
   const from = view.dsRingFrom, to = state.agent.view.extension;
@@ -6020,11 +6220,55 @@ function bindDossier(page) {
   });
   root.querySelectorAll('[data-dsthread]').forEach((b) => {
     b.onclick = async () => {
-      Object.assign(view, { smDossier: false, thread: b.dataset.dsthread, mailFolder: 'all', smReading: true });
+      Object.assign(view, { smDossier: false, smInfluence: false, thread: b.dataset.dsthread, mailFolder: 'all', smReading: true });
       state = await live.readMail(view.thread);
-      render();
+      if (current !== 'mail') go('mail');
+      else render();
     };
   });
+  root.querySelectorAll('[data-dsmylife]').forEach((b) => {
+    b.onclick = () => { view.mlTab = b.dataset.dsmylife || 'sponsors'; go('mylife'); };
+  });
+  root.querySelectorAll('[data-dc-tomail]').forEach((b) => {
+    b.onclick = () => { Object.assign(view, { smDossier: false, smInfluence: false }); go('mail'); };
+  });
+  const agentEditBtn = root.querySelector('#dc-agent-edit-btn');
+  const agentForm = root.querySelector('#dc-agent-form');
+  if (agentEditBtn && agentForm) {
+    agentEditBtn.onclick = () => {
+      agentForm.classList.toggle('hidden');
+      if (!agentForm.classList.contains('hidden')) root.querySelector('#dc-agent-name')?.focus();
+    };
+    const cancelBtn = root.querySelector('#dc-agent-cancel');
+    if (cancelBtn) cancelBtn.onclick = () => agentForm.classList.add('hidden');
+    const saveBtn = root.querySelector('#dc-agent-save');
+    if (saveBtn) {
+      saveBtn.onclick = async () => {
+        const name = root.querySelector('#dc-agent-name')?.value.trim() || '';
+        const agency = root.querySelector('#dc-agent-agency')?.value.trim() || '';
+        if (!name) { toast(tr('Indique un nom d’agent.'), true); return; }
+        saveBtn.disabled = true;
+        try {
+          state = await live.updateAgent({ name, agency });
+          toast(tr('Agent mis à jour et synchronisé avec ton profil.'));
+          dsRedraw();
+        } catch (err) {
+          saveBtn.disabled = false;
+          toast(err.message, true);
+        }
+      };
+    }
+  }
+}
+
+function renderDossier(page) {
+  if (!state || !state.agent?.view) {
+    page.innerHTML = empty(tr('Dossier de carrière indisponible'), tr('Synchronise ta sauvegarde pour consulter ton dossier de carrière.'));
+    return;
+  }
+  page.innerHTML = `<div class="sm sm-light sm-wide sm-dc sm-dc-standalone"><main class="sm-content">${dossierPage({ standalone: true })}</main></div>`;
+  smPaintColors();
+  bindDossier(page, { standalone: true });
 }
 
 // ---------- Influence (Mails → Carrière → Influence) ----------
@@ -6461,8 +6705,8 @@ const spAll = () => { const sp = state?.sponsor; return sp ? [sp.offer, sp.deal,
 const spBrandOf = (person) => spAll().find((o) => o.person === person)?.brand || null;
 const spLongDate = (iso) => fmtDate(iso, { day: 'numeric', month: 'long', year: 'numeric' });
 function spVisual(o) {
-  const photo = bootFile(o.photo), logo = bootFile(o.logo);
-  return `<div class="sp-art">${photo ? `<img src="${esc(photo)}" alt="">` : `<span>${esc(o.brand)}</span>`}</div>
+  const logo = sponsorLogoUrl(o);
+  return `<div class="sp-art sp-art--logo">${logo ? `<img src="${esc(logo)}" alt="${esc(o.brand)}">` : `<span class="sp-art-mono">${esc(brandMonogram(o.brand))}</span>`}</div>
     <div class="sp-band">${logo ? `<img src="${esc(logo)}" alt="">` : ''}<b>${esc(o.brand)}</b></div>`;
 }
 function spTerms(o) {
@@ -6881,7 +7125,7 @@ function renderMail(page) {
   });
   page.querySelectorAll('[data-smback]').forEach((b) => { b.onclick = () => { view.smReading = false; view.smDossier = false; view.smInfluence = false; render(); }; });
   const dossierLink = page.querySelector('[data-smdossier]');
-  if (dossierLink) dossierLink.onclick = () => { view.smDossier = true; view.smInfluence = false; view.smReading = true; view.smSidebar = false; view.dsY = 0; view.dcRow = null; render(); };
+  if (dossierLink) dossierLink.onclick = () => go('dossier');
   const influenceLink = page.querySelector('[data-sminfluence]');
   if (influenceLink) influenceLink.onclick = () => { view.smInfluence = true; view.smDossier = false; view.smReading = true; view.smSidebar = false; render(); };
   if (view.smInfluence) bindInfluence(page);
@@ -8502,8 +8746,8 @@ const ML_SPONSOR_PRESETS_UI = [
   { category: 'beverage', categories: ['beverage', 'health'], brand: 'Gatorade Fuel', fee: 140000, bonus: 2500 },
   { category: 'automotive', categories: ['automotive', 'lifestyle'], brand: 'Porsche Motorsport', fee: 380000, bonus: 5500 },
   { category: 'watches', categories: ['watches', 'lifestyle'], brand: 'TAG Heuer Chrono', fee: 420000, bonus: 6000 },
-  { category: 'tech', categories: ['tech', 'media'], brand: 'HyperStrike Gaming', fee: 160000, bonus: 3000 },
-  { category: 'travel', categories: ['travel', 'global'], brand: 'Emirates Fly', fee: 650000, bonus: 9000 },
+  { category: 'gaming', categories: ['gaming', 'media'], brand: 'EA Sports', fee: 260000, bonus: 4000 },
+  { category: 'airlines', categories: ['airlines'], isGlobalPartner: true, brand: 'Emirates', fee: 650000, bonus: 9000 },
 ];
 
 const ML_OBLIGATION_LABELS = {
@@ -8530,9 +8774,14 @@ const ML_ASSET_CATALOG_UI = [
   { id: 'city_apartment', category: 'home', price: 240000, monthlyCost: 1400, passiveReturn: 0, label: () => tr('Appartement en ville'), desc: () => tr('Appartement moderne et calme en centre-ville.') },
   { id: 'penthouse', category: 'home', price: 950000, monthlyCost: 3500, passiveReturn: 0, label: () => tr('Penthouse panoramique'), desc: () => tr('Terrasse privée, vue sur la ville, prestige immédiat.') },
   { id: 'luxury_villa', category: 'home', price: 2800000, monthlyCost: 8500, passiveReturn: 0, label: () => tr('Villa de standing'), desc: () => tr('Propriété avec salle de sport, piscine et sécurité.') },
-  { id: 'sport_coupe', category: 'car', price: 65000, monthlyCost: 650, passiveReturn: 0, label: () => tr('Coupé sport'), desc: () => tr('Rapide, élégant et discret au parking du club.') },
-  { id: 'luxury_gt', category: 'car', price: 185000, monthlyCost: 1500, passiveReturn: 0, label: () => tr('GT de luxe'), desc: () => tr('Grand tourisme remarquée par les supporters et marques.') },
-  { id: 'exotic_supercar', category: 'car', price: 460000, monthlyCost: 3200, passiveReturn: 0, label: () => tr('Supercar exclusive'), desc: () => tr('Fait tourner toutes les têtes à la sortie du stade.') },
+  { id: 'car_hatch', category: 'car', price: 28000, monthlyCost: 280, passiveReturn: 0, label: () => tr('Citadine / Compacte'), desc: () => tr('Agile, discrète et pratique pour les trajets au centre d’entraînement.') },
+  { id: 'car_sedan', category: 'car', price: 55000, monthlyCost: 520, passiveReturn: 0, label: () => tr('Berline'), desc: () => tr('Confortable, sobre et élégante au quotidien.') },
+  { id: 'car_minivan', category: 'car', price: 62000, monthlyCost: 580, passiveReturn: 0, label: () => tr('Monospace / Van familial'), desc: () => tr('Grand espace pour la famille, les proches et les déplacements.') },
+  { id: 'car_suv', category: 'car', price: 85000, monthlyCost: 780, passiveReturn: 0, label: () => tr('SUV'), desc: () => tr('Imposant et polyvalent, grand favori des parkings de clubs.') },
+  { id: 'car_electric_gt', category: 'car', price: 130000, monthlyCost: 900, passiveReturn: 0, label: () => tr('GT Électrique'), desc: () => tr('Accélération fulgurante, silence total et image moderne.') },
+  { id: 'car_sports', category: 'car', price: 145000, monthlyCost: 1250, passiveReturn: 0, label: () => tr('Voiture de sport'), desc: () => tr('Ligne affûtée et sensations pures en sortie de stade.') },
+  { id: 'car_classic', category: 'car', price: 220000, monthlyCost: 1600, passiveReturn: 0, label: () => tr('Voiture de collection'), desc: () => tr('Modèle intemporel de collectionneur qui impose le respect.') },
+  { id: 'car_supercar', category: 'car', price: 460000, monthlyCost: 3200, passiveReturn: 0, label: () => tr('Supercar'), desc: () => tr('Fait tourner toutes les têtes dès l’arrivée au stade.') },
   { id: 'personal_chef', category: 'staff', price: 12000, monthlyCost: 4200, passiveReturn: 0, label: () => tr('Chef nutritionniste privé'), desc: () => tr('Repas sur mesure pour tenir le rythme toute la saison.') },
   { id: 'personal_physio', category: 'staff', price: 18000, monthlyCost: 5800, passiveReturn: 0, label: () => tr('Kiné / Préparateur privé'), desc: () => tr('Soins quotidiens et récupération accélérée à domicile.') },
   { id: 'pr_manager', category: 'staff', price: 25000, monthlyCost: 7500, passiveReturn: 0, label: () => tr('Conseiller image & RP'), desc: () => tr('Protège ton image publique et attire de plus gros sponsors.') },
@@ -8644,14 +8893,30 @@ function mlStageLabel(stage) {
   return (ML_STAGE_LABELS[stage] || ML_STAGE_LABELS.rookie)();
 }
 
+const ML_SPONSOR_LEGACY_CATS = new Set(['travel', 'tech', 'global']);
+const ML_SPONSOR_PICKER_CATS = Object.keys(ML_SPONSOR_CAT_LABELS).filter((k) => !ML_SPONSOR_LEGACY_CATS.has(k));
+const ML_SPONSOR_ALIAS_MAP = { travel: 'airlines', tech: 'gaming' };
+
 function mlSponsorCatPickerHtml(selected = ['lifestyle'], extraAttr = '') {
   const list = Array.isArray(selected) && selected.length ? selected : ['lifestyle'];
-  const lowSet = new Set(list.map((c) => String(c || '').trim().toLowerCase()).filter(Boolean));
-  const chips = Object.entries(ML_SPONSOR_CAT_LABELS).map(([k, fn]) => {
+  const lowSet = new Set();
+  const normalizedList = [];
+  for (const raw of list) {
+    const c = String(raw || '').trim();
+    if (!c) continue;
+    const low = c.toLowerCase();
+    if (low === '__custom__' || low === 'global') continue;
+    const mapped = ML_SPONSOR_ALIAS_MAP[low] || (ML_SPONSOR_CAT_LABELS[low] ? low : c);
+    const mLow = mapped.toLowerCase();
+    if (lowSet.has(mLow)) continue;
+    lowSet.add(mLow);
+    normalizedList.push(mapped);
+  }
+  const chips = ML_SPONSOR_PICKER_CATS.map((k) => {
     const on = lowSet.has(k);
-    return `<button type="button" class="ml-cat-chip${on ? ' on' : ''}" data-cat="${k}" aria-pressed="${on ? 'true' : 'false'}">${esc(fn())}</button>`;
+    return `<button type="button" class="ml-cat-chip${on ? ' on' : ''}" data-cat="${k}" aria-pressed="${on ? 'true' : 'false'}">${esc(ML_SPONSOR_CAT_LABELS[k]())}</button>`;
   });
-  const extras = list.filter((c) => c && !ML_SPONSOR_CAT_LABELS[String(c).toLowerCase()] && String(c).toLowerCase() !== '__custom__');
+  const extras = normalizedList.filter((c) => c && !ML_SPONSOR_CAT_LABELS[String(c).toLowerCase()]);
   for (const c of extras) {
     chips.push(`<button type="button" class="ml-cat-chip on is-custom" data-cat="${esc(c)}" data-custom="1" aria-pressed="true">${esc(c)} ×</button>`);
   }
@@ -8895,10 +9160,12 @@ function mlCalendarBounds(s, cal) {
   return { mode: 'synced', simDate, saveDate, maxDate: saveDate, canAdvance: false, nextMatch, pendingCount: 0 };
 }
 
+const ML_LEGACY_CAR_MAP = { sport_coupe: 'car_sports', luxury_gt: 'car_electric_gt', exotic_supercar: 'car_supercar' };
 function mlFormatAssetName(raw) {
   const s = String(raw || '').trim();
   if (!s) return '';
-  const found = ML_ASSET_CATALOG_UI.find((a) => a.id === s);
+  const targetId = ML_LEGACY_CAR_MAP[s] || s;
+  const found = ML_ASSET_CATALOG_UI.find((a) => a.id === targetId);
   if (found) return found.label();
   if (/^[a-z0-9]+(_[a-z0-9]+)+$/.test(s)) {
     const clean = s.replace(/_/g, ' ');
@@ -8954,6 +9221,8 @@ function mlFormatRecentEvent(text) {
   if (m) return tr('Événement sponsor ignoré : {brand}', { brand: m[1] });
   m = /^Missed sponsor commitment \((.+)\)$/i.exec(s);
   if (m) return tr('Échéance sponsor manquée ({brand})', { brand: m[1] });
+  m = /^Received sponsor vehicle from (.+)$/i.exec(s);
+  if (m) return tr('Véhicule offert par le sponsor : {brand}', { brand: m[1] });
   return s;
 }
 
@@ -9080,9 +9349,14 @@ function mlAssetGlyph(id, category, accent) {
   if (id === 'city_apartment') return `<rect x="86" y="42" width="58" height="106" rx="3" fill="#ffffff14" stroke="${accent}" stroke-width="1.8"/><rect x="150" y="28" width="84" height="120" rx="3" fill="#ffffff20" stroke="${accent}" stroke-width="2.2"/><rect x="164" y="46" width="16" height="18" fill="#fef08a"/><rect x="198" y="46" width="16" height="18" fill="#fef08a99"/><rect x="164" y="76" width="16" height="18" fill="#fef08a99"/><rect x="198" y="76" width="16" height="18" fill="#fef08a"/><rect x="100" y="60" width="12" height="14" fill="#fef08a88"/><rect x="100" y="86" width="12" height="14" fill="#fef08a"/>`;
   if (id === 'penthouse') return `<path d="M52 146 L52 72 L126 72 L126 42 L268 42 L268 146 Z" fill="#ffffff1a" stroke="${accent}" stroke-width="2.2"/><rect x="138" y="54" width="116" height="36" fill="#fef08a30" stroke="${accent}" stroke-width="1.4"/><line x1="60" y1="72" x2="126" y2="72" stroke="#fde047" stroke-width="3"/><circle cx="78" cy="54" r="10" fill="#fde047" opacity=".85"/>`;
   if (id === 'luxury_villa') return `<path d="M62 128 L62 76 L154 52 L258 76 L258 128 Z" fill="#ffffff1a" stroke="${accent}" stroke-width="2.2"/><rect x="82" y="86" width="54" height="28" rx="2" fill="#fef08a66"/><rect x="174" y="82" width="64" height="46" fill="#ffffff22"/><ellipse cx="160" cy="148" rx="84" ry="12" fill="#38bdf877" stroke="#bae6fd" stroke-width="1.6"/>`;
-  if (id === 'sport_coupe') return `<path d="M68 118 L86 90 Q145 72 204 88 L250 104 L254 118 Z" fill="#ffffff22" stroke="${accent}" stroke-width="2.4"/><path d="M108 92 L134 78 L184 79 L208 94 Z" fill="#ffffff30"/><circle cx="106" cy="122" r="16" fill="#090d16" stroke="${accent}" stroke-width="3"/><circle cx="218" cy="122" r="16" fill="#090d16" stroke="${accent}" stroke-width="3"/>`;
-  if (id === 'luxury_gt') return `<path d="M56 120 L74 88 Q144 66 218 84 L264 102 L266 120 Z" fill="#ffffff24" stroke="${accent}" stroke-width="2.6"/><path d="M104 89 Q148 70 198 85 L182 95 L100 95 Z" fill="#bae6fd66"/><line x1="56" y1="108" x2="262" y2="108" stroke="#fde047" stroke-width="1.6" opacity=".75"/><circle cx="102" cy="124" r="17" fill="#090d16" stroke="#fde047" stroke-width="2.8"/><circle cx="222" cy="124" r="17" fill="#090d16" stroke="#fde047" stroke-width="2.8"/>`;
-  if (id === 'exotic_supercar') return `<path d="M46 122 L82 94 Q146 66 208 78 L272 104 L268 122 Z" fill="#ffffff26" stroke="${accent}" stroke-width="2.6"/><polygon points="246,74 268,70 258,92" fill="none" stroke="${accent}" stroke-width="2.2"/><path d="M118 86 L156 76 L202 82 L182 96 Z" fill="#ffffff44"/><circle cx="98" cy="124" r="18" fill="#090d16" stroke="${accent}" stroke-width="3.2"/><circle cx="224" cy="124" r="18" fill="#090d16" stroke="${accent}" stroke-width="3.2"/><circle cx="98" cy="124" r="6" fill="${accent}"/><circle cx="224" cy="124" r="6" fill="${accent}"/>`;
+  if (id === 'car_hatch') return `<path d="M84 118 L96 86 Q130 74 176 76 L218 96 L236 106 L238 118 Z" fill="#ffffff20" stroke="${accent}" stroke-width="2.4"/><path d="M108 88 L130 79 L168 79 L188 94 Z" fill="#ffffff30"/><circle cx="112" cy="122" r="14" fill="#090d16" stroke="${accent}" stroke-width="2.8"/><circle cx="206" cy="122" r="14" fill="#090d16" stroke="${accent}" stroke-width="2.8"/>`;
+  if (id === 'car_sedan') return `<path d="M56 118 L76 92 Q130 76 184 78 L224 94 L264 102 L264 118 Z" fill="#ffffff20" stroke="${accent}" stroke-width="2.4"/><path d="M104 92 L134 80 L180 81 L204 94 Z" fill="#ffffff30"/><circle cx="102" cy="122" r="15" fill="#090d16" stroke="${accent}" stroke-width="3"/><circle cx="220" cy="122" r="15" fill="#090d16" stroke="${accent}" stroke-width="3"/>`;
+  if (id === 'car_minivan') return `<path d="M58 118 L66 72 Q125 66 210 68 L254 96 L258 118 Z" fill="#ffffff22" stroke="${accent}" stroke-width="2.4"/><rect x="86" y="76" width="44" height="18" rx="2" fill="#ffffff30"/><rect x="140" y="76" width="44" height="18" rx="2" fill="#ffffff30"/><circle cx="102" cy="122" r="15" fill="#090d16" stroke="${accent}" stroke-width="3"/><circle cx="218" cy="122" r="15" fill="#090d16" stroke="${accent}" stroke-width="3"/>`;
+  if (id === 'car_suv') return `<path d="M58 116 L66 76 Q135 66 204 72 L248 92 L258 116 Z" fill="#ffffff22" stroke="${accent}" stroke-width="2.5"/><path d="M88 79 L142 75 L186 77 L212 92 L84 92 Z" fill="#ffffff30"/><circle cx="102" cy="120" r="18" fill="#090d16" stroke="${accent}" stroke-width="3.2"/><circle cx="218" cy="120" r="18" fill="#090d16" stroke="${accent}" stroke-width="3.2"/>`;
+  if (id === 'car_electric_gt' || id === 'luxury_gt') return `<path d="M56 120 L74 88 Q144 66 218 84 L264 102 L266 120 Z" fill="#ffffff24" stroke="${accent}" stroke-width="2.6"/><path d="M104 89 Q148 70 198 85 L182 95 L100 95 Z" fill="#bae6fd66"/><line x1="56" y1="108" x2="262" y2="108" stroke="#67e8f9" stroke-width="1.8" opacity=".8"/><circle cx="102" cy="124" r="17" fill="#090d16" stroke="#67e8f9" stroke-width="2.8"/><circle cx="222" cy="124" r="17" fill="#090d16" stroke="#67e8f9" stroke-width="2.8"/>`;
+  if (id === 'car_sports' || id === 'sport_coupe') return `<path d="M68 118 L86 90 Q145 72 204 88 L250 104 L254 118 Z" fill="#ffffff22" stroke="${accent}" stroke-width="2.4"/><path d="M108 92 L134 78 L184 79 L208 94 Z" fill="#ffffff30"/><circle cx="106" cy="122" r="16" fill="#090d16" stroke="${accent}" stroke-width="3"/><circle cx="218" cy="122" r="16" fill="#090d16" stroke="${accent}" stroke-width="3"/>`;
+  if (id === 'car_classic') return `<path d="M56 118 L72 96 L112 88 L138 74 L190 74 L216 90 L262 98 L264 118 Z" fill="#ffffff20" stroke="#fde047" stroke-width="2.4"/><path d="M122 88 L142 78 L184 78 L202 89 Z" fill="#fef08a44"/><circle cx="102" cy="122" r="16" fill="#090d16" stroke="#fde047" stroke-width="3"/><circle cx="218" cy="122" r="16" fill="#090d16" stroke="#fde047" stroke-width="3"/><circle cx="102" cy="122" r="7" fill="#fde047" opacity=".75"/><circle cx="218" cy="122" r="7" fill="#fde047" opacity=".75"/>`;
+  if (id === 'car_supercar' || id === 'exotic_supercar') return `<path d="M46 122 L82 94 Q146 66 208 78 L272 104 L268 122 Z" fill="#ffffff26" stroke="${accent}" stroke-width="2.6"/><polygon points="246,74 268,70 258,92" fill="none" stroke="${accent}" stroke-width="2.2"/><path d="M118 86 L156 76 L202 82 L182 96 Z" fill="#ffffff44"/><circle cx="98" cy="124" r="18" fill="#090d16" stroke="${accent}" stroke-width="3.2"/><circle cx="224" cy="124" r="18" fill="#090d16" stroke="${accent}" stroke-width="3.2"/><circle cx="98" cy="124" r="6" fill="${accent}"/><circle cx="224" cy="124" r="6" fill="${accent}"/>`;
   if (id === 'personal_chef') return `<path d="M112 76 C100 58 118 40 138 48 C148 32 174 32 184 48 C204 40 220 58 208 76 L204 94 L116 94 Z" fill="#ffffff28" stroke="${accent}" stroke-width="2.2"/><ellipse cx="160" cy="126" rx="58" ry="18" fill="#ffffff22" stroke="${accent}" stroke-width="2"/><line x1="94" y1="146" x2="226" y2="146" stroke="${accent}" stroke-width="2" opacity=".7"/>`;
   if (id === 'personal_physio') return `<rect x="94" y="54" width="132" height="84" rx="12" fill="#ffffff1e" stroke="${accent}" stroke-width="2.2"/><path d="M112 96 L138 96 L148 72 L162 120 L174 86 L186 96 L208 96" fill="none" stroke="#6ee7b7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><rect x="148" y="38" width="24" height="16" rx="4" fill="none" stroke="${accent}" stroke-width="2"/>`;
   if (id === 'pr_manager') return `<rect x="92" y="44" width="136" height="92" rx="12" fill="#ffffff1e" stroke="${accent}" stroke-width="2.2"/><circle cx="160" cy="90" r="24" fill="#0f172a88" stroke="${accent}" stroke-width="3"/><circle cx="160" cy="90" r="9" fill="#fde047"/><circle cx="204" cy="60" r="5" fill="#f87171"/>`;
@@ -9130,20 +9404,17 @@ function mlActionBadgeSvg(id) {
 }
 
 function mlSponsorMedallionHtml(sp) {
-  const brandSlug = String(sp?.brand || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  const slug = brandSlugUi(sp?.brand);
   const cat = (Array.isArray(sp?.categories) && sp.categories[0]) || sp?.category || 'lifestyle';
-  const img = lifeMediaUrl(sp?.customImage)
+  const img = sponsorLogoUrl(sp)
     || bundledMyLifeUrl(sp?.presetId)
     || bundledMyLifeUrl(sp?.id)
-    || (brandSlug && bundledMyLifeUrl(brandSlug))
+    || (slug && bundledMyLifeUrl(slug))
     || bundledMyLifeUrl(`sponsor_${cat}`);
-  if (img) return `<span class="ml-sp-logo has-img"><img src="${esc(img)}" alt="${esc(sp.brand || '')}"></span>`;
-  const brand = String(sp?.brand || '?').trim();
-  const words = brand.split(/\s+/).filter(Boolean);
-  const mono = words.length > 1 ? `${words[0][0] || ''}${words[1][0] || ''}` : brand.slice(0, 2);
+  if (img) return `<span class="ml-sp-logo has-img"><img src="${esc(img)}" alt="${esc(sp?.brand || '')}"></span>`;
   const knownTones = new Set(['boots', 'apparel', 'fashion', 'eyewear', 'watches', 'automotive', 'beverage', 'phones', 'telecom', 'airlines', 'hospitality', 'appliances', 'grooming', 'finance', 'betting', 'health', 'healthy_beverage', 'gaming', 'media', 'lifestyle', 'local', 'travel', 'tech', 'global']);
   const toneCls = knownTones.has(cat) ? ` ml-sp-logo--${cat}` : '';
-  return `<span class="ml-sp-logo${toneCls}">${esc(mono.toUpperCase())}</span>`;
+  return `<span class="ml-sp-logo${toneCls}">${esc(brandMonogram(sp?.brand))}</span>`;
 }
 
 function openLifeSceneModal(scene) {
@@ -9625,11 +9896,11 @@ function renderMyLife(page) {
     <div class="ml-showcase">${showcaseAssets.map((a) => {
       const cid = a.catalogId || a.id;
       const catItem = !a.custom ? ML_ASSET_CATALOG_UI.find((c) => c.id === cid) : null;
-      const label = a.custom ? a.name : (catItem ? catItem.label() : mlFormatAssetName(cid));
+      const label = a.giftedBy ? `${a.giftedBy} · ${mlFormatAssetName(cid)}` : (a.custom ? a.name : (catItem ? catItem.label() : mlFormatAssetName(cid)));
       const img = mlResolveArtUrl(cid, a.customImage || (!a.custom && hub.catalogImages?.[cid]), a.category, a.name);
       return `<button type="button" class="ml-showcase-item" data-mlgo-shop="1">
         <span class="ml-showcase-thumb">${img ? `<img src="${esc(img)}" alt="${esc(label)}">` : mlAssetArtSvg(cid, a.category)}</span>
-        <span class="ml-showcase-txt"><b>${esc(label)}</b><small>${esc(a.customCategory || (ML_ASSET_CAT_LABELS[a.category] || ML_ASSET_CAT_LABELS.custom)())}</small></span>
+        <span class="ml-showcase-txt"><b>${esc(label)}</b><small>${esc(a.giftedBy ? tr('Offert par {brand}', { brand: a.giftedBy }) : (a.customCategory || (ML_ASSET_CAT_LABELS[a.category] || ML_ASSET_CAT_LABELS.custom)()))}</small></span>
       </button>`;
     }).join('')}</div>
   </div>` : '';
@@ -9648,14 +9919,17 @@ function renderMyLife(page) {
 
   const warsHtml = biddingWars.length ? `<div class="ml-list">${biddingWars.map((w) => {
     const bidsHtml = (w.bids || []).map((b) => `<div class="ml-war-bid${b.walkedAway ? ' walked' : ''}">
-      <div>
-        <div class="ml-sp-head">
-          <b>${esc(b.brand)}</b>
-          ${b.isGlobalPartner ? `<span class="priv-badge on">${tr('Partenaire mondial')}</span>` : ''}
-          ${b.buyoutCovered ? `<span class="priv-tag">${tr('Rachat couvert')}</span>` : ''}
-          ${b.walkedAway ? `<span class="priv-tag">${tr('S’est retirée')}</span>` : ''}
+      <div class="ml-offer-id">
+        ${mlSponsorMedallionHtml({ ...b, category: w.category })}
+        <div>
+          <div class="ml-sp-head">
+            <b>${esc(b.brand)}</b>
+            ${b.isGlobalPartner ? `<span class="priv-badge on">${tr('Partenaire mondial')}</span>` : ''}
+            ${b.buyoutCovered ? `<span class="priv-tag">${tr('Rachat couvert')}</span>` : ''}
+            ${b.walkedAway ? `<span class="priv-tag">${tr('S’est retirée')}</span>` : ''}
+          </div>
+          <p class="fineprint">${esc(b.person || '')} · ${esc(tr('{fee}/an · +{bonus}/but ou passe', { fee: euros(b.fee), bonus: euros(b.bonus) }))}${b.signingBonus ? ` · ${esc(tr('Prime signature {b}', { b: euros(b.signingBonus) }))}` : ''}</p>
         </div>
-        <p class="fineprint">${esc(b.person || '')} · ${esc(tr('{fee}/an · +{bonus}/but ou passe', { fee: euros(b.fee), bonus: euros(b.bonus) }))}${b.signingBonus ? ` · ${esc(tr('Prime signature {b}', { b: euros(b.signingBonus) }))}` : ''}</p>
       </div>
       ${b.walkedAway ? '' : `<button type="button" class="btn primary" data-mlwar="${esc(w.id)}" data-waract="accept" data-warbid="${esc(b.id)}">${tr('Signer')}</button>`}
     </div>`).join('');
@@ -9687,10 +9961,13 @@ function renderMyLife(page) {
     const dealFn = ML_ONETIME_DEAL_LABELS[o.dealKey];
     const dealTitle = dealFn ? dealFn() : o.dealKey.replace(/_/g, ' ');
     return `<div class="card ml-ot-card" data-otid="${esc(o.id)}">
-      <div class="ml-offer-info">
-        <div class="ml-sp-head"><span class="priv-badge on">${tr('Opération ponctuelle')}</span><span class="priv-tag">${esc(mlSponsorCatLabel(o.category))}</span></div>
-        <h4>${esc(o.brand)} · ${esc(dealTitle)}</h4>
-        <p class="fineprint">${esc(tr('Cachet total {fee} (25 % d’acompte à la signature) · Médias +{m}, Supporters +{f}', { fee: euros(o.fee), m: o.mediaBoost || 5, f: o.fanBoost || 4 }))}</p>
+      <div class="ml-offer-id">
+        ${mlSponsorMedallionHtml(o)}
+        <div class="ml-offer-info">
+          <div class="ml-sp-head"><span class="priv-badge on">${tr('Opération ponctuelle')}</span><span class="priv-tag">${esc(mlSponsorCatLabel(o.category))}</span></div>
+          <h4>${esc(o.brand)} · ${esc(dealTitle)}</h4>
+          <p class="fineprint">${esc(tr('Cachet total {fee} (25 % d’acompte à la signature) · Médias +{m}, Supporters +{f}', { fee: euros(o.fee), m: o.mediaBoost || 5, f: o.fanBoost || 4 }))}</p>
+        </div>
       </div>
       <div class="ml-ot-acts">
         <label class="per-field"><span>${tr('Date du tournage / événement')}</span><input type="date" class="ml-ot-date" value="${esc(o.suggestedDate || oneTimeMinDate)}"${oneTimeMinDate ? ` min="${esc(oneTimeMinDate)}"` : ''}></label>
@@ -9703,7 +9980,10 @@ function renderMyLife(page) {
   const offersHtml = (hub.offers || []).length ? `<div class="ml-list">${hub.offers.map((o) => {
     const oCats = Array.isArray(o.categories) && o.categories.length ? o.categories : [o.category || 'lifestyle'];
     return `<div class="card ml-offer">
-      <div class="ml-offer-info"><div class="ml-sp-head">${oCats.map((c) => `<span class="priv-tag">${esc(mlSponsorCatLabel(c))}</span>`).join('')}${o.isGlobalPartner ? `<span class="priv-badge on">${tr('Partenaire mondial')}</span>` : ''}${o.upgradeSponsorId ? `<span class="priv-tag">${tr('Extension prestige')}</span>` : ''}</div><h4>${esc(o.brand)}</h4><p class="fineprint">${esc(o.person)} · ${esc(tr('{fee}/an · +{bonus}/but ou passe', { fee: euros(o.fee), bonus: euros(o.bonus) }))}</p></div>
+      <div class="ml-offer-id">
+        ${mlSponsorMedallionHtml(o)}
+        <div class="ml-offer-info"><div class="ml-sp-head">${oCats.map((c) => `<span class="priv-tag">${esc(mlSponsorCatLabel(c))}</span>`).join('')}${o.isGlobalPartner ? `<span class="priv-badge on">${tr('Partenaire mondial')}</span>` : ''}${o.upgradeSponsorId ? `<span class="priv-tag">${tr('Extension prestige')}</span>` : ''}</div><h4>${esc(o.brand)}</h4><p class="fineprint">${esc(o.person)} · ${esc(tr('{fee}/an · +{bonus}/but ou passe', { fee: euros(o.fee), bonus: euros(o.bonus) }))}</p></div>
+      </div>
       <div class="ml-offer-acts">
         <button type="button" class="btn primary" data-mloff="${esc(o.id)}" data-offact="accept"${!o.upgradeSponsorId && slotCap !== null && hub.sponsors.length >= slotCap ? ' disabled' : ''}>${tr('Signer')}</button>
         <button type="button" class="btn" data-mloff="${esc(o.id)}" data-offact="negotiate"${o.negotiated ? ' disabled' : ''}>${tr('Négocier')}</button>
@@ -9771,10 +10051,31 @@ function renderMyLife(page) {
   const shopCat = view.mlShopCat || 'all';
   const shopFilterBtns = Object.entries(ML_ASSET_CAT_LABELS).map(([k, fn]) => `<button type="button" class="ml-chip${shopCat === k ? ' on' : ''}" data-mlshopcat="${k}">${esc(fn())}</button>`).join('');
   const catalogFiltered = ML_ASSET_CATALOG_UI.filter((a) => shopCat === 'all' || a.category === shopCat);
-  const ownedCustom = (hub.assets || []).filter((a) => a.custom && (shopCat === 'all' || a.category === shopCat));
+  const ownedGifted = (hub.assets || []).filter((a) => a.giftedBy && (shopCat === 'all' || a.category === shopCat));
+  const ownedCustom = (hub.assets || []).filter((a) => a.custom && !a.giftedBy && (shopCat === 'all' || a.category === shopCat));
 
-  const catalogCards = catalogFiltered.map((a) => {
-    const owned = (hub.assets || []).find((x) => x.catalogId === a.id);
+  const catalogCards = ownedGifted.map((a) => {
+    const cid = a.catalogId || 'car_sports';
+    const catLabel = mlFormatAssetName(cid);
+    const imgUrl = mlResolveArtUrl(cid, a.customImage || hub.catalogImages?.[cid], a.category, a.name);
+    return `<div class="card ml-shop-card owned ml-shop-card--gifted">
+      <div class="ml-card-media">
+        ${imgUrl ? `<img src="${esc(imgUrl)}" alt="${esc(catLabel)}">` : mlAssetArtSvg(cid, 'car')}
+        <div class="ml-card-media-acts">
+          <button type="button" class="ml-media-btn" data-mlimg-target="asset" data-mlimg-id="${esc(a.id)}" title="${esc(tr('Photo personnalisée'))}">${hi('camera')}</button>
+          ${a.customImage ? `<button type="button" class="ml-media-btn" data-mlimg-clear="asset" data-mlimg-id="${esc(a.id)}" title="${esc(tr('Retirer la photo'))}">${hi('xmark')}</button>` : ''}
+        </div>
+      </div>
+      <div class="ml-sp-head">${mlSponsorMedallionHtml({ brand: a.giftedBy, category: 'automotive' })}<span class="priv-badge on">${esc(tr('Offert par {brand}', { brand: a.giftedBy }))}</span></div>
+      <h4>${esc(a.giftedBy)} · ${esc(catLabel)}</h4>
+      <p class="fineprint">${esc(a.giftReason === 'annual' ? tr('Véhicule de fonction annuel inclus dans ton contrat sponsor.') : tr('Véhicule bonus débloqué par tes objectifs de saison.'))}</p>
+      <div class="ml-shop-foot">
+        <span class="fineprint">${esc(tr('0 € · 0 €/mois'))}</span>
+        <button type="button" class="btn" data-mlsell="${esc(a.id)}">${tr('Restituer')}</button>
+      </div>
+    </div>`;
+  }).join('') + catalogFiltered.map((a) => {
+    const owned = (hub.assets || []).find((x) => !x.giftedBy && x.catalogId === a.id);
     const customImg = owned?.customImage || hub.catalogImages?.[a.id] || null;
     const imgUrl = mlResolveArtUrl(a.id, customImg, a.category);
     const metaLines = [
@@ -10932,6 +11233,8 @@ function renderPlayerProfile(page) {
   const agentInfo = state.agent?.name
     ? `${state.agent.name}${state.agent.agency ? ` · ${state.agent.agency}` : ''}`
     : '';
+  const privState = state.privacy || settings.privacy || { enabled: true, fields: {}, customPeople: [], customWords: [] };
+  const bioVal = [state.bio?.text, ...(state.myLife || [])].filter(Boolean).join('\n');
   page.innerHTML = `<div class="rg pp-page">
     <header class="card pp-head">
       <div class="pp-head-id">
@@ -10948,20 +11251,59 @@ function renderPlayerProfile(page) {
       </div>
     </header>
 
-    <div class="settings rg-main">
-      ${rgRow('rg-mebio', tr('Identité & histoire'), `<p class="su-ask">${tr('Qui incarnes-tu ?')}</p><div class="saves su-kind">${kindOptions('pp-kind', state.playerKind)}</div>
-        ${state.playerKind === 'real' ? '' : privacyNoticeHtml('pp')}
-        <textarea id="pp-bio" aria-label="${tr('Identité & histoire')}" class="${state.playerKind === 'real' ? 'hidden' : ''}" rows="6" maxlength="${BIO_MAX}">${esc([state.bio?.text, ...(state.myLife || [])].filter(Boolean).join('\n'))}</textarea>
-        <p class="fineprint">${tr('Pour modifier son nom d’affichage, son @pseudo, sa bio Kop, sa photo ou sa bannière sociale, ouvre son Profil social Kop.')}</p>`,
-        tr('D’où vient ton joueur, ses premiers clubs, son caractère et sa vie privée. Panthéon et la presse en font leur référence dès la prochaine édition.'))}
-      ${rgRow('rg-mepersona', tr('Personnalité, anniversaire & cercle intime'), personaFormHtml('pp', state.persona),
-        tr('Renseigne la date de naissance du joueur et de tes proches pour générer leurs anniversaires dans le calendrier. Les proches marqués « Proche » déclenchent fêtes et dîners ; les autres proposent messages et cadeaux.'))}
-      ${rgRow('rg-privacy', tr('Confidentialité'), privacyFormHtml('pp', state.privacy || settings.privacy || { enabled: true, fields: {}, customPeople: [] }, { playerName: s.player?.name || '', handle: state.profile?.handle || '', persona: state.persona }))}
-      ${rgRow('rg-clubaliases', tr('Anciens clubs & équipes non reconnues'), clubAliasesFormHtml(state),
-        tr('Personnalise le nom d’affichage des anciens clubs dans Panthéon, Mails et la presse.'))}
-      ${rgRow('rg-lifeevents', tr('Dates de vie'), `${lifeEventsFormHtml(state.lifeEvents || [], s.gameDate || '')}<div class="pp-ev-foot"><button type="button" class="btn" id="pp-open-cal">${tr('Voir le calendrier dans Ma vie')}</button></div>`,
-        tr('Dates importantes hors football synchronisées avec le calendrier et les médias.'))}
-      ${rgRow('rg-reset', tr('Réinitialisation'), `<div class="pp-danger"><p class="fineprint">${tr('Efface uniquement les données narratives LifeLegend pour cette carrière (les fichiers .bin du jeu restent intacts).')}</p><button type="button" class="btn ml-danger" id="pp-reset-career">${tr('Réinitialiser cette carrière')}</button></div>`)}
+    <div class="pp-stack">
+      <section class="card pp-card" id="rg-mekind">
+        <div class="pp-card-head">
+          <div>
+            <h3>${tr('Identité du joueur')}</h3>
+            <p class="fineprint">${tr('Pour modifier son nom d’affichage, son @pseudo, sa bio Kop, sa photo ou sa bannière sociale, ouvre son Profil social Kop.')}</p>
+          </div>
+        </div>
+        <div class="saves su-kind">${kindOptions('pp-kind', state.playerKind)}</div>
+      </section>
+
+      <div id="rg-privacy">${privacyBarHtml('pp', privState, { playerName: s.player?.name || '', handle: state.profile?.handle || '', persona: state.persona })}</div>
+
+      <section class="card pp-card" id="rg-mepersona">
+        <p class="fineprint">${tr('Renseigne la date de naissance du joueur et de tes proches pour générer leurs anniversaires dans le calendrier. Les proches marqués « Proche » déclenchent fêtes et dîners ; les autres proposent messages et cadeaux.')}</p>
+        ${personaFormHtml('pp', state.persona, privState)}
+      </section>
+
+      <section class="card pp-card" id="rg-mebio">
+        <div class="pp-bio-head">
+          <div>
+            <h3>${tr('Biographie & histoire libre')}</h3>
+            <p class="fineprint">${tr('D’où vient ton joueur, ses premiers clubs, son caractère et sa vie privée. Panthéon et la presse en font leur référence dès la prochaine édition.')}</p>
+          </div>
+          <button type="button" class="btn" id="pp-bio-gen">${hi('sparkles')} ${tr('Générer la biographie (IA)')}</button>
+        </div>
+        <textarea id="pp-bio" aria-label="${tr('Identité & histoire')}" rows="6" maxlength="${BIO_MAX}" placeholder="${tr('Il est né à… Il a grandi dans… Il a commencé le football à…')}">${esc(bioVal)}</textarea>
+        <p class="su-count" id="pp-bio-count">${bioVal.length} / ${BIO_MAX}</p>
+      </section>
+
+      <div class="pp-two-col">
+        <section class="card pp-card" id="rg-clubaliases">
+          <div>
+            <h3>${tr('Anciens clubs & équipes non reconnues')}</h3>
+            <p class="fineprint">${tr('Personnalise le nom d’affichage des anciens clubs dans Panthéon, Mails et la presse.')}</p>
+          </div>
+          ${clubAliasesFormHtml(state)}
+        </section>
+
+        <section class="card pp-card" id="rg-lifeevents">
+          <div>
+            <h3>${tr('Dates de vie')}</h3>
+            <p class="fineprint">${tr('Dates importantes hors football synchronisées avec le calendrier et les médias.')}</p>
+          </div>
+          ${lifeEventsFormHtml(state.lifeEvents || [], s.gameDate || '')}
+          <div class="pp-ev-foot"><button type="button" class="btn" id="pp-open-cal">${tr('Voir le calendrier dans Ma vie')}</button></div>
+        </section>
+      </div>
+
+      <section class="card pp-card" id="rg-reset">
+        <h3>${tr('Réinitialisation')}</h3>
+        <div class="pp-danger"><p class="fineprint">${tr('Efface uniquement les données narratives LifeLegend pour cette carrière (les fichiers .bin du jeu restent intacts).')}</p><button type="button" class="btn ml-danger" id="pp-reset-career">${tr('Réinitialiser cette carrière')}</button></div>
+      </section>
     </div>
 
     <footer class="rg-foot"><p class="fineprint">${tr('Pense à enregistrer après avoir modifié tes traits, dates de naissance ou proches.')}</p>
@@ -10969,14 +11311,27 @@ function renderPlayerProfile(page) {
   </div>`;
 
   const syncRealVisibility = (isReal) => {
-    $('#pp-bio')?.classList.toggle('hidden', isReal);
+    $('#rg-mebio')?.classList.toggle('hidden', isReal);
     $('#rg-mepersona')?.classList.toggle('hidden', isReal);
-    $('#rg-mebio .priv-notice')?.classList.toggle('hidden', isReal);
+    $('#rg-privacy')?.classList.toggle('hidden', isReal);
   };
   syncRealVisibility(state.playerKind === 'real');
   page.querySelectorAll('input[name=pp-kind]').forEach((r) => { r.onchange = () => syncRealVisibility(r.value === 'real'); });
+  const bioTa = $('#pp-bio');
+  if (bioTa) bioTa.oninput = () => { const cnt = $('#pp-bio-count'); if (cnt) cnt.textContent = `${bioTa.value.length} / ${BIO_MAX}`; };
   bindPersonaForm('pp');
   bindPrivacyForm('pp', { getBio: () => $('#pp-bio')?.value || '', getPlayer: () => state.snapshot?.player?.name || '', getHandle: () => state.profile?.handle || '', getPersona: () => readPersonaForm('pp') });
+  bindBioGenerateBtn('pp', {
+    getPlayer: () => state.snapshot?.player?.name || '',
+    getHandle: () => state.profile?.handle || '',
+    getClub: () => state.snapshot?.club?.name || '',
+    getNationality: () => state.snapshot?.player?.nationality || '',
+    getPosition: () => state.snapshot?.player?.profile?.positionName || '',
+    getAge: () => state.snapshot?.player?.profile?.age || '',
+    getBioEl: () => $('#pp-bio'),
+    getPersona: () => readPersonaForm('pp'),
+    getPrivacy: () => readPrivacyForm('pp'),
+  });
   bindClubAliasesForm();
   bindLifeEventsForm(s.gameDate || '');
 
@@ -11093,7 +11448,8 @@ async function renderSettings(page) {
       <p class="fineprint">${tr(REAL_PEOPLE_NOTE)}</p>
       <p class="fineprint">${tr('LifeLegend est publié sous licence MIT. Polices, icônes et mises en page reprises ont leurs propres licences : voir LICENSE et THIRD-PARTY-NOTICES.txt dans le dossier de LifeLegend.')}</p>`),
     rgRow('rg-credits', tr('Crédits & auteur original'), `<p class="fineprint">${tr('Remerciements particuliers à {author}, créateur et auteur original de LifeLegend, dont le travail et l’architecture sous licence MIT ont rendu cette édition possible, ainsi qu’aux auteurs des outils communautaires PES ({tools}).', { author: '<b>Saamz09</b>', tools: 'pesXdecrypter (the4chancup), PES21 BAL Ultimate Editor (AlexDelPiero23), TyNet' })}</p>`),
-    rgRow('rg-update', tr('Mises à jour'), `<button class="btn" id="rg-update-btn" type="button">${tr('Vérifier les mises à jour')}</button><p class="fineprint" id="rg-update-out" role="status"></p>`, tr('LifeLegend regarde la dernière version publiée sur sa page GitHub, seulement quand tu cliques. Rien d’autre n’est envoyé.')),
+    rgRow('rg-update', tr('Mises à jour'), rgSwitch('autoupdatecheck', settings.autoUpdateCheck !== false, tr('Vérifier automatiquement les mises à jour au démarrage'), tr('Interroge discrètement GitHub à l’ouverture et affiche une pastille si une nouvelle version est prête.'))
+      + `<button class="btn" id="rg-update-btn" type="button">${tr('Vérifier les mises à jour')}</button><p class="fineprint" id="rg-update-out" role="status"></p>`, tr('LifeLegend regarde la dernière version publiée sur sa page GitHub. Rien d’autre n’est envoyé.')),
     ...(introAvailable ? [rgRow('rg-intro', tr('Animation d’ouverture'), `<button class="btn" id="rg-intro-btn" type="button">${tr('Revoir')}</button>`, tr('La courte vidéo qui ouvre LifeLegend au premier lancement. Animation réalisée avec Profounder (profounder.com), qui n’a pas de lien avec LifeLegend.'))] : []),
     rgRow('rg-report', tr('Signaler un problème'), `<button class="btn" id="rg-report-btn" type="button">${tr('Préparer le rapport')}</button>`,
       tr('LifeLegend prépare un fichier texte avec sa version, tes réglages utiles et ses derniers messages d’erreur, sans ta clé d’IA, ton adresse e-mail ni tes textes. Relis-le, puis envoie-le toi-même : rien ne part tout seul.')),
@@ -11272,6 +11628,7 @@ async function saveSettings() {
     baseUrl: providers[$('#provider').value]?.editableBaseUrl ? $('#baseurl').value.trim() : '',
     autoSync: $('#autosync').checked,
     autoLatestSave: Boolean($('#autolatestsave')?.checked),
+    autoUpdateCheck: $('#autoupdatecheck')?.checked !== false,
     offerRedirect: $('#offerredirect').checked,
     influenceWrites: $('#influencewrites').checked,
     lifeSaveEffects: $('#lifesaveeffects').checked,
@@ -11567,4 +11924,16 @@ async function init() {
   introAvailable = await probeIntro();
   if (introAvailable && !settings.introSeen && setupActive()) playIntro();
   if (introAvailable && current === 'settings') render();
+  if (settings.autoUpdateCheck !== false && live.checkUpdate) {
+    live.checkUpdate().then((r) => {
+      if (r?.newer) {
+        availableUpdate = r;
+        paintShell();
+        toast(tr('La version {v} est disponible.', { v: r.latest }), false, {
+          label: tr('La télécharger'),
+          run: () => window.open(r.url, '_blank', 'noopener'),
+        });
+      }
+    }).catch(() => {});
+  }
 }

@@ -56,7 +56,7 @@ test('Manrope est la seule police du texte', () => {
   assert.match(raw, /font-family: "Manrope"; font-style: normal; font-weight: 400 700;/);
   assert.doesNotMatch(raw, /Newsreader|Barlow|Mona Sans|--f-serif|monospace/);
   const families = new Set([...raw.matchAll(/@font-face\s*\{\s*font-family:\s*"([^"]+)"/g)].map((m) => m[1]));
-  assert.deepStrictEqual([...families].sort(), ['Manrope', 'Twemoji Country Flags']);
+  assert.deepStrictEqual([...families].sort(), ['Goldman', 'Manrope', 'Twemoji Country Flags']);
 });
 
 test('chaque police déclarée existe dans le dossier', () => {

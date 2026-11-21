@@ -6,7 +6,7 @@ const CIRCLE_GROUPS = ['family', 'friends', 'business', 'roots'];
 const MAX_GROUP_PEOPLE = 10;
 const TRAIT_KEYS = ['media', 'temperament', 'ambition', 'loyalty', 'lifestyle', 'ego'];
 const ROOT_KEYS = ['hometown', 'childhood', 'academy', 'heritage'];
-const FLAVOR_KEYS = ['signature', 'hobby', 'favoriteDish', 'motto'];
+const FLAVOR_KEYS = ['signature', 'hobby', 'favoriteDish', 'motto', 'turningPoint', 'idol', 'dream'];
 
 const PERSONA_PRESETS = {
   humble_grinder: {
@@ -242,7 +242,7 @@ function normalizePersona(raw) {
 
   const flavor = {};
   for (const k of FLAVOR_KEYS) {
-    flavor[k] = cleanStr(src.flavor?.[k], 140);
+    flavor[k] = cleanStr(src.flavor?.[k], 160);
   }
 
   const circle = {};
@@ -296,6 +296,28 @@ function extractPersonaAgent(persona) {
   return null;
 }
 
+function upsertPersonaAgent(persona, agentName = '') {
+  const norm = normalizePersona(persona);
+  const cleanName = cleanStr(agentName, 120);
+  const list = [...(norm.circle.business || [])];
+  const idx = list.findIndex((person) => AGENT_ROLE_RE.test(person.role || ''));
+  if (idx >= 0) {
+    list[idx] = { ...list[idx], name: cleanName };
+  } else if (cleanName) {
+    list.unshift({
+      id: 'business_agent',
+      role: 'Agent',
+      name: cleanName,
+      decoy: '',
+      dob: '',
+      close: false,
+      protect: true,
+    });
+  }
+  norm.circle.business = list.slice(0, MAX_GROUP_PEOPLE);
+  return norm;
+}
+
 function personaFacts(persona) {
   const norm = normalizePersona(persona);
   const presetObj = PERSONA_PRESETS[norm.preset] || null;
@@ -318,6 +340,9 @@ function personaFacts(persona) {
   if (norm.flavor.hobby) flavorOut.hobby = norm.flavor.hobby;
   if (norm.flavor.favoriteDish) flavorOut.favorite_dish = norm.flavor.favoriteDish;
   if (norm.flavor.motto) flavorOut.motto = norm.flavor.motto;
+  if (norm.flavor.turningPoint) flavorOut.turning_point = norm.flavor.turningPoint;
+  if (norm.flavor.idol) flavorOut.football_idol = norm.flavor.idol;
+  if (norm.flavor.dream) flavorOut.career_dream = norm.flavor.dream;
 
   const innerCircle = [];
   for (const g of CIRCLE_GROUPS) {
@@ -405,6 +430,7 @@ module.exports = {
   normalizePersona,
   defaultStarterCircle,
   extractPersonaAgent,
+  upsertPersonaAgent,
   personaFacts,
   personaPrivacyEntries,
 };
