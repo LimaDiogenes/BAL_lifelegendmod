@@ -6,6 +6,16 @@ LifeLegend est publié sous licence MIT (voir LICENSE). Ce fichier liste ce que 
 auteurs, avec leur licence ; les textes complets sont dans les fichiers indiqués.
 
 
+ORIGINAL AUTHOR & COMMUNITY TOOLS / AUTEUR ORIGINAL & OUTILS COMMUNAUTAIRES
+---------------------------------------------------------------------------
+Original LifeLegend creator & author / Créateur et auteur original de LifeLegend :
+  Saamz09 — MIT License (see LICENSE). Special thanks to Saamz09 for designing and releasing LifeLegend under MIT.
+Community PES 2021 / Football Life tools & research acknowledged:
+  - pesXdecrypter (the4chancup) — https://github.com/the4chancup/pesXdecrypter (public domain)
+  - PES21 BAL Ultimate Editor (AlexDelPiero23)
+  - TyNet
+
+
 FONTS / POLICES  (lifelegend/fonts)
 -----------------------------------
 Manrope — © 2018 The Manrope Project Authors

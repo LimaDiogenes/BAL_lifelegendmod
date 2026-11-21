@@ -7,7 +7,8 @@ const path = require('path');
 const DEFAULT_SETTINGS = {
   savePath: '',
   gameDir: '',       // dossier du jeu (vide = détection automatique)
-  autoSync: false,   // synchroniser dès que le jeu réécrit la sauvegarde
+  autoSync: true,    // synchroniser dès que le jeu réécrit la sauvegarde (activé par défaut)
+  autoLatestSave: false, // basculer automatiquement sur l'emplacement BL0000000x modifié le plus récemment
   factCheck: true,   // relire chaque édition face aux faits avant publication (2e requête)
   tribuneThreads: true, // faire discuter les internautes sous les posts après chaque édition (requête de plus)
   transversaleBrief: false, // « Le brief du matin » de La Transversale dans Mails à chaque édition (abonnement sur le site, sans IA)

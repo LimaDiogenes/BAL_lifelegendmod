@@ -7,7 +7,7 @@
 const os = require('os');
 const { privacyWords } = require('./ai/privacyShield');
 
-const SETTINGS = ['provider', 'model', 'language', 'theme', 'autoSync', 'factCheck', 'tribuneThreads', 'transversaleBrief', 'replays', 'offerRedirect', 'influenceWrites', 'lifeSaveEffects', 'calendarMode', 'fanVulgarity'];
+const SETTINGS = ['provider', 'model', 'language', 'theme', 'autoSync', 'autoLatestSave', 'factCheck', 'tribuneThreads', 'transversaleBrief', 'replays', 'offerRedirect', 'influenceWrites', 'lifeSaveEffects', 'calendarMode', 'fanVulgarity'];
 const PATHS = ['savePath', 'gameDir', 'clipsDir'];
 const LOG_TAIL = 30000;
 

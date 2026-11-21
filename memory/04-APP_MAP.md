@@ -7,7 +7,7 @@ All symbols, file paths, IPC channels, and offsets below are **verified** in the
 ## 1. Runtime & Data Storage (`%APPDATA%\LiveTweet\data\`)
 - **Electron userData (`main.js`):** `%APPDATA%\LiveTweet` (kept for backward compatibility; all JSON/data stays physically outside the Git repo and build output).
 - **`settings.json` (`src/store.js`):**
-  - UI `language` (default `'en'`, options: `en`, `pt` (`Português (Brasil)`), `es`, `fr`, `it`, `de`), `theme`, `colors`, `provider`, `model`, `fastModel`, `baseUrl`, encrypted API `keys` (Electron `safeStorage`), `savePath`, `gameDir`, `clipsDir`, `autoSync`, `factCheck`, `tribuneThreads`, `transversaleBrief`, `replays`, `offerRedirect`, `influenceWrites`, `lifeSaveEffects` (default `false`), `calendarMode` (`'basic'` | `'full'`, default `'basic'`), `fanVulgarity`, plus persisted `privacy` and `pendingBio`.
+  - UI `language` (default `'en'`, options: `en`, `pt` (`Português (Brasil)`), `es`, `fr`, `it`, `de`), `theme`, `colors`, `provider`, `model`, `fastModel`, `baseUrl`, encrypted API `keys` (Electron `safeStorage`), `savePath`, `gameDir`, `clipsDir`, `autoSync` (default `true`), `autoLatestSave` (default `false`), `factCheck`, `tribuneThreads`, `transversaleBrief`, `replays`, `offerRedirect`, `influenceWrites`, `lifeSaveEffects` (default `false`), `calendarMode` (`'basic'` | `'full'`, default `'basic'`), `fanVulgarity`, plus persisted `privacy` and `pendingBio`.
 - **`keys/*.bin`:** User-supplied 64-byte save encryption keys (e.g. `FL_key.bin`).
 - **`active.json`:** Points to active `{ careerId }`.
 - **`careers/<playerId>-<slug>/`:**
@@ -53,6 +53,7 @@ Window exposes `window.live` via `contextBridge` (`contextIsolation: true`, `san
 
 ## 3. Save Layer (`src/save/`)
 - `pesCrypt.js`: MT19937 stream cipher + SHA-512 header verification (`splitSave` / `joinSave`, built-in PES 2021 key + extra 64-byte keys).
+- `autoSaveWatch.js`: Multi-slot BAL save discovery & watcher (`scanSaveFiles`, `pickLatestSave`, `snapshotWatchedFiles`, `detectModifiedSave`, `resolveSaveForSync`).
 - `layout.js`: `standardFits()` + `detectLayout()` for Lua-expanded saves; `plausibleId` accepts `1..3,999,999` and created-player bit-31 IDs (`0x80000000..0x803FFFFF`); `assertStandard()` guards save writes.
 - `blReader.js`: Reads teams (incl. created players via `plausibleId`, shirt numbers `+0x2EA`, captain `+593`, set-piece takers `+584`, starting XI `+544`), coaches, competitions, matches, lineups, last-match goal timeline, `history` + `debuts`, `careerRecords` (Club Records `L.player + 0x3AC` stride `0x30`, International Record `L.player + 0xEEC`, plus `clubTotals` and `combinedTotals`), offers, negotiations, interests, transfer windows, `playerOfYear`.
 - `playerProfile.js`: Profile at `P - 48` (376 B): 25 7-bit abilities, height, weight, age, foot, position, style, role, `+318` affection, `+327` formArrow (3 bits), `+328` unavailableDays, `+330` listed flags, `+372` marketValue.
