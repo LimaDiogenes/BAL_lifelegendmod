@@ -5,22 +5,35 @@
 
 const { PERSONA_PRESETS } = require('./persona');
 const { CATALOG_ENGLISH_NAMES } = require('./lifeScenes');
-
-const SPONSOR_CATEGORIES = [
-  'boots', 'apparel', 'beverage', 'automotive', 'watches',
-  'lifestyle', 'tech', 'travel', 'finance', 'grooming',
-  'media', 'health', 'global',
-];
+const {
+  EXCLUSIVE_CATEGORIES,
+  MULTI_BRAND_CATEGORIES,
+  SPONSOR_CATEGORIES,
+  BRAND_CATALOG,
+  ONE_TIME_DEALS,
+  canonicalCategory,
+  isBettingAllowed,
+  generateLocalSponsors,
+  findCatalogBrand,
+  brandsForCategory,
+  findSponsorConflicts,
+  catalogForUi,
+} = require('./sponsorCatalog');
 
 const SPONSOR_PRESETS = [
-  { id: 'boots_pro', category: 'boots', categories: ['boots', 'apparel'], brand: 'Nike Football', baseFee: 180000, bonus: 3500 },
-  { id: 'apparel_ath', category: 'apparel', categories: ['apparel', 'boots'], brand: 'Adidas Originals', baseFee: 240000, bonus: 4000 },
-  { id: 'puma_pack', category: 'boots', categories: ['boots', 'apparel'], brand: 'Puma Sport', baseFee: 170000, bonus: 3000 },
-  { id: 'beverage_fuel', category: 'beverage', categories: ['beverage', 'health'], brand: 'Gatorade Fuel', baseFee: 140000, bonus: 2500 },
-  { id: 'auto_drive', category: 'automotive', categories: ['automotive', 'lifestyle'], brand: 'Porsche Motorsport', baseFee: 380000, bonus: 5500 },
-  { id: 'watch_lux', category: 'watches', categories: ['watches', 'lifestyle'], brand: 'TAG Heuer Chrono', baseFee: 420000, bonus: 6000 },
-  { id: 'tech_game', category: 'tech', categories: ['tech', 'media'], brand: 'EA / HyperStrike Gaming', baseFee: 160000, bonus: 3000 },
-  { id: 'global_air', category: 'global', categories: ['travel', 'global'], brand: 'Emirates Fly', baseFee: 650000, bonus: 9000 },
+  { id: 'boots_pro', category: 'boots', categories: ['boots', 'apparel'], brand: 'Nike', baseFee: 240000, bonus: 4000, globalEligible: true },
+  { id: 'apparel_ath', category: 'boots', categories: ['boots', 'apparel', 'grooming'], brand: 'Adidas', baseFee: 250000, bonus: 4200, globalEligible: true },
+  { id: 'puma_pack', category: 'boots', categories: ['boots', 'apparel'], brand: 'Puma', baseFee: 175000, bonus: 3200, globalEligible: true },
+  { id: 'fashion_lv', category: 'fashion', categories: ['fashion'], brand: 'Louis Vuitton', baseFee: 580000, bonus: 7500, globalEligible: true },
+  { id: 'beverage_fuel', category: 'beverage', categories: ['beverage'], brand: 'Gatorade', baseFee: 145000, bonus: 2500, globalEligible: true },
+  { id: 'healthy_green', category: 'healthy_beverage', categories: ['healthy_beverage'], brand: 'Oi Ocha (Ito En)', baseFee: 180000, bonus: 3000, globalEligible: true },
+  { id: 'auto_drive', category: 'automotive', categories: ['automotive'], brand: 'Porsche', baseFee: 420000, bonus: 5800, globalEligible: true },
+  { id: 'watch_lux', category: 'watches', categories: ['watches'], brand: 'TAG Heuer', baseFee: 420000, bonus: 6000, globalEligible: true },
+  { id: 'tech_game', category: 'gaming', categories: ['gaming'], brand: 'EA Sports', baseFee: 260000, bonus: 4000, globalEligible: true },
+  { id: 'global_air', category: 'airlines', categories: ['airlines'], brand: 'Emirates', baseFee: 650000, bonus: 8500, globalEligible: true },
+  { id: 'eyewear_oak', category: 'eyewear', categories: ['eyewear'], brand: 'Oakley', baseFee: 130000, bonus: 2200, globalEligible: true },
+  { id: 'phones_app', category: 'phones', categories: ['phones'], brand: 'Apple iPhone', baseFee: 560000, bonus: 7200, globalEligible: true },
+  { id: 'telecom_star', category: 'telecom', categories: ['telecom'], brand: 'Starlink', baseFee: 460000, bonus: 6000, globalEligible: true },
 ];
 
 const OFFER_PERSON_NAMES = [
@@ -315,8 +328,9 @@ function normalizeSponsorCategories(raw) {
     const clean = cleanText(item, 40);
     if (!clean) continue;
     const low = clean.toLowerCase();
-    if (low === '__custom__') continue;
-    const val = SPONSOR_CATEGORIES.includes(low) ? low : clean;
+    if (low === '__custom__' || low === 'global') continue;
+    const canon = canonicalCategory(clean);
+    const val = canon || clean;
     if (seen.has(val.toLowerCase())) continue;
     seen.add(val.toLowerCase());
     out.push(val);
@@ -374,10 +388,16 @@ function ensureLifeHub(state, snapshot = state?.snapshot) {
   hub.assets ||= [];
   hub.sponsors ||= [];
   for (const sp of hub.sponsors) {
+    const hadGlobal = String(sp.category || '').toLowerCase() === 'global'
+      || (Array.isArray(sp.categories) && sp.categories.some((c) => String(c || '').toLowerCase() === 'global'));
+    if (hadGlobal && sp.isGlobalPartner === undefined) sp.isGlobalPartner = true;
     sp.categories = normalizeSponsorCategories(sp);
     sp.category = sp.categories[0];
   }
   hub.offers ||= [];
+  hub.biddingWars ||= [];
+  hub.oneTimeOffers ||= [];
+  hub.completedOneTime ||= [];
   hub.obligations ||= [];
   hub.ledger ||= [];
   hub.recentEvents ||= [];
@@ -445,7 +465,20 @@ function assetNetWorth(hub) {
 function normalizeSponsorEntry(raw, fallbackId, today) {
   const brand = cleanText(raw?.brand, 80);
   if (!brand) return null;
-  const categories = normalizeSponsorCategories(raw);
+  let categories = normalizeSponsorCategories(raw);
+  const catalogMatch = findCatalogBrand(brand);
+  if (raw?.applyUmbrella && catalogMatch && Array.isArray(catalogMatch.categories)) {
+    const seen = new Set(categories.map((c) => c.toLowerCase()));
+    for (const c of catalogMatch.categories) {
+      if (!seen.has(c.toLowerCase())) {
+        seen.add(c.toLowerCase());
+        categories.push(c);
+      }
+    }
+  }
+  const hadGlobalTag = String(raw?.category || '').toLowerCase() === 'global'
+    || (Array.isArray(raw?.categories) && raw.categories.some((c) => String(c || '').toLowerCase() === 'global'));
+  const isGlobalPartner = Boolean(raw?.isGlobalPartner || hadGlobalTag);
   const fee = Math.max(0, Math.round(Number(raw?.fee) || 0));
   const bonus = Math.max(0, Math.round(Number(raw?.bonus) || 0));
   const since = cleanText(raw?.since, 10) || today || '';
@@ -453,6 +486,7 @@ function normalizeSponsorEntry(raw, fallbackId, today) {
   return {
     id: cleanText(raw?.id, 40) || fallbackId,
     linkedBootDeal: Boolean(raw?.linkedBootDeal),
+    isGlobalPartner,
     category: categories[0],
     categories,
     brand,
@@ -470,38 +504,56 @@ function isBootCategorySponsor(s) {
   return Array.isArray(s.categories) && s.categories.some((c) => String(c || '').toLowerCase() === 'boots');
 }
 
+function closeOpenBootMailThreads(state) {
+  if (!Array.isArray(state?.mail)) return;
+  for (const m of state.mail) {
+    if (m && m.sponsorOffer && !m.closed) {
+      m.closed = true;
+    }
+  }
+}
+
 function syncBootSponsor(state, hub) {
   if (!hub) return;
   const deal = state?.sponsor?.deal;
   const bootSp = (hub.sponsors || []).find(isBootCategorySponsor);
 
-  // Cas 1 : Le joueur a défini un sponsor 'boots' dans Ma vie (calibration ou ajout/édition) et state.sponsor.deal est vide (ou lié).
-  if (bootSp && (!deal || bootSp.id !== 'boot_deal' || hub.renamedBootBrand)) {
+  // Cas 1 : Un sponsor 'boots' existe dans Ma vie -> toujours reflété comme sponsor crampons officiel dans state.sponsor.deal.
+  if (bootSp) {
     for (const s of hub.sponsors) s.linkedBootDeal = (s === bootSp);
     if (state) {
       if (!state.sponsor) state.sponsor = { offer: null, deal: null, history: [], news: null, closedOn: null };
       const prevBrand = state.sponsor.deal?.brand;
-      state.sponsor.deal = {
-        ...(state.sponsor.deal || {}),
-        id: state.sponsor.deal?.id || bootSp.id,
-        brand: bootSp.brand,
-        fee: bootSp.fee || 0,
-        bonus: bootSp.bonus || 0,
-        since: bootSp.since || state.sponsor.deal?.since || state?.snapshot?.gameDate || '',
-        until: bootSp.until || state.sponsor.deal?.until || '',
-        status: 'signed',
-        person: state.sponsor.deal?.person || 'Marco Ferri',
-        via: state.sponsor.deal?.via || (state?.agent?.name ? 'agent' : 'direct'),
-        contributions: state.sponsor.deal?.contributions || 0,
-        counted: Array.isArray(state.sponsor.deal?.counted) ? state.sponsor.deal.counted : [],
-      };
-      if (prevBrand && prevBrand.toLowerCase() !== bootSp.brand.toLowerCase()) {
-        state.sponsor.deal.bootId = null;
-        state.sponsor.deal.photo = null;
-        state.sponsor.deal.logo = null;
+      const shouldCopyIntoDeal = !deal
+        || bootSp.id !== 'boot_deal'
+        || hub.renamedBootBrand
+        || String(deal.brand || '').toLowerCase() !== String(bootSp.brand || '').toLowerCase();
+      if (shouldCopyIntoDeal) {
+        state.sponsor.deal = {
+          ...(state.sponsor.deal || {}),
+          id: state.sponsor.deal?.id || bootSp.id,
+          brand: bootSp.brand,
+          fee: bootSp.fee || 0,
+          bonus: bootSp.bonus || 0,
+          since: bootSp.since || state.sponsor.deal?.since || state?.snapshot?.gameDate || '',
+          until: bootSp.until || state.sponsor.deal?.until || '',
+          status: 'signed',
+          isGlobalPartner: Boolean(bootSp.isGlobalPartner),
+          person: state.sponsor.deal?.person || 'Marco Ferri',
+          via: state.sponsor.deal?.via || (state?.agent?.name ? 'agent' : 'direct'),
+          contributions: state.sponsor.deal?.contributions || 0,
+          counted: Array.isArray(state.sponsor.deal?.counted) ? state.sponsor.deal.counted : [],
+        };
+        if (prevBrand && prevBrand.toLowerCase() !== bootSp.brand.toLowerCase()) {
+          state.sponsor.deal.bootId = null;
+          state.sponsor.deal.photo = null;
+          state.sponsor.deal.logo = null;
+        }
       }
-      // Si une offre d'équipementier était en attente dans Mails alors qu'il a déjà un sponsor crampons, on la retire.
-      if (state.sponsor.offer) state.sponsor.offer = null;
+      if (state.sponsor.offer) {
+        state.sponsor.offer = null;
+        closeOpenBootMailThreads(state);
+      }
     }
     if (Array.isArray(hub.offers)) {
       hub.offers = hub.offers.filter((o) => !isBootCategorySponsor(o));
@@ -523,6 +575,7 @@ function syncBootSponsor(state, hub) {
     cur.fee = deal.fee;
     cur.bonus = deal.bonus;
     cur.until = deal.until;
+    cur.isGlobalPartner = Boolean(deal.isGlobalPartner || cur.isGlobalPartner);
     cur.categories = normalizeSponsorCategories(cur.categories?.length ? cur : { category: 'boots' });
     cur.category = cur.categories[0];
     return;
@@ -530,8 +583,9 @@ function syncBootSponsor(state, hub) {
   const entry = {
     id: 'boot_deal',
     linkedBootDeal: true,
+    isGlobalPartner: Boolean(deal.isGlobalPartner),
     category: 'boots',
-    categories: ['boots'],
+    categories: ['boots', 'apparel'],
     brand: deal.brand,
     fee: deal.fee || 0,
     bonus: deal.bonus || 0,
@@ -552,14 +606,25 @@ function scheduleNextObligation(hub, today, newId) {
   const kinds = {
     boots: 'boot_launch',
     apparel: 'kit_shoot',
-    beverage: 'kit_shoot',
-    automotive: 'vip_event',
+    fashion: 'vip_event',
+    eyewear: 'kit_shoot',
     watches: 'vip_event',
-    lifestyle: 'vip_event',
-    tech: 'stream_promo',
+    automotive: 'vip_event',
+    beverage: 'kit_shoot',
+    healthy_beverage: 'kit_shoot',
+    health: 'kit_shoot',
+    phones: 'stream_promo',
+    telecom: 'brand_appearance',
+    airlines: 'brand_gala',
+    hospitality: 'brand_gala',
+    appliances: 'brand_appearance',
+    grooming: 'kit_shoot',
+    finance: 'brand_gala',
+    betting: 'stream_promo',
+    gaming: 'stream_promo',
     media: 'stream_promo',
-    travel: 'brand_gala',
-    global: 'brand_gala',
+    lifestyle: 'vip_event',
+    local: 'brand_appearance',
   };
   const primaryCat = pick.categories?.[0] || pick.category;
   hub.obligations.push({
@@ -638,32 +703,61 @@ function makeSponsorOffer(state, snapshot, hub, newId) {
   const today = snapshot.gameDate;
   const est = estimateStartProfile(snapshot, state);
   const openKeys = new Set(hub.offers.map((o) => `${o.brand.toLowerCase()}|${normalizeSponsorCategories(o).join(',')}`));
-  const coveredCats = new Set(
-    (hub.sponsors || [])
-      .flatMap((s) => normalizeSponsorCategories(s).map((c) => String(c).toLowerCase()))
-      .filter((c) => c !== 'global')
-  );
-  const candidates = SPONSOR_PRESETS.filter((p) => {
+  const bettingOk = isBettingAllowed(snapshot).allowed;
+  const stageOrder = { rookie: 0, rising: 1, established: 2, superstar: 3 };
+  const sRank = stageOrder[est.stage] ?? 0;
+
+  const localPool = generateLocalSponsors(state, snapshot);
+  const catalogPool = [...BRAND_CATALOG, ...localPool].filter((p) => {
+    if ((stageOrder[p.minStage] ?? 0) > sRank) return false;
+    if (!bettingOk && (p.category === 'betting' || (p.categories || []).includes('betting'))) return false;
     if (isDuplicateSponsor(hub.sponsors, p)) return false;
     if (openKeys.has(`${p.brand.toLowerCase()}|${normalizeSponsorCategories(p).join(',')}`)) return false;
-    if (coveredCats.has(String(p.category || '').toLowerCase())) return false;
+    if (findSponsorConflicts(hub.sponsors, p).length > 0) return false;
     return true;
   });
-  if (!candidates.length) return null;
 
-  const idx = hashStr(`${state.careerId}|${today}|mloff`) % candidates.length;
-  const base = candidates[idx];
+  // Occasional Global Partner upgrade offer for an existing eligible non-global sponsor at Established/Superstar
+  const upgradeTarget = sRank >= 2
+    ? (hub.sponsors || []).find((s) => !s.isGlobalPartner && findCatalogBrand(s.brand)?.globalEligible && !hub.offers.some((o) => o.upgradeSponsorId === s.id))
+    : null;
+  if (upgradeTarget && (!catalogPool.length || hashStr(`${state.careerId}|${today}|gpup`) % 5 === 0)) {
+    const newFee = roundStep(Math.max(upgradeTarget.fee * 1.65, 320000), 5000);
+    const newBonus = roundStep(Math.max((upgradeTarget.bonus || 2000) * 1.4, 4000), 500);
+    return {
+      id: newId(),
+      upgradeSponsorId: upgradeTarget.id,
+      isGlobalPartner: true,
+      category: upgradeTarget.category,
+      categories: normalizeSponsorCategories(upgradeTarget),
+      brand: upgradeTarget.brand,
+      person: OFFER_PERSON_NAMES[hashStr(`${today}|${upgradeTarget.brand}|gp`) % OFFER_PERSON_NAMES.length],
+      fee: newFee,
+      bonus: newBonus,
+      until: addDaysIso(today, 730),
+      expires: addDaysIso(today, 30),
+      on: today,
+      negotiated: false,
+    };
+  }
+
+  if (!catalogPool.length) return null;
+  const idx = hashStr(`${state.careerId}|${today}|mloff`) % catalogPool.length;
+  const base = catalogPool[idx];
   const categories = normalizeSponsorCategories(base);
-  const scale = { rookie: 0.45, rising: 1.0, established: 2.0, superstar: 3.6 }[est.stage] || 1;
-  const wageBoost = Math.max(0, (snapshot?.player?.salary || 0) * 0.08);
+  const scale = { rookie: 0.45, rising: 1.0, established: 1.9, superstar: 3.3 }[est.stage] || 1;
+  const wageBoost = Math.max(0, (snapshot?.player?.salary || 0) * 0.06);
   const meterScale = 0.85 + (hub.meters.sponsors / 100) * 0.35;
-  const fee = roundStep(Math.max(15000, (base.baseFee * scale + wageBoost) * meterScale), 5000);
-  const bonus = roundStep(Math.max(1000, base.bonus * scale), 500);
+  const globalRoll = sRank >= 2 && base.globalEligible && (hashStr(`${today}|${base.brand}|isgp`) % 4 === 0);
+  const feeMult = globalRoll ? 1.55 : 1;
+  const fee = roundStep(Math.max(15000, (base.baseFee * scale + wageBoost) * meterScale * feeMult), 5000);
+  const bonus = roundStep(Math.max(500, base.bonus * scale * (globalRoll ? 1.3 : 1)), 250);
   const person = OFFER_PERSON_NAMES[hashStr(`${today}|${base.brand}`) % OFFER_PERSON_NAMES.length];
   return {
     id: newId(),
     category: categories[0],
     categories,
+    isGlobalPartner: globalRoll,
     brand: base.brand,
     person,
     fee,
@@ -675,7 +769,145 @@ function makeSponsorOffer(state, snapshot, hub, newId) {
   };
 }
 
-function lifeHubTick(state, snapshot, { changes = {}, newId = () => `id_${Date.now()}` } = {}) {
+function maybeStartBiddingWar(state, snapshot, hub, today, newId) {
+  hub.biddingWars ||= [];
+  hub.biddingWars = hub.biddingWars.filter((w) => !w.expires || today < w.expires);
+  if (hub.biddingWars.length >= 1) return null;
+  if (hub.warCooldownUntil && today < hub.warCooldownUntil) return null;
+
+  const est = estimateStartProfile(snapshot, state);
+  const stageOrder = { rookie: 0, rising: 1, established: 2, superstar: 3 };
+  const sRank = stageOrder[est.stage] ?? 0;
+  const followers = state.profile?.followers || est.followers || 0;
+  if (sRank < 2 && !(sRank === 1 && followers >= 120000)) return null;
+
+  const bettingOk = isBettingAllowed(snapshot).allowed;
+  const poachCandidates = (hub.sponsors || []).filter((sp) => {
+    if (!sp?.brand || !EXCLUSIVE_CATEGORIES.includes(sp.category)) return false;
+    if (sp.category === 'betting' && !bettingOk) return false;
+    const rivals = brandsForCategory(sp.category, { stage: est.stage })
+      .filter((b) => b.brand.toLowerCase() !== sp.brand.toLowerCase());
+    return rivals.length >= 2;
+  });
+
+  // Prefer poaching an expiring or high-profile deal ~40% of the time at established/superstar, else open exclusive category war
+  const openWarCats = EXCLUSIVE_CATEGORIES.filter((cat) => {
+    if (cat === 'betting' && !bettingOk) return false;
+    if (cat === 'apparel') return false; // handled under boots war
+    const pool = brandsForCategory(cat, { stage: est.stage });
+    if (pool.length < 2) return false;
+    return findSponsorConflicts(hub.sponsors, { brand: '__probe__', categories: [cat] }).length === 0;
+  });
+
+  let kind = 'open_war';
+  let existing = null;
+  let targetCat = null;
+
+  if (poachCandidates.length && (openWarCats.length === 0 || hashStr(`${state.careerId}|${today}|warkind`) % 5 < 2)) {
+    kind = 'poach_war';
+    existing = poachCandidates[hashStr(`${state.careerId}|${today}|poach`) % poachCandidates.length];
+    targetCat = existing.category;
+  } else if (openWarCats.length) {
+    targetCat = openWarCats[hashStr(`${state.careerId}|${today}|warcat`) % openWarCats.length];
+  } else {
+    return null;
+  }
+
+  const rivals = brandsForCategory(targetCat, { stage: est.stage })
+    .filter((b) => !existing || b.brand.toLowerCase() !== existing.brand.toLowerCase());
+  if (rivals.length < 2) return null;
+
+  const picked = [];
+  const startIdx = hashStr(`${today}|${targetCat}|wpick`) % rivals.length;
+  for (let i = 0; i < Math.min(3, rivals.length); i++) {
+    picked.push(rivals[(startIdx + i) % rivals.length]);
+  }
+
+  const scale = { rookie: 0.6, rising: 1.15, established: 2.1, superstar: 3.6 }[est.stage] || 1.5;
+  const buyoutCost = existing ? roundStep(Math.max(40000, (existing.fee || 150000) * 0.28), 5000) : 0;
+
+  const bids = picked.map((b, i) => {
+    const eager = i === 0 || (sRank >= 3 && hashStr(`${b.brand}|${today}`) % 2 === 0);
+    const isGp = sRank >= 2 && Boolean(b.globalEligible) && (i === 0 || sRank === 3);
+    const base = Math.max(b.baseFee * scale, existing ? (existing.fee || b.baseFee) * 1.18 : 0);
+    const fee = roundStep(base * (1 + i * 0.06) * (isGp ? 1.45 : 1), 5000);
+    const bonus = roundStep(b.bonus * scale * (isGp ? 1.25 : 1), 500);
+    const signingBonus = roundStep(fee * (eager ? 0.15 : 0.08), 5000);
+    return {
+      id: newId(),
+      brand: b.brand,
+      category: targetCat,
+      categories: normalizeSponsorCategories(b),
+      person: OFFER_PERSON_NAMES[hashStr(`${today}|war|${b.brand}`) % OFFER_PERSON_NAMES.length],
+      fee,
+      bonus,
+      signingBonus,
+      isGlobalPartner: isGp,
+      until: addDaysIso(today, 365 * (sRank >= 2 ? 2 : 1)),
+      eager,
+      buyoutCovered: Boolean(existing && eager),
+      walkedAway: false,
+    };
+  });
+
+  const war = {
+    id: newId(),
+    kind,
+    category: targetCat,
+    existingSponsorId: existing?.id || null,
+    existingBrand: existing?.brand || null,
+    existingFee: existing?.fee || 0,
+    buyoutCost,
+    incumbentMatch: null,
+    round: 0,
+    createdOn: today,
+    expires: addDaysIso(today, 30),
+    bids,
+  };
+  hub.biddingWars.push(war);
+  hub.warCooldownUntil = addDaysIso(today, 40);
+  return war;
+}
+
+function maybeOfferOneTimeDeal(state, snapshot, hub, today, newId) {
+  hub.oneTimeOffers ||= [];
+  hub.oneTimeOffers = hub.oneTimeOffers.filter((o) => !o.expires || today < o.expires);
+  if (hub.oneTimeOffers.length >= 2) return null;
+  if (hub.oneTimeCooldownUntil && today < hub.oneTimeCooldownUntil) return null;
+
+  const est = estimateStartProfile(snapshot, state);
+  const stageOrder = { rookie: 0, rising: 1, established: 2, superstar: 3 };
+  const sRank = stageOrder[est.stage] ?? 0;
+  const openIds = new Set(hub.oneTimeOffers.map((o) => o.dealKey));
+  const candidates = ONE_TIME_DEALS.filter((d) => (stageOrder[d.minStage] ?? 0) <= sRank && !openIds.has(d.id));
+  if (!candidates.length) return null;
+
+  const pick = candidates[hashStr(`${state.careerId}|${today}|1time`) % candidates.length];
+  const scale = { rookie: 0.6, rising: 1.0, established: 1.8, superstar: 3.0 }[est.stage] || 1;
+  const matchingActive = (hub.sponsors || []).find((s) => normalizeSponsorCategories(s).includes(pick.category));
+  const brand = matchingActive?.brand || pick.defaultBrand;
+  const fee = roundStep(pick.fee * scale, 2500);
+  const suggestedDate = addDaysIso(today, 6);
+
+  const offer = {
+    id: newId(),
+    dealKey: pick.id,
+    brand,
+    category: pick.category,
+    fee,
+    mediaBoost: pick.mediaBoost,
+    fanBoost: pick.fanBoost,
+    followerBoost: pick.followerBoost,
+    suggestedDate,
+    on: today,
+    expires: addDaysIso(today, 21),
+  };
+  hub.oneTimeOffers.push(offer);
+  hub.oneTimeCooldownUntil = addDaysIso(today, 24);
+  return offer;
+}
+
+function lifeHubTick(state, snapshot, { changes = {}, newId = () => `id_${Date.now()}`, sponsorMode = 'realistic' } = {}) {
   const hub = ensureLifeHub(state, snapshot);
   const est = estimateStartProfile(snapshot, state);
   hub.stage = est.stage;
@@ -723,6 +955,31 @@ function lifeHubTick(state, snapshot, { changes = {}, newId = () => `id_${Date.n
     const followerBoost = (hub.assets || []).reduce((b, a) => b + (a.perks?.followerBoost || 0), 0);
     if (followerBoost > 0 && state.profile && days >= 5) {
       state.profile.followers = Math.round((state.profile.followers || 4200) * (1 + followerBoost * (days / 30)));
+    }
+  }
+
+  // Conformité paris sportifs : si le joueur signe dans un pays où la loi l'interdit, le contrat tombe automatiquement.
+  const bettingPolicy = isBettingAllowed(snapshot);
+  if (!bettingPolicy.allowed) {
+    const bannedBrands = [];
+    hub.sponsors = hub.sponsors.filter((s) => {
+      const cats = normalizeSponsorCategories(s).map((c) => c.toLowerCase());
+      if (!cats.includes('betting')) return true;
+      if (cats.length > 1) {
+        s.categories = s.categories.filter((c) => String(c).toLowerCase() !== 'betting');
+        s.category = s.categories[0] || 'lifestyle';
+        bannedBrands.push(s.brand);
+        return true;
+      }
+      bannedBrands.push(s.brand);
+      hub.obligations = hub.obligations.filter((o) => o.sponsorId !== s.id);
+      return false;
+    });
+    hub.offers = hub.offers.filter((o) => !normalizeSponsorCategories(o).map((c) => c.toLowerCase()).includes('betting'));
+    hub.biddingWars = (hub.biddingWars || []).filter((w) => w.category !== 'betting');
+    if (bannedBrands.length) {
+      for (const b of bannedBrands) pushRecent(hub, { date: today, kind: 'sponsor', text: `Betting ban terminated deal: ${b}` });
+      hub.regulatoryNews = { kind: 'betting_ban', brands: bannedBrands, country: bettingPolicy.country, on: today };
     }
   }
 
@@ -789,15 +1046,19 @@ function lifeHubTick(state, snapshot, { changes = {}, newId = () => `id_${Date.n
     hub.ap = hub.maxAp;
   }
 
-  // Génère une nouvelle offre de sponsor si une place est libre (tous les ~14 jours).
+  // Offres, guerres d'enchères & deals ponctuels (actifs surtout en mode réaliste)
   const cap = sponsorSlotCap(state.profile?.followers || 0, hub.stage);
   const cooldownDone = !hub.offerCooldownUntil || today >= hub.offerCooldownUntil;
-  if ((cap === null || hub.sponsors.length < cap) && hub.offers.length < 2 && cooldownDone && results.length > 0) {
+  if (sponsorMode === 'realistic' && (cap === null || hub.sponsors.length < cap) && hub.offers.length < 2 && cooldownDone && results.length > 0) {
     const offer = makeSponsorOffer(state, snapshot, hub, newId);
     if (offer) {
       hub.offers.push(offer);
       hub.offerCooldownUntil = addDaysIso(today, 14);
     }
+  }
+  if (sponsorMode === 'realistic' && results.length > 0) {
+    maybeStartBiddingWar(state, snapshot, hub, today, newId);
+    maybeOfferOneTimeDeal(state, snapshot, hub, today, newId);
   }
   if (hub.sponsors.length > 0 && (results.length > 0 || days >= 10)) {
     scheduleNextObligation(hub, today, newId);
@@ -869,33 +1130,87 @@ function sellAsset(state, assetId, gameDate = '') {
   return hub;
 }
 
-function addSponsor(state, payload = {}, gameDate = '', newId = () => `id_${Date.now()}`) {
+function executeSponsorBuyout(state, conflicts, gameDate = '', { buyoutCoveredByBuyer = false, buyoutCost = 0, buyerBrand = '' } = {}) {
   const hub = ensureLifeHub(state, state.snapshot);
-  const cap = sponsorSlotCap(state.profile?.followers || 0, hub.stage);
-  if (cap !== null && hub.sponsors.length >= cap) throw new Error('Toutes les places de sponsors sont occupées pour ta notoriété actuelle.');
+  const fee = buyoutCoveredByBuyer ? 0 : Math.max(0, Math.round(Number(buyoutCost) || 0));
+  if (fee > 0) {
+    if (hub.cash < fee) throw new Error('Fonds insuffisants.');
+    hub.cash -= fee;
+    addLedger(hub, { date: gameDate, amount: -fee, kind: 'expense', label: `buyout:${buyerBrand || 'sponsor'}` });
+  }
+  const removedBrands = [];
+  for (const c of conflicts || []) {
+    const sp = c?.sponsor || c;
+    if (!sp?.id) continue;
+    removedBrands.push(sp.brand);
+    removeSponsor(state, sp.id, gameDate);
+  }
+  if (!buyoutCoveredByBuyer && removedBrands.length) {
+    hub.meters.sponsors = clamp(hub.meters.sponsors - 4, 0, 100);
+  }
+  hub.lastSponsorSwitch = {
+    kind: 'buyout_switch',
+    from: removedBrands,
+    to: buyerBrand || '',
+    buyoutCovered: Boolean(buyoutCoveredByBuyer),
+    on: gameDate,
+  };
+  return { removedBrands, paid: fee };
+}
+
+function addSponsor(state, payload = {}, gameDate = '', newId = () => `id_${Date.now()}`, { enforceExclusivity = false, allowBuyout = false, buyoutCovered = false } = {}) {
+  const hub = ensureLifeHub(state, state.snapshot);
   const entry = normalizeSponsorEntry(payload, newId(), gameDate);
   if (!entry) throw new Error('Nom de sponsor requis.');
   if (isDuplicateSponsor(hub.sponsors, entry)) throw new Error('Ce sponsor existe déjà.');
+
+  if (enforceExclusivity) {
+    if (entry.categories.some((c) => String(c).toLowerCase() === 'betting')) {
+      const check = isBettingAllowed(state.snapshot);
+      if (!check.allowed) throw new Error('Les sponsors de paris sportifs sont interdits dans ce championnat.');
+    }
+    const conflicts = findSponsorConflicts(hub.sponsors, entry);
+    if (conflicts.length) {
+      if (!allowBuyout) throw new Error('Conflit de catégorie avec un sponsor actif.');
+      const totalConflictFee = conflicts.reduce((sum, c) => sum + Math.max(40000, Number(c.sponsor?.fee) || 0), 0);
+      const buyoutCost = roundStep(totalConflictFee * 0.28, 5000);
+      executeSponsorBuyout(state, conflicts, gameDate, { buyoutCoveredByBuyer: buyoutCovered, buyoutCost, buyerBrand: entry.brand });
+    }
+  }
+
+  const cap = sponsorSlotCap(state.profile?.followers || 0, hub.stage);
+  if (cap !== null && hub.sponsors.length >= cap) throw new Error('Toutes les places de sponsors sont occupées pour ta notoriété actuelle.');
   hub.sponsors.push(entry);
   syncBootSponsor(state, hub);
   hub.meters.sponsors = clamp(hub.meters.sponsors + 4, 0, 100);
   scheduleNextObligation(hub, gameDate, newId);
-  pushRecent(hub, { date: gameDate, kind: 'sponsor', text: `Signed sponsor deal with ${entry.brand}` });
+  pushRecent(hub, { date: gameDate, kind: 'sponsor', text: `Signed sponsor deal with ${entry.brand}${entry.isGlobalPartner ? ' (Global Partner)' : ''}` });
   return entry;
 }
 
-function updateSponsor(state, payload = {}) {
+function updateSponsor(state, payload = {}, { enforceExclusivity = false } = {}) {
   const hub = ensureLifeHub(state, state.snapshot);
   const sp = hub.sponsors.find((s) => s.id === payload.id);
   if (!sp) throw new Error('Élément introuvable.');
   const wasBoot = isBootCategorySponsor(sp);
   const brand = cleanText(payload.brand, 80);
   if (!brand) throw new Error('Nom de sponsor requis.');
-  sp.brand = brand;
-  if (payload.categories !== undefined || payload.category !== undefined || payload.customCategories !== undefined) {
-    sp.categories = normalizeSponsorCategories(payload);
-    sp.category = sp.categories[0];
+  const nextCategories = (payload.categories !== undefined || payload.category !== undefined || payload.customCategories !== undefined)
+    ? normalizeSponsorCategories(payload)
+    : sp.categories;
+
+  if (enforceExclusivity) {
+    if (nextCategories.some((c) => String(c).toLowerCase() === 'betting') && !isBettingAllowed(state.snapshot).allowed) {
+      throw new Error('Les sponsors de paris sportifs sont interdits dans ce championnat.');
+    }
+    const conflicts = findSponsorConflicts(hub.sponsors, { brand, categories: nextCategories }, { ignoreId: sp.id });
+    if (conflicts.length) throw new Error('Conflit de catégorie avec un sponsor actif.');
   }
+
+  sp.brand = brand;
+  sp.categories = nextCategories;
+  sp.category = nextCategories[0];
+  if (payload.isGlobalPartner !== undefined) sp.isGlobalPartner = Boolean(payload.isGlobalPartner);
   if (payload.fee !== undefined) sp.fee = Math.max(0, Math.round(Number(payload.fee) || 0));
   if (payload.bonus !== undefined) sp.bonus = Math.max(0, Math.round(Number(payload.bonus) || 0));
   if (payload.until !== undefined) sp.until = cleanText(payload.until, 10);
@@ -907,6 +1222,7 @@ function updateSponsor(state, payload = {}) {
       state.sponsor.deal.brand = sp.brand;
       state.sponsor.deal.fee = sp.fee;
       state.sponsor.deal.bonus = sp.bonus;
+      state.sponsor.deal.isGlobalPartner = Boolean(sp.isGlobalPartner);
       if (sp.until) state.sponsor.deal.until = sp.until;
     }
   }
@@ -935,7 +1251,7 @@ function removeSponsor(state, id, gameDate = '') {
   return hub;
 }
 
-function answerSponsorOffer(state, offerId, choice, gameDate = '', newId = () => `id_${Date.now()}`) {
+function answerSponsorOffer(state, offerId, choice, gameDate = '', newId = () => `id_${Date.now()}`, { allowBuyout = false } = {}) {
   const hub = ensureLifeHub(state, state.snapshot);
   const idx = hub.offers.findIndex((o) => o.id === offerId);
   if (idx < 0) throw new Error('Offre de sponsor introuvable.');
@@ -957,11 +1273,194 @@ function answerSponsorOffer(state, offerId, choice, gameDate = '', newId = () =>
     return { status: up ? 'raised' : 'held', offer };
   }
 
-  const cap = sponsorSlotCap(state.profile?.followers || 0, hub.stage);
-  if (cap !== null && hub.sponsors.length >= cap) throw new Error('Toutes les places de sponsors sont occupées pour ta notoriété actuelle.');
+  if (offer.upgradeSponsorId) {
+    const target = hub.sponsors.find((s) => s.id === offer.upgradeSponsorId);
+    hub.offers.splice(idx, 1);
+    if (target) {
+      target.isGlobalPartner = true;
+      target.fee = offer.fee;
+      target.bonus = offer.bonus;
+      target.until = offer.until;
+      syncBootSponsor(state, hub);
+      hub.meters.sponsors = clamp(hub.meters.sponsors + 6, 0, 100);
+      pushRecent(hub, { date: gameDate, kind: 'sponsor', text: `Upgraded ${target.brand} to Global Partner` });
+      return { status: 'signed', sponsor: target };
+    }
+  }
+
+  const conflicts = findSponsorConflicts(hub.sponsors, offer);
+  if (conflicts.length && !allowBuyout) {
+    throw new Error('Conflit de catégorie avec un sponsor actif.');
+  }
+  const signed = addSponsor(
+    state,
+    { ...offer, id: newId(), since: gameDate },
+    gameDate,
+    newId,
+    { enforceExclusivity: true, allowBuyout: Boolean(allowBuyout), buyoutCovered: Boolean(offer.buyoutCovered) },
+  );
   hub.offers.splice(idx, 1);
-  const signed = addSponsor(state, { ...offer, id: newId(), since: gameDate }, gameDate, newId);
   return { status: 'signed', sponsor: signed };
+}
+
+function answerBiddingWar(state, warId, { action = 'accept', bidId = null } = {}, gameDate = '', newId = () => `id_${Date.now()}`) {
+  const hub = ensureLifeHub(state, state.snapshot);
+  hub.biddingWars ||= [];
+  const idx = hub.biddingWars.findIndex((w) => w.id === warId);
+  if (idx < 0) throw new Error('Enchère de sponsors introuvable.');
+  const war = hub.biddingWars[idx];
+
+  if (action === 'decline') {
+    hub.biddingWars.splice(idx, 1);
+    pushRecent(hub, { date: gameDate, kind: 'sponsor', text: `Walked away from ${war.category} bidding war` });
+    return { status: 'declined', war };
+  }
+
+  if (action === 'leverage') {
+    if (!state.agent?.name) throw new Error('Tu n’as pas d’agent pour négocier.');
+    if ((war.round || 0) >= 2) throw new Error('Enchère déjà poussée au maximum.');
+    war.round = (war.round || 0) + 1;
+    const activeBids = war.bids.filter((b) => !b.walkedAway);
+    let kept = 0;
+    for (let i = 0; i < activeBids.length; i++) {
+      const b = activeBids[i];
+      const walkRoll = war.round >= 2 && activeBids.length - kept > 1 && (hashStr(`${war.id}|walk|${b.id}|${war.round}`) % 10 < 4);
+      if (walkRoll) {
+        b.walkedAway = true;
+        continue;
+      }
+      kept++;
+      const boost = 1.12 + ((hashStr(`${b.id}|r${war.round}`) % 7) / 100);
+      b.fee = roundStep(b.fee * boost, 5000);
+      b.bonus = roundStep(b.bonus * 1.1, 250);
+      b.signingBonus = roundStep((b.signingBonus || b.fee * 0.1) * 1.15, 5000);
+    }
+    if (war.existingSponsorId && !war.incumbentMatch) {
+      const topBid = war.bids.filter((b) => !b.walkedAway).sort((a, b) => b.fee - a.fee)[0];
+      if (topBid && (hashStr(`${war.id}|match|${gameDate}`) % 10 < 7)) {
+        const curSp = hub.sponsors.find((s) => s.id === war.existingSponsorId);
+        if (curSp) {
+          war.incumbentMatch = {
+            brand: curSp.brand,
+            fee: roundStep(topBid.fee * 0.96, 5000),
+            bonus: topBid.bonus,
+            isGlobalPartner: Boolean(curSp.isGlobalPartner || topBid.isGlobalPartner),
+            until: topBid.until,
+          };
+        }
+      }
+    }
+    return { status: 'leveraged', war };
+  }
+
+  if (action === 'match_incumbent') {
+    if (!war.incumbentMatch || !war.existingSponsorId) throw new Error('Offre de maintien introuvable.');
+    const curSp = hub.sponsors.find((s) => s.id === war.existingSponsorId);
+    if (!curSp) throw new Error('Élément introuvable.');
+    curSp.fee = war.incumbentMatch.fee;
+    curSp.bonus = war.incumbentMatch.bonus;
+    curSp.isGlobalPartner = Boolean(war.incumbentMatch.isGlobalPartner);
+    curSp.until = war.incumbentMatch.until;
+    syncBootSponsor(state, hub);
+    hub.meters.sponsors = clamp(hub.meters.sponsors + 6, 0, 100);
+    hub.lastSponsorSwitch = {
+      kind: 'loyalty_renewal',
+      brand: curSp.brand,
+      rivals: war.bids.filter((b) => !b.walkedAway).map((b) => b.brand),
+      on: gameDate,
+    };
+    hub.biddingWars.splice(idx, 1);
+    pushRecent(hub, { date: gameDate, kind: 'sponsor', text: `Renewed with ${curSp.brand} after bidding war` });
+    return { status: 'matched', sponsor: curSp };
+  }
+
+  const chosen = war.bids.find((b) => b.id === bidId && !b.walkedAway)
+    || war.bids.filter((b) => !b.walkedAway).sort((a, b) => b.fee - a.fee)[0];
+  if (!chosen) throw new Error('Élément introuvable.');
+
+  const conflicts = findSponsorConflicts(hub.sponsors, chosen);
+  if (conflicts.length) {
+    executeSponsorBuyout(state, conflicts, gameDate, {
+      buyoutCoveredByBuyer: Boolean(chosen.buyoutCovered),
+      buyoutCost: war.buyoutCost || 0,
+      buyerBrand: chosen.brand,
+    });
+  }
+  const signed = addSponsor(
+    state,
+    { ...chosen, id: newId(), since: gameDate },
+    gameDate,
+    newId,
+    { enforceExclusivity: false },
+  );
+  if (chosen.signingBonus > 0) {
+    hub.cash += chosen.signingBonus;
+    addLedger(hub, { date: gameDate, amount: chosen.signingBonus, kind: 'sponsor', label: `signing_bonus:${chosen.brand}` });
+  }
+  hub.biddingWars.splice(idx, 1);
+  return { status: 'signed', sponsor: signed, war };
+}
+
+function answerOneTimeDeal(state, dealId, choice, gameDate = '', chosenDate = null, newId = () => `id_${Date.now()}`) {
+  const hub = ensureLifeHub(state, state.snapshot);
+  hub.oneTimeOffers ||= [];
+  hub.completedOneTime ||= [];
+  const idx = hub.oneTimeOffers.findIndex((o) => o.id === dealId);
+  if (idx < 0) throw new Error('Offre ponctuelle introuvable.');
+  const offer = hub.oneTimeOffers[idx];
+
+  if (choice === 'decline') {
+    hub.oneTimeOffers.splice(idx, 1);
+    return { status: 'declined', offer };
+  }
+  if (choice !== 'accept') throw new Error('Choix inconnu.');
+
+  hub.oneTimeOffers.splice(idx, 1);
+  const deposit = roundStep(offer.fee * 0.25, 500);
+  const remainder = Math.max(0, offer.fee - deposit);
+  if (deposit > 0) {
+    hub.cash += deposit;
+    addLedger(hub, { date: gameDate, amount: deposit, kind: 'sponsor', label: `onetime_deposit:${offer.brand}` });
+  }
+  const targetDate = /^\d{4}-\d{2}-\d{2}$/.test(String(chosenDate || '')) && String(chosenDate) > gameDate
+    ? String(chosenDate)
+    : (offer.suggestedDate && offer.suggestedDate > gameDate ? offer.suggestedDate : addDaysIso(gameDate, 6));
+
+  state.calendar ||= { simDate: gameDate, saveDate: gameDate, pendingMatches: [], revealedMatchIds: [], customEvents: [], history: [] };
+  state.calendar.customEvents ||= [];
+  const calEv = {
+    id: newId(),
+    date: targetDate,
+    title: `${offer.brand} — ${offer.dealKey.replace(/_/g, ' ')}`,
+    category: 'sponsor',
+    kind: 'onetime',
+    oneTimeDeal: {
+      dealKey: offer.dealKey,
+      brand: offer.brand,
+      remainderFee: remainder,
+      mediaBoost: offer.mediaBoost || 5,
+      fanBoost: offer.fanBoost || 4,
+      followerBoost: offer.followerBoost || 0.015,
+    },
+  };
+  state.calendar.customEvents.push(calEv);
+  state.calendar.customEvents.sort((a, b) => a.date.localeCompare(b.date));
+  pushRecent(hub, { date: gameDate, kind: 'sponsor', text: `Booked ${offer.brand} (${offer.dealKey}) for ${targetDate}` });
+  return { status: 'scheduled', offer, event: calEv, deposit };
+}
+
+function rescheduleObligation(state, obligationId, newDate, matchDatesSet = null) {
+  const hub = ensureLifeHub(state, state.snapshot);
+  const ob = hub.obligations.find((o) => o.id === obligationId);
+  if (!ob) throw new Error('Élément introuvable.');
+  const clean = String(newDate || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(clean)) throw new Error('Date et titre requis.');
+  const today = state.snapshot?.gameDate || hub.lastTickDate || clean;
+  const maxDate = addDaysIso(ob.dueDate || today, 14);
+  if (clean < today || clean > maxDate) throw new Error('La date choisie est hors de la fenêtre permise.');
+  if (matchDatesSet && matchDatesSet.has(clean)) throw new Error('Impossible de décaler une obligation sur un jour de match.');
+  ob.dueDate = clean;
+  return ob;
 }
 
 function completeObligation(state, obligationId, { skip = false } = {}, gameDate = '') {
@@ -1074,8 +1573,10 @@ function lifeHubFacts(state) {
   if (!hub?.calibrated) return undefined;
   const activeSponsors = (hub.sponsors || [])
     .filter((s) => s?.brand)
-    .slice(0, 8)
-    .map((s) => `${s.brand} (${normalizeSponsorCategories(s).join(', ')})`);
+    .slice(0, 10)
+    .map((s) => `${s.brand} (${normalizeSponsorCategories(s).join(', ')}${s.isGlobalPartner ? ' · Global Partner' : ''})`);
+  const activeWars = (hub.biddingWars || [])
+    .map((w) => `${w.category} bidding war (${w.bids.filter((b) => !b.walkedAway).map((b) => b.brand).join(' vs ')})`);
   const notableAssets = (hub.assets || [])
     .filter((a) => ['home', 'car', 'charity', 'staff'].includes(a.category) || a.custom)
     .map((a) => (a.custom ? a.name : (CATALOG_ENGLISH_NAMES[a.catalogId || a.name] || a.name)))
@@ -1085,6 +1586,7 @@ function lifeHubFacts(state) {
   return {
     career_stage: hub.stage || 'rookie',
     ...(activeSponsors.length ? { active_sponsors: activeSponsors } : {}),
+    ...(activeWars.length ? { active_bidding_wars: activeWars } : {}),
     relationships: { ...hub.meters },
     ...(notableAssets.length ? { notable_lifestyle: notableAssets } : {}),
     ...(recent.length ? { recent_off_pitch: recent } : {}),
@@ -1092,6 +1594,8 @@ function lifeHubFacts(state) {
 }
 
 module.exports = {
+  EXCLUSIVE_CATEGORIES,
+  MULTI_BRAND_CATEGORIES,
   SPONSOR_CATEGORIES,
   SPONSOR_PRESETS,
   ASSET_CATEGORIES,
@@ -1105,6 +1609,7 @@ module.exports = {
   isDuplicateSponsor,
   estimateStartProfile,
   ensureLifeHub,
+  addLedger,
   syncBootSponsor,
   isBootCategorySponsor,
   calibrateLifeHub,
@@ -1114,8 +1619,14 @@ module.exports = {
   addSponsor,
   updateSponsor,
   removeSponsor,
+  executeSponsorBuyout,
   answerSponsorOffer,
+  maybeStartBiddingWar,
+  answerBiddingWar,
+  maybeOfferOneTimeDeal,
+  answerOneTimeDeal,
   completeObligation,
+  rescheduleObligation,
   performAction,
   answerDilemma,
   ownedMonthlyCost,

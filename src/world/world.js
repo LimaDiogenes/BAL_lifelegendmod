@@ -9,11 +9,13 @@ const { detectGameFolders, loadGameDb, loadEditPlayers, mergeEditPlayers, matchR
 const { buildSnapshot, diffSnapshots, hasNews, sameMatch } = require('./snapshot');
 const { complete: completeRaw, transcribe, parseJson, isDailyQuota } = require('../ai/providers');
 const { normalizePrivacy, buildPrivacyMap, maskText, unmaskText, previewMasked } = require('../ai/privacyShield');
-const { normalizePersona, personaFacts } = require('./persona');
-const { ASSET_CATALOG, estimateStartProfile, ensureLifeHub, calibrateLifeHub: applyCalibration, lifeHubTick, buyAsset, sellAsset, addSponsor, updateSponsor, removeSponsor, answerSponsorOffer, completeObligation, performAction, answerDilemma, lifeHubFacts, clearPendingSaveEffects } = require('./lifeHub');
+const { normalizePersona, normalizeDob, personaFacts } = require('./persona');
+const { ASSET_CATALOG, estimateStartProfile, ensureLifeHub, calibrateLifeHub: applyCalibration, lifeHubTick, buyAsset, sellAsset, addSponsor, updateSponsor, removeSponsor, answerSponsorOffer, answerBiddingWar, answerOneTimeDeal, completeObligation, rescheduleObligation, performAction, answerDilemma, lifeHubFacts, clearPendingSaveEffects } = require('./lifeHub');
+const { catalogForUi } = require('./sponsorCatalog');
 const { saveLifeImage, removeLifeImage } = require('./lifeMedia');
 const { buildSceneAndReactions } = require('./lifeScenes');
-const { ensureCalendar, buildVisibleSnapshot, maskCareerForDate, ingestSyncCalendar, advanceCalendar, flushCalendarToSave, addCustomCalendarEvent, removeCustomCalendarEvent, daysBetween } = require('./calendar');
+const { ensureCalendar, buildVisibleSnapshot, maskCareerForDate, ingestSyncCalendar, advanceCalendar, flushCalendarToSave, addCustomCalendarEvent, removeCustomCalendarEvent, daysBetween, calendarAgenda } = require('./calendar');
+const { seedSystemEvents, collectDueDecisions, resolveCalendarDecision, flipBirthdayShift, birthdaysOnDate, birthdaysInMonth, squadBirthdayRoster, scheduleOffPitchActivity } = require('./calendarEvents');
 const { applyLifeEffects } = require('../save/lifeEffectsWrite');
 const { DEFAULT_PAPER_ID, normalizePaperOverride, resolveNationalPaper, paperDeskTemplate } = require('./nationalPaper');
 const { updateRival, rivalFacts, rivalInNews } = require('./rival');
@@ -31,6 +33,7 @@ const {
   findRepeatedQuestions, pickPressBeats, narrativeMemoryForAi,
 } = require('./narrativeMemory');
 const { tickDramaArcs, dramaFacts, spotlightLevel } = require('./dramaEngine');
+const { runProceduralDailyPulse, runHybridAiDailyPulse } = require('./dailyPulse');
 
 function privacyMapFor(state, settings) {
   const pending = settings?.pendingBio?.savePath === settings?.savePath ? settings.pendingBio : null;
@@ -56,8 +59,33 @@ function savePersona({ store, persona }) {
   const state = store.activeCareer();
   if (!state) throw new Error('Synchronise ta sauvegarde une première fois.');
   state.persona = normalizePersona(persona);
+  syncAgentWithPersona(state);
   store.saveCareer(state);
   return state;
+}
+
+function saveSquadBirthdays({ store, overrides = {} }) {
+  const state = store.activeCareer();
+  if (!state) throw new Error('Synchronise ta sauvegarde une première fois.');
+  const next = { ...(state.squadBirthdays || {}) };
+  if (overrides && typeof overrides === 'object') {
+    for (const [k, v] of Object.entries(overrides)) {
+      const cleanKey = String(k || '').trim().slice(0, 80);
+      if (!cleanKey) continue;
+      const dob = normalizeDob(v);
+      if (dob) next[cleanKey] = dob;
+      else delete next[cleanKey];
+    }
+  }
+  state.squadBirthdays = next;
+  store.saveCareer(state);
+  return state;
+}
+
+function resetCareer({ store }) {
+  const state = store.activeCareer();
+  const res = store.deleteCareer(state?.careerId || null);
+  return { reset: true, deletedId: res.deletedId, settings: store.publicSettings() };
 }
 
 function saveNationalPaper({ store, payload }) {
@@ -223,17 +251,41 @@ const sellLifeAsset = ({ store, assetId }) => withCareer(store, (state) => {
   }
 });
 
-const addLifeSponsor = ({ store, payload }) => withCareer(store, (state) => {
-  addSponsor(state, payload, state.snapshot?.gameDate || '', newId);
+function getSponsorCatalog({ store }) {
+  const state = store.activeCareer();
+  return catalogForUi(state, state?.snapshot || null);
+}
+
+const addLifeSponsor = ({ store, payload = {}, manual = false }) => withCareer(store, (state) => {
+  if (manual && (store.getSettings?.()?.sponsorMode || 'realistic') === 'realistic') {
+    throw new Error('Mode sponsors réaliste actif : passe en mode personnalisé dans les réglages pour modifier manuellement.');
+  }
+  addSponsor(
+    state,
+    payload,
+    state.snapshot?.gameDate || '',
+    newId,
+    {
+      enforceExclusivity: Boolean(payload?.enforceExclusivity || manual),
+      allowBuyout: Boolean(payload?.allowBuyout),
+      buyoutCovered: Boolean(payload?.buyoutCovered),
+    },
+  );
   ensureBootDealMedia(state, store);
 });
 
-const updateLifeSponsor = ({ store, payload }) => withCareer(store, (state) => {
-  updateSponsor(state, payload);
+const updateLifeSponsor = ({ store, payload = {}, manual = false }) => withCareer(store, (state) => {
+  if (manual && (store.getSettings?.()?.sponsorMode || 'realistic') === 'realistic') {
+    throw new Error('Mode sponsors réaliste actif : passe en mode personnalisé dans les réglages pour modifier manuellement.');
+  }
+  updateSponsor(state, payload, { enforceExclusivity: Boolean(payload?.enforceExclusivity || manual) });
   ensureBootDealMedia(state, store);
 });
 
-const removeLifeSponsor = ({ store, id }) => withCareer(store, (state) => {
+const removeLifeSponsor = ({ store, id, manual = false }) => withCareer(store, (state) => {
+  if (manual && (store.getSettings?.()?.sponsorMode || 'realistic') === 'realistic') {
+    throw new Error('Mode sponsors réaliste actif : passe en mode personnalisé dans les réglages pour modifier manuellement.');
+  }
   const hub = ensureLifeHub(state, state.snapshot);
   const target = hub.sponsors.find((s) => s.id === id);
   const oldImg = target?.customImage || null;
@@ -244,9 +296,52 @@ const removeLifeSponsor = ({ store, id }) => withCareer(store, (state) => {
   }
 });
 
-const answerLifeSponsorOffer = ({ store, offerId, choice }) => withCareer(store, (state) => {
-  answerSponsorOffer(state, offerId, choice, state.snapshot?.gameDate || '', newId);
+const answerLifeSponsorOffer = ({ store, offerId, choice, allowBuyout = false }) => withCareer(store, (state) => {
+  answerSponsorOffer(state, offerId, choice, state.snapshot?.gameDate || '', newId, { allowBuyout: Boolean(allowBuyout) });
   ensureBootDealMedia(state, store);
+});
+
+const answerLifeBiddingWar = ({ store, warId, action = 'accept', bidId = null }) => withCareer(store, (state) => {
+  const today = state.snapshot?.gameDate || '';
+  const res = answerBiddingWar(state, warId, { action, bidId }, today, newId);
+  ensureBootDealMedia(state, store);
+  if ((res.status === 'signed' || res.status === 'matched') && res.sponsor) {
+    noteKeyMemory(state, `${res.sponsor.brand} (${res.sponsor.category}) sponsor deal signed`, today);
+    try {
+      buildSceneAndReactions(state, state.snapshot, {
+        kind: 'obligation',
+        refId: res.sponsor.id,
+        category: 'sponsor',
+        brand: res.sponsor.brand,
+        deltas: { meters: { sponsors: 6, media: 3 }, bonusCash: 0 },
+      }, { language: langOfStore(store), newId });
+    } catch { /* ignore */ }
+  }
+  for (const m of state.mail || []) {
+    if (m.warId === warId && (res.status !== 'leveraged')) m.closed = true;
+  }
+});
+
+const answerLifeOneTimeDeal = ({ store, dealId, choice, date = null }) => withCareer(store, (state) => {
+  const today = state.snapshot?.gameDate || '';
+  const res = answerOneTimeDeal(state, dealId, choice, today, date, newId);
+  if (res.status === 'scheduled' && res.event) {
+    noteKeyMemory(state, `Scheduled ${res.event.title} for ${res.event.date}`, today);
+  }
+  for (const m of state.mail || []) {
+    if (m.oneTimeId === dealId) m.closed = true;
+  }
+});
+
+const rescheduleLifeObligation = ({ store, obligationId, date }) => withCareer(store, (state) => {
+  const matchDates = new Set();
+  for (const snap of [state.snapshot, state.saveSnapshot]) {
+    for (const f of [...(snap?.fixtures || []), ...(snap?.nationalTeam?.fixtures || [])]) {
+      if (f?.date) matchDates.add(f.date);
+    }
+  }
+  for (const pm of state.calendar?.pendingMatches || []) if (pm?.date) matchDates.add(pm.date);
+  rescheduleObligation(state, obligationId, date, matchDates);
 });
 
 const completeLifeObligation = ({ store, obligationId, skip }) => withCareer(store, (state) => {
@@ -398,15 +493,34 @@ function noteKeyMemory(state, line, gameDate = '') {
 }
 
 function dueLifeEvents(state, prevDate, curDate) {
-  if (!curDate || !Array.isArray(state.lifeEvents) || !state.lifeEvents.length) return [];
+  if (!curDate) return [];
   const floor = prevDate && prevDate <= curDate ? prevDate : daysBefore(curDate, 7);
   const due = [];
-  for (const ev of state.lifeEvents) {
-    if (ev.usedOn) continue;
-    if (ev.date >= floor && ev.date <= curDate) {
-      ev.usedOn = curDate;
-      due.push({ date: ev.date, event: ev.title });
-      noteKeyMemory(state, ev.title, ev.date);
+  const scan = (list, markUsed) => {
+    for (const ev of Array.isArray(list) ? list : []) {
+      if (!ev || ev.usedOn || !ev.date || !ev.title) continue;
+      if (ev.date >= floor && ev.date <= curDate) {
+        if (markUsed) ev.usedOn = curDate;
+        due.push({ date: ev.date, event: ev.title });
+        noteKeyMemory(state, ev.title, ev.date);
+      }
+    }
+  };
+  scan(state.lifeEvents, true);
+  scan(state.calendar?.customEvents, true);
+  if (state.lifeHub?.calibrated || state.persona?.playerDob) {
+    state.calendar ||= { seenBirthdayIds: [] };
+    state.calendar.seenBirthdayIds ||= [];
+    const months = new Set([String(floor).slice(0, 7), String(curDate).slice(0, 7)]);
+    for (const mIso of months) {
+      for (const b of birthdaysInMonth(state, mIso, { includeAutoSquad: false })) {
+        if ((b.closeness === 'self' || b.closeness === 'close') && b.date >= floor && b.date <= curDate && !state.calendar.seenBirthdayIds.includes(b.id)) {
+          state.calendar.seenBirthdayIds.push(b.id);
+          if (state.calendar.seenBirthdayIds.length > 180) state.calendar.seenBirthdayIds.shift();
+          due.push({ date: b.date, event: `${b.name} birthday (${b.role})` });
+          noteKeyMemory(state, `${b.name} birthday`, b.date);
+        }
+      }
     }
   }
   return due;
@@ -455,7 +569,7 @@ const { archiveSeason, careerFacts } = require('./seasons');
 const { clubMap, detectTransfers, windowOpen } = require('./mercato');
 const { bindPromise, resolvePromises, openPromises } = require('./promises');
 const { mentionDirectory, findMentions, playerReaction, clubHandle, slugHandle } = require('./mentions');
-const { ensureAgent, extensionByStance, computeMarket, applyStance, reportDue, agentFacts, clubPrestige } = require('./agent');
+const { ensureAgent, syncAgentWithPersona, extensionByStance, computeMarket, applyStance, reportDue, agentFacts, clubPrestige } = require('./agent');
 const { ensureInfluence, influenceScore, assess, decide, syncInfluence, influenceFacts, buildAux, requestFacts, fallbackReply, currentWindow, nextWindow, directorOf, playingTimeKnown } = require('./influence');
 const { applyFormation, applyTransfer } = require('../save/influenceWrite');
 const { applyUnavailable } = require('../save/conductWrite');
@@ -702,6 +816,8 @@ function factsFor(s, profile = {}, state = null, narrativeMem = null) {
     competition_accounts: state?.competitionAccounts || [],
     fan_mood: state?.fanMood || { level: 0, target: null, reasons: [] },
     ...(mediaSpotlight ? { media_spotlight: mediaSpotlight } : {}),
+    ...(Array.isArray(state?.dailyBriefs) && state.dailyBriefs.length ? { recent_daily_briefs: state.dailyBriefs.slice(0, 3).map(({ date, tag, headline }) => ({ date, tag, headline })) } : {}),
+    ...(state?.lifeHub?.regulatoryNews ? { betting_regulation_news: state.lifeHub.regulatoryNews } : {}),
     football_elsewhere: state?.footballElsewhere || undefined,
   };
 }
@@ -1057,8 +1173,9 @@ function loadState(store) {
   if (state?.snapshot) {
     const hadDeal = Boolean(state.sponsor?.deal);
     ensureLifeHub(state, state.snapshot);
+    const agentChanged = syncAgentWithPersona(state);
     const mediaAdded = ensureBootDealMedia(state, store);
-    if ((!hadDeal && state.sponsor?.deal) || mediaAdded) store.saveCareer(state);
+    if ((!hadDeal && state.sponsor?.deal) || mediaAdded || agentChanged) store.saveCareer(state);
     ensureCalendar(state, state.snapshot);
     state.nationalPaper = paperForState(state, state.snapshot);
     const hasAnyEmblem = Object.values(state.clubPages || {}).some((p) => p?.emblem);
@@ -2089,6 +2206,7 @@ async function syncInner({ store, settings, log, t }) {
     if (settings.pendingBio.privacy) state.privacy = normalizePrivacy(settings.pendingBio.privacy);
     if (settings.pendingBio.persona) state.persona = normalizePersona(settings.pendingBio.persona);
   }
+  syncAgentWithPersona(state);
   const privacyMap = privacyMapFor(state, settings);
   migrateClubAccounts(state);
   migrateCompetitionAccounts(state);
@@ -2381,7 +2499,8 @@ async function syncInner({ store, settings, log, t }) {
   } catch (err) { log(`Équipementier : ${err.message}`); }
   // Hub "Ma vie" (src/world/lifeHub.js) : salaires, sponsors multi-slots, patrimoine, jauges et dilemmes hors terrain.
   try {
-    lifeHubTick(state, snapshot, { changes, newId });
+    lifeHubTick(state, snapshot, { changes, newId, sponsorMode: settings?.sponsorMode || 'realistic' });
+    syncCommercialMailThreads(state, settings?.language || 'en');
     ensureBootDealMedia(state, store, career, settings);
   } catch (err) { log(`Ma vie : ${err.message}`); }
   // Des matchs restés sans article après une synchro de secours comptent comme une nouvelle : l'édition les rattrape.
@@ -3677,6 +3796,14 @@ function conductApply({ store, settings }) {
 function calendarAdvance({ store, mode = 'day', targetDate = null }) {
   const state = store.activeCareer();
   if (!state) throw new Error('Synchronise ta sauvegarde une première fois.');
+  const stg = store.getSettings?.() || {};
+  const eventMode = stg.eventMode || 'realistic';
+  const sponsorMode = stg.sponsorMode || 'realistic';
+
+  if (eventMode === 'realistic' && state.lifeHub?.calibrated) {
+    try { seedSystemEvents(state, state.snapshot, state.calendar?.simDate || state.snapshot?.gameDate, { eventMode, newId }); } catch { /* ignore */ }
+  }
+
   const step = advanceCalendar(state, { mode, targetDate });
   if (step.revealedFixtures.length && state.snapshot) {
     try { archiveSeason(state, state.snapshot); } catch { /* ignore */ }
@@ -3688,8 +3815,30 @@ function calendarAdvance({ store, mode = 'day', targetDate = null }) {
         matchday: Boolean(state.snapshot?.next?.date === step.nextDate),
       },
       newId,
+      sponsorMode,
     });
+    syncCommercialMailThreads(state, stg.language || 'en');
   } catch { /* ignore */ }
+
+  let dueBirthdays = [];
+  let dueDecisions = [];
+  let dailyPulse = null;
+  let notablePulse = null;
+  if (eventMode === 'realistic') {
+    dueBirthdays = birthdaysOnDate(state, step.nextDate, { includeAutoSquad: Boolean(state.lifeHub?.calibrated || state.persona) });
+    dueDecisions = collectDueDecisions(state, state.snapshot, step.nextDate, { eventMode, newId });
+    if (step.revealedFixtures.length === 0 && (state.lifeHub?.calibrated || state.editions?.length)) {
+      dailyPulse = runProceduralDailyPulse(state, state.snapshot, {
+        step,
+        settings: stg,
+        newId,
+        dueDecisions,
+        dueBirthdays,
+      });
+      notablePulse = dailyPulse?.notablePulse || null;
+    }
+  }
+
   let needsPublish = step.revealedFixtures.length > 0;
   if (!needsPublish && step.reachedSaveDate && state.syncedSnapshot && state.snapshot) {
     try {
@@ -3698,8 +3847,64 @@ function calendarAdvance({ store, mode = 'day', targetDate = null }) {
     } catch { /* ignore */ }
   }
   store.saveCareer(state);
-  return { state, step: { ...step, needsPublish } };
+  return { state, step: { ...step, needsPublish, dueBirthdays, dueDecisions, dailyPulse, notablePulse } };
 }
+
+async function runDailyAiPulse({ store, settings, notable }) {
+  const state = store.activeCareer();
+  if (!state || !state.snapshot || !notable) return { ok: false, skipped: true };
+  if ((settings?.eventMode || 'realistic') === 'games_only') return { ok: false, skipped: true };
+  const apiKey = store.getKey?.(settings.provider);
+  const optionalKey = ['ollama', 'lmstudio', 'custom'].includes(settings?.provider);
+  if (!apiKey && !optionalKey) return { ok: false, skipped: true };
+  const mem = loadNarrativeMemory(store, state.careerId);
+  const res = await runHybridAiDailyPulse({
+    state,
+    snapshot: state.snapshot,
+    settings,
+    apiKey,
+    notable,
+    complete,
+    privacyMap: privacyMapFor(state, settings),
+    newId,
+    mem,
+  });
+  syncDramaSnapshot(state, mem, state.snapshot);
+  saveNarrativeMemory(store, state.careerId, mem);
+  store.saveCareer(state);
+  return { ...res, state };
+}
+
+function getCalendarAgenda({ store, month = null }) {
+  const state = store.activeCareer();
+  if (!state) throw new Error('Synchronise ta sauvegarde une première fois.');
+  const stg = store.getSettings?.() || {};
+  const eventMode = stg.eventMode || 'realistic';
+  if (eventMode === 'realistic' && state.lifeHub?.calibrated) {
+    const added = seedSystemEvents(state, state.snapshot, state.calendar?.simDate || state.snapshot?.gameDate, { eventMode, newId });
+    if (added.length) store.saveCareer(state);
+  }
+  const ag = calendarAgenda(state, month);
+  return {
+    ...ag,
+    pendingDecisions: state.calendar?.pendingDecisions || [],
+    squadRoster: squadBirthdayRoster(state, state.saveSnapshot || state.snapshot),
+  };
+}
+
+const resolveLifeCalendarDecision = ({ store, decisionId, choiceId }) => withCareer(store, (state) => {
+  const lang = langOfStore(store);
+  const res = resolveCalendarDecision(state, decisionId, choiceId, state.snapshot?.gameDate || '', { language: lang, newId });
+  if (res.memoryLine) noteKeyMemory(state, res.memoryLine, state.snapshot?.gameDate || '');
+});
+
+const flipCalendarBirthdayShift = ({ store, bdayKey }) => withCareer(store, (state) => {
+  flipBirthdayShift(state, bdayKey);
+});
+
+const scheduleCalendarActivity = ({ store, payload }) => withCareer(store, (state) => {
+  scheduleOffPitchActivity(state, payload, newId);
+});
 
 function calendarSetMode({ store, mode }) {
   const clean = mode === 'full' ? 'full' : 'basic';
@@ -3712,7 +3917,7 @@ function calendarSetMode({ store, mode }) {
       if (fl.revealedFixtures?.length && state.snapshot) {
         try { archiveSeason(state, state.snapshot); } catch { /* ignore */ }
       }
-      try { lifeHubTick(state, state.snapshot, { changes: { newResults: fl.revealedFixtures || [] }, newId }); } catch { /* ignore */ }
+      try { lifeHubTick(state, state.snapshot, { changes: { newResults: fl.revealedFixtures || [] }, newId, sponsorMode: store.getSettings?.()?.sponsorMode || 'realistic' }); } catch { /* ignore */ }
     }
     store.saveCareer(state);
   }
@@ -3720,7 +3925,11 @@ function calendarSetMode({ store, mode }) {
 }
 
 const calendarAddEvent = ({ store, payload }) => withCareer(store, (state) => {
-  addCustomCalendarEvent(state, payload, newId);
+  if (payload?.kind === 'scheduled' || payload?.activityId) {
+    scheduleOffPitchActivity(state, payload, newId);
+  } else {
+    addCustomCalendarEvent(state, payload, newId);
+  }
 });
 
 const calendarRemoveEvent = ({ store, id }) => withCareer(store, (state) => {
@@ -3830,4 +4039,55 @@ function loadScores({ store }) {
   return state ? store.loadAux(state.careerId, 'scores') : null;
 }
 
-module.exports = { getNarrativeMemory, dismissNarrativeArc, clearNarrativeQuestions, savePrivacy, savePersona, saveNationalPaper, saveClubAlias, saveLifeEvents, calibrateCareerLifeHub, buyLifeAsset, sellLifeAsset, addLifeSponsor, updateLifeSponsor, removeLifeSponsor, answerLifeSponsorOffer, completeLifeObligation, doLifeAction, answerLifeDilemma, setLifeMedia, ensureLifeHub, calendarAdvance, calendarSetMode, calendarAddEvent, calendarRemoveEvent, applyLifeSaveEffects, dismissLifeSaveEffects, noteKeyMemory, privacyMapFor, previewMasked, getAiAuditLog, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };
+const syncCommercialMailThreads = (state, language = 'en') => {
+  const hub = state?.lifeHub;
+  if (!hub?.calibrated) return;
+  state.mail ||= [];
+  const today = state.snapshot?.gameDate || '';
+  const agentName = state.agent?.name || 'Agent';
+  const fmtMoney = (n) => `${Math.round(Number(n) || 0).toLocaleString('en-US')} €`;
+  const msgText = (war) => {
+    const rivals = war.bids.filter((b) => !b.walkedAway).map((b) => `${b.brand} (${fmtMoney(b.fee)}/yr${b.isGlobalPartner ? ' · Global Partner' : ''})`).join(', ');
+    if (language === 'fr') return `Plusieurs marques se disputent ton image dans la catégorie ${war.category} : ${rivals}.${war.existingBrand ? ` Offre de rachat incluse par rapport à ${war.existingBrand}.` : ''} Ouvre Ma vie › Sponsors pour négocier ou trancher.`;
+    if (language === 'pt') return `Várias marcas entraram em leilão na categoria ${war.category}: ${rivals}.${war.existingBrand ? ` Há possibilidade de rescisão do contrato com ${war.existingBrand}.` : ''} Abra Minha Vida › Patrocínios para negociar ou fechar.`;
+    if (language === 'es') return `Varias marcas compiten por tu imagen en la categoría ${war.category}: ${rivals}.${war.existingBrand ? ` Incluye opción de rescisión frente a ${war.existingBrand}.` : ''} Abre Mi Vida › Patrocinadores para negociar o firmar.`;
+    if (language === 'it') return `Più marchi si sfidano nella categoria ${war.category}: ${rivals}.${war.existingBrand ? ` Prevista anche l’opzione di buyout su ${war.existingBrand}.` : ''} Apri La mia vita › Sponsor per trattare o firmare.`;
+    if (language === 'de') return `Mehrere Marken liefern sich ein Bietergefecht in ${war.category}: ${rivals}.${war.existingBrand ? ` Ausstieg aus dem Deal mit ${war.existingBrand} möglich.` : ''} Öffne Mein Leben › Sponsoren zum Verhandeln.`;
+    return `Multiple brands opened a bidding war in ${war.category}: ${rivals}.${war.existingBrand ? ` Buyout options available vs ${war.existingBrand}.` : ''} Open My Life › Sponsors to leverage offers or sign.`;
+  };
+  for (const w of hub.biddingWars || []) {
+    if (state.mail.some((m) => m.warId === w.id)) continue;
+    state.mail.push({
+      id: newId(),
+      warId: w.id,
+      from: agentName,
+      role: 'agent',
+      org: state.agent?.agency || 'Agency',
+      club: state.snapshot?.club?.name,
+      subject: `${w.category.toUpperCase()} — ${w.bids.slice(0, 2).map((b) => b.brand).join(' vs ')}`,
+      unread: true,
+      closed: false,
+      messages: [{ who: 'them', body: msgText(w), gameDate: w.createdOn || today }],
+    });
+  }
+  for (const ot of hub.oneTimeOffers || []) {
+    if (state.mail.some((m) => m.oneTimeId === ot.id)) continue;
+    const body = language === 'fr'
+      ? `${ot.brand} propose une collaboration ponctuelle (${ot.dealKey.replace(/_/g, ' ')}) pour ${fmtMoney(ot.fee)}, prévue autour du ${ot.suggestedDate}. Gère la date dans Ma vie › Sponsors.`
+      : `${ot.brand} sent a one-time campaign offer (${ot.dealKey.replace(/_/g, ' ')}) worth ${fmtMoney(ot.fee)}, suggested for ${ot.suggestedDate}. Choose your date in My Life › Sponsors.`;
+    state.mail.push({
+      id: newId(),
+      oneTimeId: ot.id,
+      from: ot.brand,
+      role: 'sponsor',
+      org: ot.brand,
+      club: state.snapshot?.club?.name,
+      subject: `${ot.brand} — ${ot.dealKey.replace(/_/g, ' ')}`,
+      unread: true,
+      closed: false,
+      messages: [{ who: 'them', body, gameDate: ot.on || today }],
+    });
+  }
+};
+
+module.exports = { getNarrativeMemory, dismissNarrativeArc, clearNarrativeQuestions, savePrivacy, savePersona, saveSquadBirthdays, resetCareer, saveNationalPaper, saveClubAlias, saveLifeEvents, calibrateCareerLifeHub, buyLifeAsset, sellLifeAsset, getSponsorCatalog, addLifeSponsor, updateLifeSponsor, removeLifeSponsor, answerLifeSponsorOffer, answerLifeBiddingWar, answerLifeOneTimeDeal, completeLifeObligation, rescheduleLifeObligation, doLifeAction, answerLifeDilemma, setLifeMedia, ensureLifeHub, calendarAdvance, getCalendarAgenda, resolveLifeCalendarDecision, flipCalendarBirthdayShift, scheduleCalendarActivity, runDailyAiPulse, calendarSetMode, calendarAddEvent, calendarRemoveEvent, applyLifeSaveEffects, dismissLifeSaveEffects, noteKeyMemory, privacyMapFor, previewMasked, getAiAuditLog, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };

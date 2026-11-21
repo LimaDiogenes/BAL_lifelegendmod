@@ -387,6 +387,8 @@ app.whenReady().then(() => {
     return state;
   });
   handle('career:new', () => world.newCareerInfo({ store, settings: store.getSettings() }));
+  handle('career:reset', () => world.resetCareer({ store }));
+  handle('squad:saveBirthdays', (overrides) => world.saveSquadBirthdays({ store, overrides }));
   handle('bio:save', ({ text, kind }) => {
     const state = store.activeCareer();
     if (!state) throw new Error('Synchronise ta sauvegarde une première fois.');
@@ -399,11 +401,15 @@ app.whenReady().then(() => {
   handle('lifeHub:calibrate', (payload) => world.calibrateCareerLifeHub({ store, payload }));
   handle('lifeHub:buyAsset', (payload) => world.buyLifeAsset({ store, payload }));
   handle('lifeHub:sellAsset', (assetId) => world.sellLifeAsset({ store, assetId }));
-  handle('lifeHub:addSponsor', (payload) => world.addLifeSponsor({ store, payload }));
-  handle('lifeHub:updateSponsor', (payload) => world.updateLifeSponsor({ store, payload }));
-  handle('lifeHub:removeSponsor', (id) => world.removeLifeSponsor({ store, id }));
-  handle('lifeHub:answerOffer', ({ offerId, choice }) => world.answerLifeSponsorOffer({ store, offerId, choice }));
+  handle('lifeHub:catalog', () => world.getSponsorCatalog({ store }));
+  handle('lifeHub:addSponsor', (payload) => world.addLifeSponsor({ store, payload, manual: true }));
+  handle('lifeHub:updateSponsor', (payload) => world.updateLifeSponsor({ store, payload, manual: true }));
+  handle('lifeHub:removeSponsor', (id) => world.removeLifeSponsor({ store, id, manual: true }));
+  handle('lifeHub:answerOffer', ({ offerId, choice, allowBuyout }) => world.answerLifeSponsorOffer({ store, offerId, choice, allowBuyout }));
+  handle('lifeHub:answerBiddingWar', ({ warId, action, bidId }) => world.answerLifeBiddingWar({ store, warId, action, bidId }));
+  handle('lifeHub:answerOneTimeDeal', ({ dealId, choice, date }) => world.answerLifeOneTimeDeal({ store, dealId, choice, date }));
   handle('lifeHub:completeObligation', ({ obligationId, skip }) => world.completeLifeObligation({ store, obligationId, skip }));
+  handle('lifeHub:rescheduleObligation', ({ obligationId, date }) => world.rescheduleLifeObligation({ store, obligationId, date }));
   handle('lifeHub:action', (payload) => world.doLifeAction({ store, payload }));
   handle('lifeHub:dilemma', ({ dilemmaId, choiceId }) => world.answerLifeDilemma({ store, dilemmaId, choiceId }));
   handle('lifeHub:setMedia', (payload) => world.setLifeMedia({ store, payload }));
@@ -413,7 +419,21 @@ app.whenReady().then(() => {
     return r;
   });
   handle('lifeHub:dismissSaveEffects', () => world.dismissLifeSaveEffects({ store }));
-  handle('calendar:advance', ({ mode, targetDate } = {}) => world.calendarAdvance({ store, mode, targetDate }));
+  handle('calendar:agenda', ({ month } = {}) => world.getCalendarAgenda({ store, month }));
+  handle('calendar:advance', async ({ mode, targetDate } = {}) => {
+    const res = world.calendarAdvance({ store, mode, targetDate });
+    const stg = store.getSettings();
+    if (res?.step?.notablePulse && (stg.eventMode || 'realistic') !== 'games_only') {
+      try {
+        const ai = await world.runDailyAiPulse({ store, settings: stg, notable: res.step.notablePulse });
+        if (ai?.state) res.state = ai.state;
+      } catch { /* le mode quotidien procédural suffit en cas d'indisponibilité de l'IA */ }
+    }
+    return res;
+  });
+  handle('calendar:resolveDecision', ({ decisionId, choiceId }) => world.resolveLifeCalendarDecision({ store, decisionId, choiceId }));
+  handle('calendar:flipBirthdayShift', ({ bdayKey }) => world.flipCalendarBirthdayShift({ store, bdayKey }));
+  handle('calendar:scheduleActivity', (payload) => world.scheduleCalendarActivity({ store, payload }));
   handle('calendar:setMode', ({ mode }) => {
     const r = world.calendarSetMode({ store, mode });
     return { state: r.state, settings: store.publicSettings(), flushed: r.flushed, revealedCount: r.revealedCount };

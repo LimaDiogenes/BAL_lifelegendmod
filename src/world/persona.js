@@ -179,18 +179,43 @@ const DEFAULT_CIRCLE_STARTERS = {
 
 const cleanStr = (s, max = 120) => String(s || '').replace(/["\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
 
-function normalizeCirclePerson(item, idx = 0) {
+function normalizeDob(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s);
+  if (m) {
+    const mm = Number(m[2]), dd = Number(m[3]);
+    if (mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) {
+      return `${m[1]}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+    }
+    return '';
+  }
+  m = /^--(\d{1,2})-(\d{1,2})$/.exec(s) || /^(\d{1,2})-(\d{1,2})$/.exec(s);
+  if (m) {
+    const mm = Number(m[1]), dd = Number(m[2]);
+    if (mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) {
+      return `--${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+    }
+  }
+  return '';
+}
+
+function normalizeCirclePerson(item, idx = 0, group = '') {
   if (!item || typeof item !== 'object') return null;
   const role = cleanStr(item.role, 60);
   const name = cleanStr(item.name, 120);
   const decoy = cleanStr(item.decoy, 120);
-  if (!role && !name && !decoy) return null;
+  const dob = normalizeDob(item.dob);
+  const close = item.close !== undefined ? Boolean(item.close) : (group === 'family' || group === 'friends');
+  if (!role && !name && !decoy && !dob) return null;
   const id = cleanStr(item.id, 32) || `p${idx + 1}`;
   return {
     id,
     role,
     name,
     decoy,
+    dob,
+    close,
     protect: item.protect !== false,
   };
 }
@@ -209,6 +234,11 @@ function normalizePersona(raw) {
   for (const k of ROOT_KEYS) {
     roots[k] = cleanStr(src.roots?.[k], 120);
   }
+  const rootProtect = {
+    hometown: src.rootProtect?.hometown !== false,
+    childhood: src.rootProtect?.childhood !== false,
+    academy: src.rootProtect?.academy !== false,
+  };
 
   const flavor = {};
   for (const k of FLAVOR_KEYS) {
@@ -221,13 +251,21 @@ function normalizePersona(raw) {
     const out = [];
     for (const [i, item] of list.entries()) {
       if (out.length >= MAX_GROUP_PEOPLE) break;
-      const p = normalizeCirclePerson(item, i);
+      const p = normalizeCirclePerson(item, i, g);
       if (p) out.push(p);
     }
     circle[g] = out;
   }
 
-  return { preset, traits, roots, flavor, circle };
+  return {
+    preset,
+    playerDob: normalizeDob(src.playerDob),
+    traits,
+    roots,
+    rootProtect,
+    flavor,
+    circle,
+  };
 }
 
 function defaultStarterCircle(trFn = (s) => s) {
@@ -238,10 +276,24 @@ function defaultStarterCircle(trFn = (s) => s) {
       role: trFn(roleKey),
       name: '',
       decoy: '',
+      dob: '',
+      close: g === 'family' || g === 'friends',
       protect: true,
     }));
   }
   return circle;
+}
+
+const AGENT_ROLE_RE = /\b(agent|agente|berater|procuratore|empres[aá]rio|representante)\b/i;
+
+function extractPersonaAgent(persona) {
+  const norm = normalizePersona(persona);
+  for (const person of norm.circle.business) {
+    if (person.name && AGENT_ROLE_RE.test(person.role || '')) {
+      return { name: person.name, dob: person.dob || '', protect: person.protect !== false };
+    }
+  }
+  return null;
 }
 
 function personaFacts(persona) {
@@ -275,12 +327,14 @@ function personaFacts(persona) {
         group: g,
         ...(person.role ? { role: person.role } : {}),
         name: person.name,
+        ...(person.dob ? { dob: person.dob } : {}),
       });
     }
   }
 
   const hasContent = Boolean(
     presetObj
+    || norm.playerDob
     || Object.keys(traitsOut).length
     || Object.keys(rootsOut).length
     || Object.keys(flavorOut).length
@@ -290,6 +344,7 @@ function personaFacts(persona) {
 
   return {
     ...(presetObj ? { archetype: presetObj.aiDesc } : {}),
+    ...(norm.playerDob ? { player_dob: norm.playerDob } : {}),
     ...(Object.keys(traitsOut).length ? { traits: traitsOut } : {}),
     ...(Object.keys(rootsOut).length ? { roots: rootsOut } : {}),
     ...(Object.keys(flavorOut).length ? { flavor: flavorOut } : {}),
@@ -314,10 +369,11 @@ function inferCircleEntryKind(group, role) {
 
 function personaPrivacyEntries(persona) {
   const norm = normalizePersona(persona);
+  const rp = norm.rootProtect || {};
   const roots = {
-    hometown: norm.roots.hometown,
-    childhood: norm.roots.childhood,
-    academy: norm.roots.academy,
+    hometown: rp.hometown !== false ? norm.roots.hometown : '',
+    childhood: rp.childhood !== false ? norm.roots.childhood : '',
+    academy: rp.academy !== false ? norm.roots.academy : '',
   };
   const people = [];
   for (const g of CIRCLE_GROUPS) {
@@ -345,8 +401,10 @@ module.exports = {
   PERSONA_PRESETS,
   TRAIT_AI_LABELS,
   DEFAULT_CIRCLE_STARTERS,
+  normalizeDob,
   normalizePersona,
   defaultStarterCircle,
+  extractPersonaAgent,
   personaFacts,
   personaPrivacyEntries,
 };

@@ -117,6 +117,7 @@ const SITES = [
   { id: 'huddle', label: () => 'Vestiaire' },
   { id: 'stats', label: () => 'Scoreline' },
   { id: 'pantheon', label: () => 'Panthéon' },
+  { id: 'playerprofile', hidden: true, label: () => tr('Profil du joueur') },
   { id: 'settings', hidden: true, label: () => tr('Réglages') },
 ];
 
@@ -412,8 +413,15 @@ function goBack() {
   return false;
 }
 
-// Réglages ouverts à une rubrique (#rg-save, #rg-ai…).
+const PLAYER_PROFILE_SECTIONS = new Set(['rg-mebio', 'rg-mepersona', 'rg-privacy', 'rg-clubaliases', 'rg-lifeevents']);
+
+// Réglages ouverts à une rubrique (#rg-save, #rg-ai…), ou Profil du joueur pour les sections joueur.
 function openSettings(section) {
+  if (PLAYER_PROFILE_SECTIONS.has(section) && state) {
+    go('playerprofile');
+    setTimeout(() => document.getElementById(section)?.scrollIntoView({ block: 'start' }), 50);
+    return;
+  }
   view.rgTab = RG_SECTION_TAB[section] || view.rgTab; // l'onglet qui contient la section
   go('settings');
   setTimeout(() => document.getElementById(section)?.scrollIntoView({ block: 'start' }), 50);
@@ -450,34 +458,6 @@ const setupActive = () => !state || Boolean(view.setup?.newCareer);
 const SETUP_STEPS = ['Ta sauvegarde', 'Ta clé d’IA', 'Sa biographie'];
 const BIO_MAX = 3000;
 
-const PRIVACY_FIELD_META = [
-  ['playerName', () => tr('Nom du joueur'), () => tr('Nom dans la sauvegarde (ex. Lucas Silva)')],
-  ['nickname', () => tr('Surnom'), () => tr('Surnom personnel')],
-  ['handle', () => tr('Pseudo Kop'), () => tr('Sans @')],
-  ['hometown', () => tr('Ville d’origine'), () => tr('Ville natale ou de résidence')],
-  ['region', () => tr('Quartier ou région'), () => tr('Quartier, État ou région')],
-  ['partner', () => tr('Conjoint(e)'), () => tr('Prénom')],
-  ['father', () => tr('Père'), () => tr('Prénom')],
-  ['mother', () => tr('Mère'), () => tr('Prénom')],
-  ['siblings', () => tr('Frères, sœurs, enfants'), () => tr('Séparés par des virgules')],
-  ['friend', () => tr('Meilleur ami'), () => tr('Prénom')],
-  ['pet', () => tr('Animal'), () => tr('Nom')],
-  ['youthClub', () => tr('Club formateur réel'), () => tr('Premier club')],
-  ['youthCoach', () => tr('Entraîneur formateur'), () => tr('Nom')],
-  ['school', () => tr('École ou lycée'), () => tr('Nom de l’établissement')],
-];
-
-const PRIVACY_MAX_PEOPLE = 10;
-
-function privacyPersonRowHtml(prefix, person = {}) {
-  return `<div class="priv-person-row">
-    <input class="priv-person-label" value="${esc(person.label || '')}" placeholder="${esc(tr('Libellé (ex. Cousin, Agent)'))}" maxlength="60">
-    <input class="priv-person-real" value="${esc(person.real || '')}" placeholder="${esc(tr('Nom réel'))}" maxlength="120">
-    <input class="priv-person-decoy" value="${esc(person.decoy || '')}" placeholder="${esc(tr('Pseudo (auto)'))}" maxlength="120">
-    <button type="button" class="priv-person-del" title="${esc(tr('Supprimer'))}" aria-label="${esc(tr('Supprimer'))}">×</button>
-  </div>`;
-}
-
 function privacyNoticeHtml(prefix) {
   return `<div class="priv-notice">
     <span>${tr('Confidentialité activée par défaut : le nom de ton joueur issu de la sauvegarde est déjà remplacé automatiquement avant tout envoi à l’IA. Si tu mentionnes ta vraie ville, ta famille ou des proches dans cette histoire, ajoute-les dans le bouclier ci-dessous.')}</span>
@@ -485,30 +465,39 @@ function privacyNoticeHtml(prefix) {
   </div>`;
 }
 
-function privacyFormHtml(prefix, priv, { playerName = '', handle = '' } = {}) {
+function countAutoProtectedItems(persona, playerName = '', handle = '') {
+  let n = 0;
+  if (playerName) n++;
+  if (handle) n++;
+  const roots = persona?.roots || {};
+  const rp = persona?.rootProtect || {};
+  for (const k of ['hometown', 'childhood', 'academy']) {
+    if (roots[k] && rp[k] !== false) n++;
+  }
+  const circle = persona?.circle || {};
+  for (const g of ['family', 'friends', 'business', 'roots']) {
+    for (const p of circle[g] || []) {
+      if (p?.name && p.protect !== false) n++;
+    }
+  }
+  return n;
+}
+
+function privacyFormHtml(prefix, priv, { playerName = '', handle = '', persona = null } = {}) {
   const on = priv?.enabled !== false;
   const f = priv?.fields || {};
-  const people = Array.isArray(priv?.customPeople) ? priv.customPeople.slice(0, PRIVACY_MAX_PEOPLE) : [];
-  const hasFilled = Boolean(f.custom || people.length || PRIVACY_FIELD_META.some(([k]) => Boolean(f[k])));
-  const inputs = PRIVACY_FIELD_META.map(([key, labelFn, hintFn]) => {
-    const val = f[key] || '';
-    const ph = key === 'playerName' && playerName ? playerName : key === 'handle' && handle ? handle : hintFn();
-    return `<label class="priv-field"><span>${esc(labelFn())}</span><input id="${prefix}-priv-f-${key}" value="${esc(val)}" placeholder="${esc(ph)}" maxlength="120"></label>`;
-  }).join('');
-  return `<details class="priv-box" id="${prefix}-priv-box"${hasFilled ? ' open' : ''}>
-    <summary><span>${tr('Confidentialité')}</span><span class="priv-badge${on ? ' on' : ''}" id="${prefix}-priv-badge">${on ? tr('Activé') : tr('Désactivé')}</span></summary>
+  const autoCount = countAutoProtectedItems(persona || state?.persona, playerName, handle);
+  const hasCustom = Boolean(f.custom);
+  return `<details class="priv-box" id="${prefix}-priv-box"${hasCustom ? ' open' : ''}>
+    <summary><span>${tr('Bouclier de confidentialité')}</span><span class="priv-badge${on ? ' on' : ''}" id="${prefix}-priv-badge">${on ? tr('Activé') : tr('Désactivé')}</span></summary>
     <div class="priv-body">
       ${rgSwitch(`${prefix}-priv-on`, on, tr('Protéger mes informations personnelles (remplacées par des pseudonymes avant tout envoi à l’IA)'),
-        tr('Tout reste sur ce PC : chaque mot ci-dessous est remplacé par un pseudonyme réaliste avant l’envoi à l’IA, puis rétabli au retour. Laisse vide ce que tu ne mentionnes pas ; ajoute « réel = pseudo » dans les mots libres pour choisir toi-même le remplacement.'))}
-      <div class="priv-grid">${inputs}</div>
-      <details class="priv-people-box"${people.length ? ' open' : ''}>
-        <summary><span>${tr('Personnes personnalisées')}</span><span class="priv-badge${people.length ? ' on' : ''}" id="${prefix}-priv-people-count">${people.length} / ${PRIVACY_MAX_PEOPLE}</span></summary>
-        <p class="fineprint">${esc(tr('Ajoute jusqu’à 10 personnes (tu peux renommer chaque libellé).'))}</p>
-        <div class="priv-person-row per-col-head"><span>${tr('Libellé')}</span><span>${tr('Nom réel')}</span><span>${tr('Pseudo (auto)')}</span><span></span></div>
-        <div class="priv-people-list" id="${prefix}-priv-people-list">${people.map((p) => privacyPersonRowHtml(prefix, p)).join('')}</div>
-        <button type="button" class="btn" id="${prefix}-priv-add-person"${people.length >= PRIVACY_MAX_PEOPLE ? ' disabled' : ''}>${tr('Ajouter une personne')}</button>
-      </details>
-      <label class="priv-custom"><span>${tr('Autres mots à masquer')}</span><input id="${prefix}-priv-custom" value="${esc(f.custom || '')}" placeholder="${esc(tr('ex. Rue des Lilas, Rex = Bolt'))}" maxlength="500"></label>
+        tr('Tout reste sur ce PC : ton nom, ton pseudo, tes origines protégées et les proches cochés ci-dessus sont remplacés automatiquement par des pseudonymes avant l’envoi à l’IA, puis rétablis au retour.'))}
+      <div class="priv-auto-summary">
+        <span class="per-shield-pill">${hi('shieldCheck')} ${esc(trn(autoCount, '{n} élément protégé automatiquement depuis le profil', '{n} éléments protégés automatiquement depuis le profil'))}</span>
+        <span class="fineprint">${esc(tr('Coche ou décoche les boucliers directement sur tes racines et ton cercle intime.'))}</span>
+      </div>
+      <label class="priv-custom"><span>${tr('Autres mots à masquer (optionnel)')}</span><input id="${prefix}-priv-custom" value="${esc(f.custom || '')}" placeholder="${esc(tr('ex. Rue des Lilas, Rex = Bolt'))}" maxlength="500"></label>
       <div class="priv-actions">
         <button type="button" class="btn" id="${prefix}-priv-preview-btn">${tr('Aperçu de ce que voit l’IA')}</button>
         <button type="button" class="btn" id="${prefix}-priv-audit-btn">${tr('Voir les derniers envois IA')}</button>
@@ -521,20 +510,10 @@ function privacyFormHtml(prefix, priv, { playerName = '', handle = '' } = {}) {
 function readPrivacyForm(prefix) {
   const toggle = $(`#${prefix}-priv-on`);
   if (!toggle) return null;
-  const fields = {};
-  for (const [key] of PRIVACY_FIELD_META) fields[key] = $(`#${prefix}-priv-f-${key}`)?.value.trim() || '';
+  const prev = (state?.privacy || view.setup?.privacy || {});
+  const fields = { ...(prev.fields || {}) };
   fields.custom = $(`#${prefix}-priv-custom`)?.value.trim() || '';
-  const list = $(`#${prefix}-priv-people-list`);
-  const customPeople = [];
-  if (list) {
-    list.querySelectorAll('.priv-person-row').forEach((row) => {
-      if (customPeople.length >= PRIVACY_MAX_PEOPLE) return;
-      const label = row.querySelector('.priv-person-label')?.value.trim() || '';
-      const real = row.querySelector('.priv-person-real')?.value.trim() || '';
-      const decoy = row.querySelector('.priv-person-decoy')?.value.trim() || '';
-      if (label || real || decoy) customPeople.push({ label, real, decoy });
-    });
-  }
+  const customPeople = Array.isArray(prev.customPeople) ? prev.customPeople : [];
   return { enabled: toggle.checked, fields, customPeople };
 }
 
@@ -556,50 +535,8 @@ function bindPrivacyForm(prefix, { getBio, getPlayer, getHandle, getPersona, onC
   };
   const notify = () => { syncBadge(); onChange?.(readPrivacyForm(prefix)); };
   toggle.onchange = notify;
-  for (const [key] of PRIVACY_FIELD_META) {
-    const el = $(`#${prefix}-priv-f-${key}`);
-    if (el) el.oninput = () => onChange?.(readPrivacyForm(prefix));
-  }
   const custom = $(`#${prefix}-priv-custom`);
   if (custom) custom.oninput = () => onChange?.(readPrivacyForm(prefix));
-
-  const peopleList = $(`#${prefix}-priv-people-list`);
-  const addPersonBtn = $(`#${prefix}-priv-add-person`);
-  const peopleCount = $(`#${prefix}-priv-people-count`);
-  const syncPeopleUi = () => {
-    if (!peopleList) return;
-    const n = peopleList.querySelectorAll('.priv-person-row').length;
-    if (peopleCount) {
-      peopleCount.textContent = `${n} / ${PRIVACY_MAX_PEOPLE}`;
-      peopleCount.classList.toggle('on', n > 0);
-    }
-    if (addPersonBtn) addPersonBtn.disabled = n >= PRIVACY_MAX_PEOPLE;
-  };
-  const bindRow = (row) => {
-    row.querySelectorAll('input').forEach((inp) => { inp.oninput = () => onChange?.(readPrivacyForm(prefix)); });
-    const del = row.querySelector('.priv-person-del');
-    if (del) {
-      del.onclick = () => {
-        row.remove();
-        syncPeopleUi();
-        onChange?.(readPrivacyForm(prefix));
-      };
-    }
-  };
-  if (peopleList) peopleList.querySelectorAll('.priv-person-row').forEach(bindRow);
-  if (addPersonBtn && peopleList) {
-    addPersonBtn.onclick = () => {
-      if (peopleList.querySelectorAll('.priv-person-row').length >= PRIVACY_MAX_PEOPLE) return;
-      const wrap = document.createElement('div');
-      wrap.innerHTML = privacyPersonRowHtml(prefix, {});
-      const row = wrap.firstElementChild;
-      peopleList.appendChild(row);
-      bindRow(row);
-      syncPeopleUi();
-      row.querySelector('.priv-person-label')?.focus();
-      onChange?.(readPrivacyForm(prefix));
-    };
-  }
 
   const btn = $(`#${prefix}-priv-preview-btn`);
   if (btn) {
@@ -762,21 +699,34 @@ const PERSONA_CIRCLE_UI = [
   { key: 'roots', label: () => tr('Racines & mentors'), hint: () => tr('Coach formateur, premier club, idole, animal de compagnie…'), starters: [() => tr('Entraîneur formateur'), () => tr('Premier club'), () => tr('Idole / Mentor'), () => tr('Animal de compagnie')] },
 ];
 
+const AGENT_ROLE_UI_RE = /\b(agent|agente|berater|procuratore|empres[aá]rio|representante)\b/i;
+
 function personaDraft(raw) {
+  const rp = {
+    hometown: raw?.rootProtect?.hometown !== false,
+    childhood: raw?.rootProtect?.childhood !== false,
+    academy: raw?.rootProtect?.academy !== false,
+  };
   if (raw && typeof raw === 'object' && raw.circle) {
     return {
       preset: raw.preset || '',
+      playerDob: raw.playerDob || '',
       traits: { ...(raw.traits || {}) },
       roots: { ...(raw.roots || {}) },
+      rootProtect: rp,
       flavor: { ...(raw.flavor || {}) },
-      circle: Object.fromEntries(PERSONA_CIRCLE_UI.map((g) => [g.key, Array.isArray(raw.circle[g.key]) ? raw.circle[g.key].slice(0, PERSONA_GROUP_MAX) : []])),
+      circle: Object.fromEntries(PERSONA_CIRCLE_UI.map((g) => [g.key, Array.isArray(raw.circle[g.key]) ? raw.circle[g.key].slice(0, PERSONA_GROUP_MAX).map((p) => ({
+        ...p,
+        dob: p?.dob || '',
+        close: p?.close !== undefined ? Boolean(p.close) : (g.key === 'family' || g.key === 'friends'),
+      })) : []])),
     };
   }
   const circle = {};
   for (const g of PERSONA_CIRCLE_UI) {
-    circle[g.key] = g.starters.map((fn) => ({ role: fn(), name: '', decoy: '', protect: true }));
+    circle[g.key] = g.starters.map((fn) => ({ role: fn(), name: '', dob: '', decoy: '', close: g.key === 'family' || g.key === 'friends', protect: true }));
   }
-  return { preset: raw?.preset || '', traits: { ...(raw?.traits || {}) }, roots: { ...(raw?.roots || {}) }, flavor: { ...(raw?.flavor || {}) }, circle };
+  return { preset: raw?.preset || '', playerDob: raw?.playerDob || '', traits: { ...(raw?.traits || {}) }, roots: { ...(raw?.roots || {}) }, rootProtect: rp, flavor: { ...(raw?.flavor || {}) }, circle };
 }
 
 function detectPersonaPreset(traits) {
@@ -793,11 +743,15 @@ function personaBadgeLabel(presetId) {
   return found ? found.label() : tr('Optionnel');
 }
 
-function personaPersonRowHtml(person = {}) {
+function personaPersonRowHtml(person = {}, groupKey = '') {
+  const isClose = person.close !== undefined ? Boolean(person.close) : (groupKey === 'family' || groupKey === 'friends');
+  const isAgentRow = groupKey === 'business' && AGENT_ROLE_UI_RE.test(person.role || '') && Boolean(person.name);
   return `<div class="per-person-row">
-    <input class="per-p-role" value="${esc(person.role || '')}" placeholder="${esc(tr('Rôle (ex. Tante, Kiné)'))}" maxlength="60">
+    <div class="per-p-role-wrap"><input class="per-p-role" value="${esc(person.role || '')}" placeholder="${esc(tr('Rôle (ex. Tante, Kiné)'))}" maxlength="60">${isAgentRow ? `<span class="per-sync-pill" title="${esc(tr('Synchronisé avec l’agent dans Mails'))}">${esc(tr('Synchronisé Mails'))}</span>` : ''}</div>
     <input class="per-p-name" value="${esc(person.name || '')}" placeholder="${esc(tr('Nom réel'))}" maxlength="120">
+    <input type="date" class="per-p-dob" value="${esc(person.dob || '')}" title="${esc(tr('Date de naissance'))}" aria-label="${esc(tr('Date de naissance'))}">
     <input class="per-p-decoy" value="${esc(person.decoy || '')}" placeholder="${esc(tr('Pseudo (auto)'))}" maxlength="120">
+    <label class="per-p-shield per-p-close" title="${esc(tr('Proche (fête ou dîner d’anniversaire)'))}"><input type="checkbox" class="per-p-close-in"${isClose ? ' checked' : ''} aria-label="${esc(tr('Proche (fête ou dîner d’anniversaire)'))}"><span>${hi('heart')}</span></label>
     <label class="per-p-shield" title="${esc(tr('Masquer dans le bouclier de confidentialité'))}"><input type="checkbox" class="per-p-protect"${person.protect !== false ? ' checked' : ''} aria-label="${esc(tr('Masquer dans le bouclier de confidentialité'))}"><span>${hi('shieldCheck')}</span></label>
     <button type="button" class="per-p-del" title="${esc(tr('Retirer cette personne'))}" aria-label="${esc(tr('Retirer cette personne'))}">−</button>
   </div>`;
@@ -824,10 +778,13 @@ function personaFormHtml(prefix, rawPersona) {
     </div>`;
   }).join('');
 
-  const rootsHtml = PERSONA_ROOTS_UI.map((r) => `<label class="per-field">
-    <span class="per-field-head"><span>${esc(r.label())}</span>${r.shield ? `<span class="per-shield-pill" title="${esc(tr('Masquer dans le bouclier de confidentialité'))}">${hi('shieldCheck')} ${esc(tr('Protégé'))}</span>` : ''}</span>
-    <input id="${prefix}-per-root-${r.key}" value="${esc(d.roots[r.key] || '')}" placeholder="${esc(r.hint())}" maxlength="120">
-  </label>`).join('');
+  const rootsHtml = PERSONA_ROOTS_UI.map((r) => {
+    const checked = d.rootProtect?.[r.key] !== false;
+    return `<label class="per-field">
+      <span class="per-field-head"><span>${esc(r.label())}</span>${r.shield ? `<label class="per-root-shield" title="${esc(tr('Masquer dans le bouclier de confidentialité'))}"><input type="checkbox" id="${prefix}-per-rprot-${r.key}"${checked ? ' checked' : ''}><span>${hi('shieldCheck')} ${esc(tr('Protégé'))}</span></label>` : ''}</span>
+      <input id="${prefix}-per-root-${r.key}" value="${esc(d.roots[r.key] || '')}" placeholder="${esc(r.hint())}" maxlength="120">
+    </label>`;
+  }).join('');
 
   const flavorsHtml = PERSONA_FLAVORS_UI.map((f) => {
     const dlId = `${prefix}-per-dl-${f.key}`;
@@ -847,8 +804,8 @@ function personaFormHtml(prefix, rawPersona) {
         <span class="priv-badge${filled ? ' on' : ''}" id="${prefix}-per-cnt-${g.key}">${rows.length} / ${PERSONA_GROUP_MAX}</span>
       </summary>
       <div class="per-group-body">
-        <div class="per-person-row per-col-head"><span>${tr('Rôle')}</span><span>${tr('Nom réel')}</span><span>${tr('Pseudo (auto)')}</span><span>${tr('Bouclier')}</span><span></span></div>
-        <div class="per-group-list" id="${prefix}-per-list-${g.key}">${rows.map((p) => personaPersonRowHtml(p)).join('')}</div>
+        <div class="per-person-row per-col-head"><span>${tr('Rôle')}</span><span>${tr('Nom réel')}</span><span>${tr('Naissance')}</span><span>${tr('Pseudo (auto)')}</span><span>${tr('Proche')}</span><span>${tr('Bouclier')}</span><span></span></div>
+        <div class="per-group-list" id="${prefix}-per-list-${g.key}">${rows.map((p) => personaPersonRowHtml(p, g.key)).join('')}</div>
         <button type="button" class="btn per-p-add" data-group="${g.key}"${rows.length >= PERSONA_GROUP_MAX ? ' disabled' : ''}>+ ${esc(tr('Ajouter'))}</button>
       </div>
     </details>`;
@@ -857,7 +814,8 @@ function personaFormHtml(prefix, rawPersona) {
   return `<details class="per-box" id="${prefix}-per-box" open>
     <summary><span>${tr('Personnalité, racines & cercle intime')}</span><span class="priv-badge${activePreset ? ' on' : ''}" id="${prefix}-per-badge">${esc(personaBadgeLabel(activePreset))}</span></summary>
     <div class="per-body">
-      <div class="per-shield-tip">${hi('shieldCheck')}<span>${esc(tr('Protégé automatiquement : la ville d’origine, le quartier, le premier club et les proches cochés sont masqués par le Bouclier de confidentialité avant tout envoi à l’IA.'))}</span></div>
+      <div class="per-shield-tip">${hi('shieldCheck')}<span>${esc(tr('Protégé automatiquement : les racines et les proches cochés sont masqués par le Bouclier de confidentialité avant tout envoi à l’IA. L’agent renseigné dans Contacts pro synchronise son nom avec Mails.'))}</span></div>
+      <div class="per-sec"><h4>${esc(tr('Date de naissance du joueur'))}</h4><div class="per-grid per-grid-2"><label class="per-field"><span>${esc(tr('Anniversaire (ajouté au calendrier)'))}</span><input type="date" id="${prefix}-per-playerdob" value="${esc(d.playerDob || '')}"></label></div></div>
       <div class="per-sec"><h4>${esc(tr('Archétype de personnalité'))}</h4><div class="per-presets" id="${prefix}-per-presets">${presetCards}${customPill}</div></div>
       <div class="per-sec"><h4>${esc(tr('Traits de caractère'))}</h4><div class="per-grid">${traitSelects}</div></div>
       <div class="per-sec"><h4>${esc(tr('Origines & racines'))}</h4><div class="per-grid per-grid-2">${rootsHtml}</div></div>
@@ -870,6 +828,7 @@ function personaFormHtml(prefix, rawPersona) {
 function readPersonaForm(prefix) {
   const box = $(`#${prefix}-per-box`);
   if (!box) return null;
+  const playerDob = $(`#${prefix}-per-playerdob`)?.value.trim() || '';
   const traits = {};
   for (const t of PERSONA_TRAITS_UI) {
     const sel = $(`#${prefix}-per-tr-${t.key}`);
@@ -881,6 +840,11 @@ function readPersonaForm(prefix) {
   const preset = activeBtn || detectPersonaPreset(traits);
   const roots = {};
   for (const r of PERSONA_ROOTS_UI) roots[r.key] = $(`#${prefix}-per-root-${r.key}`)?.value.trim() || '';
+  const rootProtect = {};
+  for (const k of ['hometown', 'childhood', 'academy']) {
+    const chk = $(`#${prefix}-per-rprot-${k}`);
+    rootProtect[k] = chk ? chk.checked : true;
+  }
   const flavor = {};
   for (const f of PERSONA_FLAVORS_UI) flavor[f.key] = $(`#${prefix}-per-flv-${f.key}`)?.value.trim() || '';
   const circle = {};
@@ -892,20 +856,24 @@ function readPersonaForm(prefix) {
         if (out.length >= PERSONA_GROUP_MAX) return;
         const role = row.querySelector('.per-p-role')?.value.trim() || '';
         const name = row.querySelector('.per-p-name')?.value.trim() || '';
+        const dob = row.querySelector('.per-p-dob')?.value.trim() || '';
         const decoy = row.querySelector('.per-p-decoy')?.value.trim() || '';
+        const close = row.querySelector('.per-p-close-in')?.checked !== false;
         const protect = row.querySelector('.per-p-protect')?.checked !== false;
-        if (role || name || decoy) out.push({ id: `${g.key}_${idx + 1}`, role, name, decoy, protect });
+        if (role || name || decoy || dob) out.push({ id: `${g.key}_${idx + 1}`, role, name, dob, decoy, close, protect });
       });
     }
     circle[g.key] = out;
   }
-  return { preset, traits, roots, flavor, circle };
+  return { preset, playerDob, traits, roots, rootProtect, flavor, circle };
 }
 
 function bindPersonaForm(prefix, { onChange } = {}) {
   const box = $(`#${prefix}-per-box`);
   if (!box) return;
   const notify = () => onChange?.(readPersonaForm(prefix));
+  const dobEl = $(`#${prefix}-per-playerdob`);
+  if (dobEl) dobEl.onchange = notify;
   const syncPresetUi = (presetId) => {
     box.querySelectorAll('.per-preset').forEach((b) => b.classList.toggle('on', b.dataset.preset === presetId));
     const badge = $(`#${prefix}-per-badge`);
@@ -958,6 +926,8 @@ function bindPersonaForm(prefix, { onChange } = {}) {
   for (const r of PERSONA_ROOTS_UI) {
     const el = $(`#${prefix}-per-root-${r.key}`);
     if (el) el.oninput = notify;
+    const chk = $(`#${prefix}-per-rprot-${r.key}`);
+    if (chk) chk.onchange = notify;
   }
   for (const f of PERSONA_FLAVORS_UI) {
     const el = $(`#${prefix}-per-flv-${f.key}`);
@@ -980,7 +950,7 @@ function bindPersonaForm(prefix, { onChange } = {}) {
     };
     const bindRow = (row) => {
       row.querySelectorAll('input').forEach((inp) => {
-        if (inp.type === 'checkbox') inp.onchange = notify;
+        if (inp.type === 'checkbox' || inp.type === 'date') inp.onchange = notify;
         else inp.oninput = () => { syncGroupUi(); notify(); };
       });
       const del = row.querySelector('.per-p-del');
@@ -1007,7 +977,7 @@ function bindPersonaForm(prefix, { onChange } = {}) {
       addBtn.onclick = () => {
         if (list.querySelectorAll('.per-person-row').length >= PERSONA_GROUP_MAX) return;
         const wrap = document.createElement('div');
-        wrap.innerHTML = personaPersonRowHtml({ role: '', name: '', decoy: '', protect: true });
+        wrap.innerHTML = personaPersonRowHtml({ role: '', name: '', dob: '', decoy: '', close: g.key === 'family' || g.key === 'friends', protect: true }, g.key);
         const row = wrap.firstElementChild;
         list.appendChild(row);
         bindRow(row);
@@ -1100,10 +1070,22 @@ function setupBioHtml(su) {
   const name = su.info?.player;
   const written = su.kind !== 'real';
   const title = written && name ? esc(tr('{name} : sa biographie', { name })) : name ? esc(name) : tr('Sa biographie');
+  const spMode = su.sponsorMode || settings?.sponsorMode || 'realistic';
+  const evMode = su.eventMode || settings?.eventMode || 'realistic';
   return `<section class="card"><h3>${title}</h3>
       ${su.info?.club ? `<p class="fineprint su-club">${esc(su.info.club)}</p>` : ''}
       <p class="su-ask">${tr('Qui incarnes-tu ?')}</p>
       <div class="saves su-kind">${kindOptions('su-kind', su.kind, su.busy)}</div>
+      <div class="su-modes">
+        <label class="per-field"><span>${tr('Système de sponsors')}</span><select id="su-sponsormode"${su.busy ? ' disabled' : ''}>
+          <option value="realistic"${spMode === 'realistic' ? ' selected' : ''}>${tr('Réaliste (offres, enchères, exclusivités & rachats)')}</option>
+          <option value="custom"${spMode === 'custom' ? ' selected' : ''}>${tr('Personnalisé (édition libre & sélection dans le catalogue)')}</option>
+        </select></label>
+        <label class="per-field"><span>${tr('Événements & vie du calendrier')}</span><select id="su-eventmode"${su.busy ? ' disabled' : ''}>
+          <option value="realistic"${evMode === 'realistic' ? ' selected' : ''}>${tr('Réaliste (anniversaires, décisions, événements système & pulses quotidiens)')}</option>
+          <option value="games_only"${evMode === 'games_only' ? ' selected' : ''}>${tr('Matchs uniquement (calendrier épuré)')}</option>
+        </select></label>
+      </div>
       ${written ? `<p class="su-text">${tr('Définis le caractère de ton joueur, ses origines et son cercle intime : dans ce monde, tout cela sera vrai dès la première édition.')}</p>
       ${personaFormHtml('su', su.persona)}
       <p class="su-ask">${tr('Histoire libre (optionnel)')}</p>
@@ -1111,8 +1093,8 @@ function setupBioHtml(su) {
       ${privacyNoticeHtml('su')}
       <textarea id="su-bio" rows="6" maxlength="${BIO_MAX}" placeholder="${tr('Il est né à… Il a grandi dans… Il a commencé le football à…')}"${su.busy ? ' disabled' : ''}>${esc(su.bio)}</textarea>
       <p class="su-count" id="su-count">${su.bio.length} / ${BIO_MAX}</p>
-      <p class="fineprint">${tr('Si elle contredit la sauvegarde (âge, club, sélection), c’est la sauvegarde qui l’emporte. Tu pourras l’écrire ou la modifier plus tard dans les réglages.')}</p>
-      ${privacyFormHtml('su', su.privacy, { playerName: su.info?.player || '' })}` : ''}
+      <p class="fineprint">${tr('Si elle contredit la sauvegarde (âge, club, sélection), c’est la sauvegarde qui l’emporte. Tu pourras l’écrire ou la modifier plus tard dans le Profil du joueur.')}</p>
+      ${privacyFormHtml('su', su.privacy, { playerName: su.info?.player || '', persona: su.persona })}` : ''}
     </section>
     <div class="su-nav"><button class="btn big" id="su-back"${su.busy ? ' disabled' : ''}>${su.newCareer ? tr('Annuler') : tr('Retour')}</button><button class="btn primary big" id="su-publish"${su.busy ? ' disabled' : ''}>${su.busy ? tr('Première édition en préparation…') : tr('Publier la première édition')}</button></div>`;
 }
@@ -1134,13 +1116,19 @@ async function setupPublish() {
   const text = su.kind === 'real' ? '' : su.bio.trim();
   const privacy = readPrivacyForm('su') || su.privacy || { enabled: true, fields: {}, customPeople: [] };
   const persona = su.kind === 'real' ? null : (readPersonaForm('su') || su.persona || null);
+  const sponsorMode = $('#su-sponsormode')?.value || su.sponsorMode || settings?.sponsorMode || 'realistic';
+  const eventMode = $('#su-eventmode')?.value || su.eventMode || settings?.eventMode || 'realistic';
   su.privacy = privacy;
   su.persona = persona;
+  su.sponsorMode = sponsorMode;
+  su.eventMode = eventMode;
   su.busy = true;
   render();
   try {
     const saveUpdate = {
       savePath: su.savePath,
+      sponsorMode,
+      eventMode,
       ...(su.autoLatestSave !== undefined ? { autoLatestSave: Boolean(su.autoLatestSave) } : {}),
       pendingBio: { savePath: su.savePath, text, kind: su.kind, privacy, persona },
     };
@@ -1364,11 +1352,11 @@ function llEnter(page) {
 }
 
 // Le cadre de LifeLegend : le rail des sites et son encoche, l'onglet du site ouvert, les outils et le profil.
-const SITE_ICON = { national: 'newspaper', local: 'pencil', tribune: 'hashtag', mail: 'envelope', huddle: 'chat', stats: 'poll', pantheon: 'trophy', mylife: 'sparkles' };
+const SITE_ICON = { national: 'newspaper', local: 'pencil', tribune: 'hashtag', mail: 'envelope', huddle: 'chat', stats: 'poll', pantheon: 'trophy', mylife: 'sparkles', playerprofile: 'user' };
 // La page défile dans la feuille du cadre, plus dans la fenêtre.
 const llView = () => document.getElementById('ll-view');
 const viewScrollTo = (top, smooth = false) => llView()?.scrollTo({ top, behavior: smooth ? 'smooth' : 'auto' });
-let tabY = null, tabWasOff = true, shellMenu = false;
+let tabY = null, tabWasOff = true, shellMenu = false, shellCalOpen = false, shellNotifOpen = false;
 function placeTabLine(tabs, animate) {
   const on = tabs.querySelector('.tab.active'), line = tabs.querySelector('.tab-line');
   if (!line) return;
@@ -1392,11 +1380,35 @@ function paintTabs(tabs) {
   tabWasOff = !on;
 }
 // Aller à une rubrique : ouvre le site, puis passe par le lien de la page, pour faire exactement ce qu'il fait.
-function shellGo(site, sel) {
+function shellGo(site, sel, mlTab = null) {
   shellMenu = false;
+  shellCalOpen = false;
+  shellNotifOpen = false;
+  if (mlTab && site === 'mylife') view.mlTab = mlTab;
   if (current !== site) go(site); else if (!sel) render();
   if (sel) document.querySelector(`#page ${sel}`)?.click();
   paintShell();
+}
+function shellNotifications(s) {
+  if (!s) return [];
+  const items = [];
+  const held = heldPosts().length;
+  if (held) items.push({ label: trn(held, '{n} nouveau post ou mention sur Kop', '{n} nouveaux posts ou mentions sur Kop'), site: 'tribune', sel: '[data-twnav="mentions"]', kind: 'kop' });
+  const unread = (state.mail || []).filter((m) => m.unread).length;
+  if (unread) items.push({ label: trn(unread, '{n} mail non lu', '{n} mails non lus'), site: 'mail', sel: null, kind: 'mail' });
+  const hub = state.lifeHub || {};
+  const offersN = (hub.offers || []).length;
+  if (offersN) items.push({ label: trn(offersN, '{n} offre de sponsor entrante', '{n} offres de sponsors entrantes'), site: 'mylife', mlTab: 'sponsors', kind: 'sponsor' });
+  const warsN = (hub.biddingWars || []).length;
+  if (warsN) items.push({ label: trn(warsN, '{n} enchère de sponsors en cours', '{n} enchères de sponsors en cours'), site: 'mylife', mlTab: 'sponsors', kind: 'war' });
+  const otN = (hub.oneTimeOffers || []).length;
+  if (otN) items.push({ label: trn(otN, '{n} proposition ponctuelle', '{n} propositions ponctuelles'), site: 'mylife', mlTab: 'sponsors', kind: 'onetime' });
+  const decN = (state.calendar?.pendingDecisions || []).length;
+  if (decN) items.push({ label: trn(decN, '{n} décision calendrier en attente', '{n} décisions calendrier en attente'), site: 'mylife', mlTab: 'calendar', kind: 'decision' });
+  const obN = (hub.obligations || []).filter((o) => o.status === 'pending').length;
+  if (obN) items.push({ label: trn(obN, '{n} obligation partenaire à planifier', '{n} obligations partenaires à planifier'), site: 'mylife', mlTab: 'sponsors', kind: 'ob' });
+  if (hub.pendingDilemma) items.push({ label: tr('Un dilemme hors-terrain attend ta décision'), site: 'mylife', mlTab: 'overview', kind: 'dilemma' });
+  return items;
 }
 function paintShell() {
   const s = state?.snapshot;
@@ -1409,25 +1421,125 @@ function paintShell() {
   disc.setAttribute('aria-label', 'LifeLegend');
   $('#ll-title').innerHTML = `<span>${esc(SITES.find((x) => x.id === current)?.label() || '')}</span>`;
   $('#settings-btn').classList.toggle('on', current === 'settings');
+
+  // Top-right persistent Calendar Pill + Popover
+  const calWrap = $('#ll-cal-wrap');
+  if (calWrap) {
+    if (!s) {
+      calWrap.innerHTML = '';
+      shellCalOpen = false;
+    } else {
+      const cal = state.calendar || { simDate: s.gameDate || '', saveDate: state.saveSnapshot?.gameDate || s.gameDate || '', pendingMatches: [], pendingDecisions: [] };
+      const simDate = cal.simDate || s.gameDate || '';
+      const rhythmKey = mlDayRhythm(s, cal, simDate);
+      const rhythmText = (ML_RHYTHM_LABELS[rhythmKey] || ML_RHYTHM_LABELS.training)();
+      const bounds = mlCalendarBounds(s, cal);
+      const calModeFull = settings?.calendarMode === 'full';
+      const canAdvance = calModeFull && bounds.canAdvance;
+      const pendingDecs = cal.pendingDecisions || [];
+      const badgeCount = (calModeFull ? (bounds.pendingCount || 0) : 0) + pendingDecs.length;
+      const dayItems = mlAgendaItems(s, state.lifeHub, cal, simDate.slice(0, 7)).items.filter((x) => x.date === simDate);
+      const nextMatchLine = bounds.nextMatch
+        ? tr('Prochain match : {match} ({d})', { match: `${bounds.nextMatch.home} – ${bounds.nextMatch.away}`, d: shortDate(bounds.nextMatch.date) })
+        : tr('Calendrier à jour avec la sauvegarde');
+      calWrap.innerHTML = `<button type="button" class="ll-cal-pill${shellCalOpen ? ' on' : ''}" id="ll-cal-btn" aria-haspopup="true" aria-expanded="${shellCalOpen}" title="${esc(tr('Calendrier de carrière'))}">
+          ${hi('calendar')}<span class="ll-cal-date">${esc(shortDate(simDate))}</span><i class="ll-cal-dot ll-cal-dot--${esc(rhythmKey)}"></i>${badgeCount ? `<span class="ll-cal-badge">${badgeCount}</span>` : ''}
+        </button>
+        ${shellCalOpen ? `<div class="ll-pop ll-pop--cal" role="dialog" aria-label="${esc(tr('Calendrier rapide'))}">
+          <div class="ll-pop-head"><b>${esc(fmtDate(simDate, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))}</b><span class="ll-tag">${esc(rhythmText)}</span></div>
+          <p class="fineprint">${esc(nextMatchLine)}</p>
+          ${dayItems.length ? `<ul class="ll-pop-list">${dayItems.slice(0, 4).map((it) => `<li><b>${esc(it.title)}</b>${it.detail && !it.spoilerHidden ? `<small>${esc(it.detail)}</small>` : ''}</li>`).join('')}</ul>` : ''}
+          ${pendingDecs.length ? `<div class="ll-pop-alert">${esc(trn(pendingDecs.length, '{n} décision calendrier en attente', '{n} décisions calendrier en attente'))}</div>` : ''}
+          <div class="ll-pop-acts">
+            ${canAdvance ? `<button type="button" class="btn" data-shell-caladv="day">${tr('+1 jour')}</button><button type="button" class="btn primary" data-shell-caladv="next_event">${tr('Prochain événement')}</button>` : ''}
+            <button type="button" class="btn" id="ll-cal-open-full">${tr('Ouvrir le calendrier')}</button>
+          </div>
+        </div>` : ''}`;
+      calWrap.onclick = (ev) => ev.stopPropagation();
+      const calBtn = calWrap.querySelector('#ll-cal-btn');
+      if (calBtn) calBtn.onclick = (ev) => { ev.stopPropagation(); shellCalOpen = !shellCalOpen; shellMenu = false; shellNotifOpen = false; paintShell(); };
+      const openFull = calWrap.querySelector('#ll-cal-open-full');
+      if (openFull) openFull.onclick = () => shellGo('mylife', null, 'calendar');
+      calWrap.querySelectorAll('[data-shell-caladv]').forEach((b) => {
+        b.onclick = async () => {
+          b.disabled = true;
+          try {
+            const res = await live.advanceCalendar(b.dataset.shellCaladv);
+            if (res?.state) state = res.state;
+            const step = res?.step;
+            if (step?.nextDate) { view.mlCalMonth = step.nextDate.slice(0, 7); view.mlCalDay = step.nextDate; }
+            if (step?.needsPublish) {
+              shellCalOpen = false;
+              render();
+              await doSync();
+            } else {
+              if (step?.days) toast(tr('{n} journée(s) avancée(s).', { n: step.days }));
+              render();
+            }
+          } catch (err) { toast(err.message, true); paintShell(); }
+        };
+      });
+    }
+  }
+
+  // Bell Notification Popover
+  const bellWrap = $('#ll-bell-wrap');
   const bell = $('#ll-bell');
+  const notifs = shellNotifications(s);
   bell.title = tr('Notifications');
   bell.setAttribute('aria-label', tr('Notifications'));
-  bell.innerHTML = `${hi('bell')}${current !== 'tribune' && state && heldPosts().length ? '<i></i>' : ''}`;
+  bell.classList.toggle('on', shellNotifOpen);
+  bell.innerHTML = `${hi('bell')}${notifs.length ? `<span class="ll-bell-badge">${notifs.length}</span>` : ''}`;
   bell.disabled = !s;
-  bell.onclick = () => shellGo('tribune', '[data-twnav="mentions"]');
+  bell.onclick = (ev) => {
+    ev.stopPropagation();
+    shellNotifOpen = !shellNotifOpen;
+    shellMenu = false;
+    shellCalOpen = false;
+    paintShell();
+  };
+  if (bellWrap) {
+    bellWrap.querySelector('.ll-pop--notif')?.remove();
+    bellWrap.onclick = (ev) => ev.stopPropagation();
+    if (shellNotifOpen && s) {
+      const pop = document.createElement('div');
+      pop.className = 'll-pop ll-pop--notif';
+      pop.setAttribute('role', 'dialog');
+      pop.innerHTML = `<div class="ll-pop-head"><b>${tr('Notifications')}</b><span class="fineprint">${notifs.length}</span></div>
+        ${notifs.length
+          ? `<div class="ll-notif-list">${notifs.map((n, k) => `<button type="button" class="ll-notif-item" data-notifidx="${k}">${esc(n.label)}</button>`).join('')}</div>`
+          : `<p class="fineprint">${tr('Tout est à jour : aucune alerte en attente.')}</p>`}`;
+      pop.querySelectorAll('[data-notifidx]').forEach((b) => {
+        b.onclick = () => {
+          const it = notifs[Number(b.dataset.notifidx)];
+          if (it) shellGo(it.site, it.sel || null, it.mlTab || null);
+        };
+      });
+      bellWrap.appendChild(pop);
+    }
+  }
+
   const me = s ? state.profile?.displayName || s.player.name : '';
   const initials = me ? fbInitials(me) : hi('user');
-  const items = [[tr('Ton profil'), 'tribune', '[data-twnav="mine"]'], [tr('Dossier de carrière'), 'mail', '[data-smdossier]'], [tr('Influence'), 'mail', '[data-sminfluence]'], ['Panthéon', 'pantheon', null], [tr('Ma vie'), 'mylife', null], [tr('Réglages'), 'settings', null]];
+  const items = [
+    [tr('Profil du joueur'), 'playerprofile', null],
+    [tr('Profil social Kop'), 'tribune', '[data-twnav="mine"]'],
+    [tr('Dossier de carrière'), 'mail', '[data-smdossier]'],
+    [tr('Influence'), 'mail', '[data-sminfluence]'],
+    ['Panthéon', 'pantheon', null],
+    [tr('Ma vie'), 'mylife', null],
+    [tr('Réglages'), 'settings', null],
+  ];
   const box2 = $('#ll-me');
   box2.innerHTML = `<button class="ll-me-btn" id="ll-me-btn" aria-haspopup="true" aria-expanded="${shellMenu}"${s ? '' : ' disabled'}>${me ? `<span class="ll-me-name">${esc(me)}</span><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 9.5h12L12 16z"/></svg>` : ''}<span class="ll-me-face">${s ? myFaceIn(initials) : initials}</span></button>
     ${shellMenu && s ? `<div class="ll-menu" role="menu"><small>LifeLegend</small>${items.map(([label], k) => `<button role="menuitem" data-llmenu="${k}">${esc(label)}</button>`).join('')}</div>` : ''}`;
-  box2.querySelector('#ll-me-btn').onclick = (ev) => { ev.stopPropagation(); shellMenu = !shellMenu; paintShell(); };
+  box2.querySelector('#ll-me-btn').onclick = (ev) => { ev.stopPropagation(); shellMenu = !shellMenu; shellCalOpen = false; shellNotifOpen = false; paintShell(); };
   box2.querySelectorAll('[data-llmenu]').forEach((b) => { b.onclick = () => { const [, site, sel] = items[Number(b.dataset.llmenu)]; shellGo(site, sel); }; });
 }
 document.fonts?.ready.then(() => dispatchEvent(new Event('resize')));
 addEventListener('resize', () => { const tabs = document.getElementById('tabs'); if (tabs?.querySelector('.tab-line')) placeTabLine(tabs, false); });
-addEventListener('click', () => { if (shellMenu) { shellMenu = false; paintShell(); } });
-addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && shellMenu) { shellMenu = false; paintShell(); ev.stopPropagation(); ev.preventDefault(); } }, true);
+addEventListener('click', () => { if (shellMenu || shellCalOpen || shellNotifOpen) { shellMenu = false; shellCalOpen = false; shellNotifOpen = false; paintShell(); } });
+addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && (shellMenu || shellCalOpen || shellNotifOpen)) { shellMenu = false; shellCalOpen = false; shellNotifOpen = false; paintShell(); ev.stopPropagation(); ev.preventDefault(); } }, true);
 
 function render() {
   if (pressBox && (current !== 'national' || !pressNow())) closePressModal();
@@ -1440,7 +1552,7 @@ function render() {
   const mlCalPending = settings?.calendarMode === 'full' ? (state?.calendar?.pendingMatches?.length || 0) : 0;
   const mlSfxPending = (settings?.lifeSaveEffects && ((mlHub?.pendingSaveEffects?.affectionDelta || 0) !== 0 || (mlHub?.pendingSaveEffects?.formArrowDelta || 0) !== 0)) ? 1 : 0;
   const mlPending = mlHub?.calibrated
-    ? ((mlHub.pendingDilemma ? 1 : 0) + (mlHub.offers?.length || 0) + (mlHub.obligations || []).filter((o) => o.status === 'pending').length + mlCalPending + mlSfxPending)
+    ? ((mlHub.pendingDilemma ? 1 : 0) + (mlHub.offers?.length || 0) + (mlHub.biddingWars?.length || 0) + (mlHub.oneTimeOffers?.length || 0) + (state?.calendar?.pendingDecisions?.length || 0) + (mlHub.obligations || []).filter((o) => o.status === 'pending').length + mlCalPending + mlSfxPending)
     : (state?.snapshot ? 1 : 0);
   tabs.innerHTML = SITES.filter((s) => !s.hidden).map((s) => `
     <button class="tab${s.id === current ? ' active' : ''}" data-site="${s.id}" aria-label="${esc(s.label())}"${s.id === current ? ' aria-current="page"' : ''}>
@@ -1451,7 +1563,7 @@ function render() {
   const page = $('#page');
   page.className = `site site-${current}`;
   if (setupActive() && current !== 'settings') { renderSetup(page); paintShell(); return; }
-  const renderers = { national: renderNational, local: renderLocal, tribune: renderTribune, mail: renderMail, huddle: renderHuddle, stats: renderStats, pantheon: renderPantheon, mylife: renderMyLife, settings: renderSettings };
+  const renderers = { national: renderNational, local: renderLocal, tribune: renderTribune, mail: renderMail, huddle: renderHuddle, stats: renderStats, pantheon: renderPantheon, mylife: renderMyLife, playerprofile: renderPlayerProfile, settings: renderSettings };
   renderers[current](page);
   llEnter(page);
   paintShell();
@@ -2375,6 +2487,19 @@ function gzTribune(s) {
 // La Transversale, quotidien du championnat et des coupes de son club, aux couleurs de ce championnat : la une en carrousel,
 // le match, les dernières infos, « À la une aussi », les scores, le classement et les articles recommandés, les clubs, les
 // transferts, les réactions sur Kop et le brief du matin dans le pied de page.
+function dailyBriefsBannerHtml(st, limit = 3) {
+  const list = Array.isArray(st?.dailyBriefs) ? st.dailyBriefs.slice(0, limit) : [];
+  if (!list.length) return '';
+  return `<section class="gz-briefs" aria-label="${esc(tr('Le fil quotidien'))}">
+    <div class="gz-briefs-head"><span class="gz-kicker">${tr('Le fil quotidien')}</span><span class="fineprint">${esc(trn(list.length, '{n} brève récente', '{n} brèves récentes'))}</span></div>
+    <div class="gz-briefs-grid">${list.map((b) => `<article class="gz-brief-item">
+      <div class="gz-brief-meta"><time>${esc(shortDate(b.date))}</time>${b.tag ? `<span class="priv-tag">${esc(b.tag)}</span>` : ''}${b.source === 'ai' ? `<span class="priv-badge on">IA</span>` : ''}</div>
+      <h4>${esc(b.headline || '')}</h4>
+      ${b.body ? `<p>${esc(b.body)}</p>` : ''}
+    </article>`).join('')}</div>
+  </section>`;
+}
+
 function renderNational(page) {
   const liveGz = page.querySelector('.gz');
   if (liveGz) view.gzY = liveGz.scrollTop;
@@ -2403,6 +2528,7 @@ function renderNational(page) {
   page.innerHTML = `<div class="gz">
     ${gzHeader(s, e, idx, eds)}
     <main>
+      ${dailyBriefsBannerHtml(state, 3)}
       ${gzLead(f.lead, f.side, comps)}
       ${gzMatchCentre(s)}
       ${gzLatest(f.latest, comps)}
@@ -3185,7 +3311,7 @@ function renderLocal(page) {
     ${fbHeader(paper, s, tab)}
     <div class="fb-scroll"><div class="fb-cols">
       ${fbSide(s, posts, tab === 'home' ? cat : null, tab === 'home' ? month : null)}
-      <div class="fb-main">${main}</div>
+      <div class="fb-main">${tab === 'home' ? dailyBriefsBannerHtml(state, 3) : ''}${main}</div>
       ${fbRail(s, tab)}
       </div>
       ${fbFooter(paper, s)}
@@ -5565,7 +5691,7 @@ function dsSponsor() {
     const deal = Boolean(bootDeal);
     const earned = deal ? (bootDeal.contributions || 0) * (bootDeal.bonus || 0) : 0;
     const eyebrow = deal
-      ? (bootDeal.since ? esc(tr('Contrat signé le {d}', { d: spLongDate(bootDeal.since) })) : tr('Contrat actif'))
+      ? `${bootDeal.since ? esc(tr('Contrat signé le {d}', { d: spLongDate(bootDeal.since) })) : tr('Contrat actif')}${bootDeal.isGlobalPartner ? ` · ${esc(tr('Partenaire mondial'))}` : ''}`
       : tr('Une offre t’attend dans Mails.');
     const actionBtn = o.threadId
       ? `<button class="sm-btn sm-btn-ghost" data-dsthread="${esc(o.threadId)}">${tr('Voir le mail')}</button>`
@@ -5577,8 +5703,9 @@ function dsSponsor() {
   if (!otherSponsors.length) return bootHtml;
   const rows = otherSponsors.map((s) => {
     const cats = (Array.isArray(s.categories) && s.categories.length ? s.categories : [s.category]).filter(Boolean).map(mlSponsorCatLabel).join(' · ');
+    const gpTag = s.isGlobalPartner ? ` <span class="priv-badge on">${esc(tr('Partenaire mondial'))}</span>` : '';
     const fee = Number(s.fee) ? `${euros(s.fee)} / ${tr('Par saison').toLowerCase()}` : '';
-    return `<div class="ds-partner-row"><div><b>${esc(s.brand)}</b>${cats ? `<small>${esc(cats)}</small>` : ''}</div>${fee ? `<span>${esc(fee)}</span>` : ''}</div>`;
+    return `<div class="ds-partner-row"><div><b>${esc(s.brand)}</b>${gpTag}${cats ? `<small>${esc(cats)}</small>` : ''}</div>${fee ? `<span>${esc(fee)}</span>` : ''}</div>`;
   }).join('');
   return `${bootHtml}<div class="ds-partners"><div class="ds-partners-head"><span class="ib-eyebrow">${tr('Autres partenaires commerciaux')}</span><button class="sm-btn sm-btn-ghost" data-dsmylife="sponsors">${tr('Gérer dans Ma vie')}</button></div><div class="ds-partners-list">${rows}</div></div>`;
 }
@@ -8298,18 +8425,69 @@ const ML_METER_LABELS = {
 
 const ML_SPONSOR_CAT_LABELS = {
   boots: () => tr('Crampons'),
-  apparel: () => tr('Mode & Équipement'),
-  beverage: () => tr('Boissons & Nutrition'),
-  automotive: () => tr('Automobile'),
+  apparel: () => tr('Équipement sportif'),
+  fashion: () => tr('Mode & Haute Couture'),
+  eyewear: () => tr('Lunettes'),
   watches: () => tr('Horlogerie & Bijoux'),
-  lifestyle: () => tr('Lifestyle & Luxe'),
-  tech: () => tr('Tech & Gaming'),
-  travel: () => tr('Voyage & Compagnies'),
-  finance: () => tr('Banque & Finance'),
+  automotive: () => tr('Automobile'),
+  beverage: () => tr('Boissons & Sport'),
+  phones: () => tr('Téléphones & Mobiles'),
+  telecom: () => tr('Télécoms & Réseaux'),
+  airlines: () => tr('Compagnies aériennes'),
+  hospitality: () => tr('Hôtellerie & Tourisme'),
+  appliances: () => tr('Électroménager & Maison'),
   grooming: () => tr('Soins & Parfums'),
-  media: () => tr('Médias & Télécoms'),
-  health: () => tr('Santé & Récupération'),
+  finance: () => tr('Banque & Finance'),
+  betting: () => tr('Paris sportifs'),
+  health: () => tr('Santé & Nutrition'),
+  healthy_beverage: () => tr('Boissons saines & Thés'),
+  gaming: () => tr('Gaming & Tech'),
+  media: () => tr('Médias & Audio'),
+  lifestyle: () => tr('Lifestyle & Luxe'),
+  local: () => tr('Commerces locaux'),
+  travel: () => tr('Compagnies aériennes'),
+  tech: () => tr('Gaming & Tech'),
   global: () => tr('Partenaire mondial'),
+};
+
+const ML_ONETIME_DEAL_LABELS = {
+  videogame_cover: () => tr('Jaquette de jeu vidéo'),
+  magazine_shoot: () => tr('Shooting couverture magazine'),
+  tv_commercial: () => tr('Tournage spot TV'),
+  tournament_promo: () => tr('Campagne promo internationale'),
+  podcast_feature: () => tr('Podcast grand format'),
+  store_launch: () => tr('Inauguration boutique flagship'),
+  charity_match: () => tr('Match caritatif all-star'),
+  limited_capsule: () => tr('Drop capsule limitée'),
+};
+
+const ML_SYSEV_LABELS = {
+  club_media_day: () => tr('Journée médias officielle du club'),
+  squad_team_dinner: () => tr('Dîner de cohésion du vestiaire'),
+  youth_charity_clinic: () => tr('Stage caritatif avec les jeunes'),
+  podcast_interview: () => tr('Invitation en plateau podcast'),
+  vip_charity_gala: () => tr('Gala caritatif & tapis rouge'),
+};
+
+const ML_DECISION_CHOICE_LABELS = {
+  party_squad: () => tr('Fêter avec le groupe et les proches'),
+  family_quiet: () => tr('Soirée calme en famille & récupération'),
+  fans_charity: () => tr('Action caritative avec les jeunes'),
+  attend_party: () => tr('Aller à la soirée / fête d’anniversaire'),
+  dinner_gift: () => tr('Dîner calme et cadeau attentionné'),
+  call_deliver: () => tr('Appel vidéo et livraison de cadeau'),
+  huddle_wish: () => tr('Envoyer un message chaleureux dans Vestiaire'),
+  thoughtful_gift: () => tr('Offrir un cadeau soigné (-500 €)'),
+  luxury_gift: () => tr('Offrir un cadeau de luxe (-5 000 €)'),
+  quick_wish: () => tr('Souhaiter un bon anniversaire à l’entraînement'),
+  extra_drills: () => tr('Séance vidéo et finition supplémentaire'),
+  film_recovery: () => tr('Routine tactique calme et récupération'),
+  unwind_family: () => tr('Décompresser loin des caméras'),
+  go_all_in: () => tr('S’investir à fond et briller sous les flashs'),
+  keep_balanced: () => tr('Passage rapide et sérieux'),
+  skip_focus: () => tr('Décliner et rester focalisé sur le terrain'),
+  complete_shoot: () => tr('Honorer le tournage / shooting prévu'),
+  reschedule_cancel: () => tr('Annuler / reporter'),
 };
 
 function mlSponsorCatLabel(cat) {
@@ -8571,17 +8749,41 @@ function mlSetSponsorCatPicker(picker, categories = ['lifestyle'], onChange) {
   bindSponsorCatPicker(fresh, onChange);
 }
 
-function mlCalSponsorRowHtml(item = {}, untilDefault = '') {
+function mlCatalogBrandOptsHtml(catalog, category, currentBrand = '') {
+  const list = catalog?.byCategory?.[category] || [];
+  const lowCur = String(currentBrand || '').trim().toLowerCase();
+  const matched = list.some((b) => b.brand.toLowerCase() === lowCur);
+  const opts = [
+    `<option value="">${esc(tr('Choisir dans le catalogue…'))}</option>`,
+    ...list.map((b) => `<option value="${esc(b.brand)}" data-fee="${b.baseFee}" data-bonus="${b.bonus}" data-cats="${esc((b.categories || [b.category]).join(','))}"${b.brand.toLowerCase() === lowCur ? ' selected' : ''}>${esc(b.brand)}${b.umbrellaNote ? ` (${esc(b.umbrellaNote)})` : ''}</option>`),
+    `<option value="__custom__"${currentBrand && !matched ? ' selected' : ''}>${esc(tr('Autre marque (saisie libre)…'))}</option>`,
+  ];
+  return opts.join('');
+}
+
+function mlCatalogCatOptsHtml(catalog, selectedCat = 'boots') {
+  const cats = catalog?.categories || Object.keys(ML_SPONSOR_CAT_LABELS).filter((k) => !['travel', 'tech', 'global'].includes(k));
+  const bettingRestricted = catalog?.betting && catalog.betting.allowed === false;
+  return cats.map((k) => `<option value="${esc(k)}"${k === selectedCat ? ' selected' : ''}>${esc(mlSponsorCatLabel(k))}${k === 'betting' && bettingRestricted ? ` (${esc(tr('Interdit ici'))})` : ''}</option>`).join('');
+}
+
+function mlCalSponsorRowHtml(item = {}, untilDefault = '', catalog = null) {
   const cats = Array.isArray(item.categories) && item.categories.length
     ? item.categories
-    : (item.category ? [item.category] : ['lifestyle']);
+    : (item.category ? [item.category] : ['boots']);
+  const primaryCat = cats[0] || 'boots';
   return `<div class="ml-cal-sp-row">
     <div class="ml-cal-sp-top">
+      <label class="per-field"><span>${tr('Catégorie principale')}</span><select class="ml-csp-cat">${mlCatalogCatOptsHtml(catalog, primaryCat)}</select></label>
+      <label class="per-field"><span>${tr('Marque du catalogue')}</span><select class="ml-csp-brand-sel">${mlCatalogBrandOptsHtml(catalog, primaryCat, item.brand || '')}</select></label>
       <label class="per-field"><span>${tr('Nom de la marque')}</span><input class="ml-csp-brand" value="${esc(item.brand || '')}" placeholder="${esc(tr('Nom du sponsor (éditable)'))}" maxlength="80"></label>
       <label class="per-field"><span>${tr('Montant annuel (€)')}</span><input class="ml-csp-fee" type="number" min="0" step="5000" value="${esc(item.fee ?? 150000)}" placeholder="${esc(tr('Montant annuel (€)'))}"></label>
       <label class="per-field"><span>${tr('Prime but/passe (€)')}</span><input class="ml-csp-bonus" type="number" min="0" step="500" value="${esc(item.bonus ?? 2500)}" placeholder="${esc(tr('Prime but/passe (€)'))}"></label>
       <label class="per-field"><span>${tr('Fin du contrat')}</span><input class="ml-csp-until" type="date" value="${esc(item.until || untilDefault)}"></label>
       <button type="button" class="per-p-del ml-csp-del" aria-label="${esc(tr('Supprimer'))}">−</button>
+    </div>
+    <div class="ml-cal-sp-extra">
+      <label class="ml-gp-check"><input type="checkbox" class="ml-csp-gp"${item.isGlobalPartner ? ' checked' : ''}><span>${tr('Partenaire mondial (add-on prestige)')}</span></label>
     </div>
     <div class="per-field">
       <span>${tr('Catégories (choix multiples & personnalisé)')}</span>
@@ -8618,6 +8820,9 @@ const ML_DRAMA_KIND_LABELS = {
   media_cold_war: () => tr('Guerre froide médias'),
   invincible_target: () => tr('Série sous pression'),
   quote_boomerang: () => tr('Rappel de déclaration'),
+  sponsor_war: () => tr('Guerre des sponsors'),
+  sponsor_roots: () => tr('Origines & marques locales'),
+  betting_ban_fallout: () => tr('Règlement paris sportifs'),
 };
 
 function mlAddDays(iso, n) {
@@ -8936,13 +9141,9 @@ function mlSponsorMedallionHtml(sp) {
   const brand = String(sp?.brand || '?').trim();
   const words = brand.split(/\s+/).filter(Boolean);
   const mono = words.length > 1 ? `${words[0][0] || ''}${words[1][0] || ''}` : brand.slice(0, 2);
-  const tones = {
-    boots: '#b91c1c', apparel: '#1d4ed8', beverage: '#047857', automotive: '#991b1b',
-    watches: '#92400e', lifestyle: '#6d28d9', tech: '#0f766e', travel: '#0369a1',
-    finance: '#1e3a8a', grooming: '#7e22ce', media: '#be185d', health: '#15803d', global: '#b45309',
-  };
-  const bg = tones[cat] || '#334155';
-  return `<span class="ml-sp-logo" style="background:${bg}">${esc(mono.toUpperCase())}</span>`;
+  const knownTones = new Set(['boots', 'apparel', 'fashion', 'eyewear', 'watches', 'automotive', 'beverage', 'phones', 'telecom', 'airlines', 'hospitality', 'appliances', 'grooming', 'finance', 'betting', 'health', 'healthy_beverage', 'gaming', 'media', 'lifestyle', 'local', 'travel', 'tech', 'global']);
+  const toneCls = knownTones.has(cat) ? ` ml-sp-logo--${cat}` : '';
+  return `<span class="ml-sp-logo${toneCls}">${esc(mono.toUpperCase())}</span>`;
 }
 
 function openLifeSceneModal(scene) {
@@ -9020,21 +9221,85 @@ function openLifeSceneModal(scene) {
   });
 }
 
+function mlDecisionHeader(dec) {
+  if (!dec) return { title: '', sub: '' };
+  if (dec.kind === 'birthday') {
+    const title = dec.closeness === 'self'
+      ? (dec.ageTurning ? tr('Ton anniversaire ({n} ans)', { n: dec.ageTurning }) : tr('C’est ton anniversaire !'))
+      : tr('Anniversaire : {name}', { name: dec.personName || dec.role || '' });
+    const shiftedNote = dec.shiftedBy ? tr('Fêté le {d} (décalé hors jour de match)', { d: shortDate(dec.date) }) : fmtDate(dec.date);
+    const closenessNote = (dec.closeness === 'close' || dec.closeness === 'close_teammate')
+      ? tr('Proche · fête / dîner possible')
+      : dec.closeness === 'self' ? tr('Choix personnel') : tr('Message / cadeau');
+    return { title, sub: `${closenessNote} · ${shiftedNote}` };
+  }
+  if (dec.kind === 'match_eve') {
+    return { title: tr('Veille de match : {match}', { match: dec.title || '' }), sub: dec.competition || fmtDate(dec.date) };
+  }
+  if (dec.kind === 'onetime') {
+    const kFn = ML_ONETIME_DEAL_LABELS[dec.dealKey];
+    return { title: `${dec.brand || ''} · ${kFn ? kFn() : (dec.title || '')}`, sub: fmtDate(dec.date) };
+  }
+  const sFn = ML_SYSEV_LABELS[dec.eventKey];
+  return { title: sFn ? sFn() : (dec.title || tr('Événement')), sub: fmtDate(dec.date) };
+}
+
+function mlDecisionChoiceTags(ch) {
+  const tags = [];
+  if (ch?.cost > 0) tags.push(`-${euros(ch.cost)}`);
+  if (ch?.bonusCash > 0) tags.push(`+${euros(ch.bonusCash)}`);
+  for (const [k, v] of Object.entries(ch?.effects || {})) {
+    const lbl = ML_METER_LABELS[k] ? ML_METER_LABELS[k]() : k;
+    tags.push(`${v > 0 ? '+' : ''}${v} ${lbl}`);
+  }
+  if (ch?.saveEffects?.formArrowDelta) tags.push(tr('Forme {d}', { d: `${ch.saveEffects.formArrowDelta > 0 ? '+' : ''}${ch.saveEffects.formArrowDelta}` }));
+  if (ch?.saveEffects?.affectionDelta) tags.push(tr('Affection {d}', { d: `${ch.saveEffects.affectionDelta > 0 ? '+' : ''}${ch.saveEffects.affectionDelta}` }));
+  return tags;
+}
+
+function mlAgendaCalKey(state, calMonth, simDate, cal) {
+  return [
+    state.careerId,
+    calMonth,
+    simDate,
+    JSON.stringify(cal?.birthdayShiftOverrides || {}),
+    JSON.stringify(state?.squadBirthdays || {}),
+    state?.persona?.playerDob || '',
+    (cal?.customEvents || []).length,
+    (cal?.systemEvents || []).length,
+    (cal?.pendingDecisions || []).length,
+  ].join('|');
+}
+
 function renderMyLife(page) {
   if (!state || !state.snapshot) {
     page.innerHTML = empty(tr('Aucune carrière chargée'), tr('Choisis ta sauvegarde et lance une synchro pour débloquer ton hub Ma vie.'));
     return;
   }
   const s = state.snapshot;
-  const hub = state.lifeHub || { calibrated: false, stage: 'rookie', cash: 15000, ap: 2, maxAp: 2, meters: { manager: 50, squad: 52, fans: 48, sponsors: 40, media: 48 }, assets: [], sponsors: [], offers: [], obligations: [], ledger: [], recentEvents: [], estimate: { stage: 'rookie', apps: s.stats?.total?.apps || 0, goals: s.stats?.total?.goals || 0, followers: state.profile?.followers || 4200, cashBundle: 120000, cashOnly: 180000, cashHumble: 15000, bundleAssetIds: ['rented_studio'], slotCap: 1 } };
+  const hub = state.lifeHub || { calibrated: false, stage: 'rookie', cash: 15000, ap: 2, maxAp: 2, meters: { manager: 50, squad: 52, fans: 48, sponsors: 40, media: 48 }, assets: [], sponsors: [], offers: [], biddingWars: [], oneTimeOffers: [], obligations: [], ledger: [], recentEvents: [], estimate: { stage: 'rookie', apps: s.stats?.total?.apps || 0, goals: s.stats?.total?.goals || 0, followers: state.profile?.followers || 4200, cashBundle: 120000, cashOnly: 180000, cashHumble: 15000, bundleAssetIds: ['rented_studio'], slotCap: 1 } };
   const est = hub.estimate || { stage: hub.stage || 'rookie', apps: s.stats?.total?.apps || 0, goals: s.stats?.total?.goals || 0, followers: state.profile?.followers || 4200, cashBundle: 120000, cashOnly: 180000, cashHumble: 15000, bundleAssetIds: ['rented_studio'], slotCap: 1 };
   const slotCap = mlSlotCap(state.profile?.followers || 0, hub.stage || est.stage);
   const monthlyCost = (hub.assets || []).reduce((sum, a) => sum + (Number(a.monthlyCost) || 0), 0);
   const assetsWorth = (hub.assets || []).reduce((sum, a) => sum + (a.category === 'staff' || a.category === 'charity' ? 0 : Math.round((a.resaleValue ?? a.price ?? 0) * (a.category === 'investment' ? 1 : 0.75))), 0);
   const netWorth = Math.round((hub.cash || 0) + assetsWorth);
 
+  const spCatKey = `${state.careerId}|${s.league?.name || ''}|${state.persona?.roots?.hometown || ''}`;
+  if (view.mlSponsorCatKey !== spCatKey && !view.mlSponsorCatLoading) {
+    view.mlSponsorCatLoading = true;
+    live.getSponsorCatalog().then((cat) => {
+      view.mlSponsorCatalog = cat;
+      view.mlSponsorCatKey = spCatKey;
+      view.mlSponsorCatLoading = false;
+      if (current === 'mylife') renderMyLife(page);
+    }).catch(() => { view.mlSponsorCatLoading = false; });
+  }
+  const catalog = view.mlSponsorCatKey === spCatKey ? view.mlSponsorCatalog : null;
+
   if (!hub.calibrated || view.mlCalibrate) {
     const mode = view.mlCalMode || 'bundle';
+    const calSponsorMode = view.mlCalSponsorMode || settings?.sponsorMode || 'realistic';
+    const calEventMode = view.mlCalEventMode || settings?.eventMode || 'realistic';
     const defaultCash = mode === 'cash_only' ? est.cashOnly : mode === 'humble' ? est.cashHumble : est.cashBundle;
     const bundleNames = (est.bundleAssetIds || []).map((id) => ML_ASSET_CATALOG_UI.find((a) => a.id === id)?.label()).filter(Boolean).join(', ');
     const untilDefault = `${Number(String(s.gameDate || '2026-08-01').slice(0, 4)) + 2}-06-30`;
@@ -9058,7 +9323,7 @@ function renderMyLife(page) {
       </header>
 
       <section class="card ml-cal">
-        <h3>${tr('1. Choisis ton point de départ')}</h3>
+        <h3>${tr('1. Choisis ton point de départ & tes modes')}</h3>
         <div class="ml-modes">
           <button type="button" class="ml-mode${mode === 'bundle' ? ' on' : ''}" data-mlmode="bundle">
             <b>${tr('Pack adapté à mon statut')}</b>
@@ -9086,18 +9351,38 @@ function renderMyLife(page) {
               <input id="ml-cal-fol-val" type="number" min="100" step="500" value="${esc(view.mlCalFolVal ?? est.followers)}">
             </label>
           </div>
+          <label class="per-field">
+            <span>${tr('Mode sponsors')}</span>
+            <select id="ml-cal-spmode">
+              <option value="realistic"${calSponsorMode === 'realistic' ? ' selected' : ''}>${tr('Réaliste (offres, enchères & rachats)')}</option>
+              <option value="custom"${calSponsorMode === 'custom' ? ' selected' : ''}>${tr('Personnalisé (carrière déjà avancée)')}</option>
+            </select>
+          </label>
+          <label class="per-field">
+            <span>${tr('Événements du calendrier')}</span>
+            <select id="ml-cal-evmode">
+              <option value="realistic"${calEventMode === 'realistic' ? ' selected' : ''}>${tr('Réaliste (anniversaires & décisions)')}</option>
+              <option value="games_only"${calEventMode === 'games_only' ? ' selected' : ''}>${tr('Matchs uniquement')}</option>
+            </select>
+          </label>
         </div>
 
-        <h3>${tr('2. Sponsors déjà actifs (optionnel)')}</h3>
-        <p class="fineprint">${esc(calSlotCap === null
-          ? tr('Ajoute autant de sponsors déjà existants que tu veux et édite chaque nom, montant ou catégorie.')
-          : tr('Tu peux ajouter jusqu’à {n} sponsor(s) déjà existant(s) et éditer chaque nom, catégorie ou montant.', { n: calSlotCap }))}</p>
-        <div class="ml-chips">${presetChips}</div>
-        <div class="ml-cal-sp-list" id="ml-cal-sp-list">${draftSponsors.map((sp) => mlCalSponsorRowHtml(sp, untilDefault)).join('')}</div>
-        <div class="ml-cal-foot">
-          <button type="button" class="btn" id="ml-cal-sp-add"${calSlotCap !== null && draftSponsors.length >= calSlotCap ? ' disabled' : ''}>+ ${tr('Ajouter un sponsor')}</button>
-          <button type="button" class="btn primary big" id="ml-cal-submit">${tr('Valider et ouvrir Ma vie')}</button>
-        </div>
+        ${calSponsorMode === 'custom'
+          ? `<h3>${tr('2. Sponsors déjà actifs (optionnel)')}</h3>
+            <p class="fineprint">${esc(calSlotCap === null
+              ? tr('Choisis une catégorie et une marque du catalogue (ou écris librement) autant de fois que tu veux.')
+              : tr('Tu peux ajouter jusqu’à {n} sponsor(s) déjà existant(s) depuis le catalogue ou à la main.', { n: calSlotCap }))}</p>
+            <div class="ml-chips">${presetChips}</div>
+            <div class="ml-cal-sp-list" id="ml-cal-sp-list">${draftSponsors.map((sp) => mlCalSponsorRowHtml(sp, untilDefault, catalog)).join('')}</div>
+            <div class="ml-cal-foot">
+              <button type="button" class="btn" id="ml-cal-sp-add"${calSlotCap !== null && draftSponsors.length >= calSlotCap ? ' disabled' : ''}>+ ${tr('Ajouter un sponsor')}</button>
+              <button type="button" class="btn primary big" id="ml-cal-submit">${tr('Valider et ouvrir Ma vie')}</button>
+            </div>`
+          : `<h3>${tr('2. Progression des sponsors (Mode réaliste)')}</h3>
+            <p class="fineprint">${tr('Les marques (crampons, textile, horlogerie, compagnies aériennes, partenaires mondiaux…) te contacteront selon tes performances et ton statut. Modifiable à tout moment dans Réglages › Le monde.')}</p>
+            <div class="ml-cal-foot">
+              <button type="button" class="btn primary big" id="ml-cal-submit">${tr('Valider et ouvrir Ma vie')}</button>
+            </div>`}
       </section>
     </div>`;
 
@@ -9109,6 +9394,7 @@ function renderMyLife(page) {
           brand: r.querySelector('.ml-csp-brand')?.value.trim() || '',
           category: categories[0],
           categories,
+          isGlobalPartner: Boolean(r.querySelector('.ml-csp-gp')?.checked),
           fee: Number(r.querySelector('.ml-csp-fee')?.value) || 0,
           bonus: Number(r.querySelector('.ml-csp-bonus')?.value) || 0,
           until: r.querySelector('.ml-csp-until')?.value || untilDefault,
@@ -9118,7 +9404,39 @@ function renderMyLife(page) {
       if (addBtn) addBtn.disabled = calSlotCap !== null && rows.length >= calSlotCap;
     };
     const bindCalRow = (row) => {
-      row.querySelectorAll('input, select').forEach((el) => { el.onchange = syncCalRows; });
+      const catSel = row.querySelector('.ml-csp-cat');
+      const brandSel = row.querySelector('.ml-csp-brand-sel');
+      const brandInp = row.querySelector('.ml-csp-brand');
+      if (catSel && brandSel) {
+        catSel.onchange = () => {
+          const cat = catSel.value;
+          brandSel.innerHTML = mlCatalogBrandOptsHtml(catalog, cat, '');
+          const picker = row.querySelector('.ml-cat-picker');
+          if (picker) mlSetSponsorCatPicker(picker, [cat], syncCalRows);
+          syncCalRows();
+        };
+      }
+      if (brandSel && brandInp) {
+        brandSel.onchange = () => {
+          const val = brandSel.value;
+          if (!val) return;
+          if (val === '__custom__') {
+            brandInp.value = '';
+            brandInp.focus();
+            syncCalRows();
+            return;
+          }
+          const opt = brandSel.selectedOptions?.[0];
+          brandInp.value = val;
+          if (opt?.dataset.fee && row.querySelector('.ml-csp-fee')) row.querySelector('.ml-csp-fee').value = opt.dataset.fee;
+          if (opt?.dataset.bonus && row.querySelector('.ml-csp-bonus')) row.querySelector('.ml-csp-bonus').value = opt.dataset.bonus;
+          const cats = (opt?.dataset.cats || catSel?.value || '').split(',').filter(Boolean);
+          const picker = row.querySelector('.ml-cat-picker');
+          if (picker && cats.length) mlSetSponsorCatPicker(picker, cats, syncCalRows);
+          syncCalRows();
+        };
+      }
+      row.querySelectorAll('input').forEach((el) => { el.onchange = syncCalRows; });
       bindSponsorCatPicker(row, syncCalRows);
       const del = row.querySelector('.ml-csp-del');
       if (del) del.onclick = () => { row.remove(); syncCalRows(); };
@@ -9132,6 +9450,8 @@ function renderMyLife(page) {
         renderMyLife(page);
       };
     });
+    if ($('#ml-cal-spmode')) $('#ml-cal-spmode').onchange = () => { view.mlCalSponsorMode = $('#ml-cal-spmode').value; renderMyLife(page); };
+    if ($('#ml-cal-evmode')) $('#ml-cal-evmode').onchange = () => { view.mlCalEventMode = $('#ml-cal-evmode').value; };
     const folCheck = $('#ml-cal-fol-on');
     if (folCheck) folCheck.onchange = () => { view.mlCalFolOn = folCheck.checked; $('#ml-cal-fol-wrap').hidden = !folCheck.checked; };
     const calCashEl = $('#ml-cal-cash');
@@ -9144,13 +9464,13 @@ function renderMyLife(page) {
       const list = $('#ml-cal-sp-list');
       if (!list || (calSlotCap !== null && list.querySelectorAll('.ml-cal-sp-row').length >= calSlotCap)) return;
       const wrap = document.createElement('div');
-      wrap.innerHTML = mlCalSponsorRowHtml(sp, untilDefault);
+      wrap.innerHTML = mlCalSponsorRowHtml(sp, untilDefault, catalog);
       const row = wrap.firstElementChild;
       list.appendChild(row);
       bindCalRow(row);
       syncCalRows();
     };
-    $('#ml-cal-sp-add').onclick = () => appendCalSponsor({});
+    if ($('#ml-cal-sp-add')) $('#ml-cal-sp-add').onclick = () => appendCalSponsor({});
     page.querySelectorAll('[data-calsp-preset]').forEach((b) => {
       b.onclick = () => {
         const p = ML_SPONSOR_PRESETS_UI[Number(b.dataset.calspPreset)];
@@ -9159,14 +9479,15 @@ function renderMyLife(page) {
     });
     if ($('#ml-cal-cancel')) $('#ml-cal-cancel').onclick = () => { view.mlCalibrate = false; view.mlCalSponsors = null; renderMyLife(page); };
     $('#ml-cal-submit').onclick = async () => {
-      syncCalRows();
+      if (calSponsorMode === 'custom') syncCalRows();
       try {
+        settings = await live.saveSettings({ sponsorMode: calSponsorMode, eventMode: calEventMode });
         state = await live.calibrateLifeHub({
           startMode: view.mlCalMode || 'bundle',
           cash: Number($('#ml-cal-cash')?.value ?? defaultCash),
           applyFollowers: Boolean($('#ml-cal-fol-on')?.checked),
           followers: Number($('#ml-cal-fol-val')?.value || est.followers),
-          existingSponsors: (view.mlCalSponsors || []).filter((x) => x.brand),
+          existingSponsors: calSponsorMode === 'custom' ? (view.mlCalSponsors || []).filter((x) => x.brand) : [],
         });
         view.mlCalibrate = false;
         view.mlCalSponsors = null;
@@ -9217,11 +9538,17 @@ function renderMyLife(page) {
     ${!sfxEnabled ? `<p class="fineprint">${tr('Option désactivée par défaut : active « Ma vie : effets réels dans la sauvegarde » dans Réglages › Sauvegarde pour appliquer forme et affection coach jeu fermé.')}</p>` : ''}
   </section>` : '';
 
+  const sponsorMode = settings?.sponsorMode || 'realistic';
+  const eventMode = settings?.eventMode || 'realistic';
+  const isCustomSp = sponsorMode === 'custom';
   const pendingObs = (hub.obligations || []).filter((o) => o.status === 'pending');
-  const spBadge = (hub.offers?.length || 0) + pendingObs.length;
+  const biddingWars = hub.biddingWars || [];
+  const oneTimeOffers = hub.oneTimeOffers || [];
+  const pendingDecs = cal.pendingDecisions || [];
+  const spBadge = (hub.offers?.length || 0) + biddingWars.length + oneTimeOffers.length + pendingObs.length;
   const subTabs = [
     ['overview', tr('Tableau de bord'), (hub.pendingDilemma ? 1 : 0) + (sfxEnabled && hasPendingSfx ? 1 : 0)],
-    ['calendar', tr('Calendrier'), pendingCalCount],
+    ['calendar', tr('Calendrier'), pendingCalCount + pendingDecs.length],
     ['sponsors', slotCap === null ? tr('Sponsors ({cur})', { cur: hub.sponsors.length }) : tr('Sponsors ({cur}/{max})', { cur: hub.sponsors.length, max: slotCap }), spBadge],
     ['shop', tr('Lifestyle & Patrimoine'), 0],
     ['finances', tr('Finances'), 0],
@@ -9307,13 +9634,78 @@ function renderMyLife(page) {
     }).join('')}</div>
   </div>` : '';
 
-  const spPresetOpts = `<option value="">${esc(tr('Choisir un modèle (ou écrire en dessous)…'))}</option>${ML_SPONSOR_PRESETS_UI.map((p, i) => `<option value="${i}">${esc(p.brand)} (${esc((p.categories || [p.category]).map(mlSponsorCatLabel).join(' / '))})</option>`).join('')}`;
+  const bettingRestricted = catalog?.betting && catalog.betting.allowed === false;
+  const spModeBannerHtml = `<div class="ml-mode-banner">
+    <div>
+      <span class="priv-badge${isCustomSp ? '' : ' on'}">${esc(isCustomSp ? tr('Mode Sponsors : Personnalisé') : tr('Mode Sponsors : Réaliste'))}</span>
+      ${bettingRestricted ? `<span class="priv-tag ml-bet-ban">${esc(tr('Paris sportifs interdits ({country})', { country: catalog.betting.country || tr('Législation locale') }))}</span>` : ''}
+      <p class="fineprint">${esc(isCustomSp
+        ? tr('Édition manuelle et sélection depuis le catalogue activées (les offres réalistes restent suspendues).')
+        : tr('Les contrats évoluent par offres entrantes, enchères entre rivaux et opérations ponctuelles.'))}</p>
+    </div>
+    <button type="button" class="btn" id="ml-sp-open-settings">${tr('Changer de mode')}</button>
+  </div>`;
+
+  const warsHtml = biddingWars.length ? `<div class="ml-list">${biddingWars.map((w) => {
+    const bidsHtml = (w.bids || []).map((b) => `<div class="ml-war-bid${b.walkedAway ? ' walked' : ''}">
+      <div>
+        <div class="ml-sp-head">
+          <b>${esc(b.brand)}</b>
+          ${b.isGlobalPartner ? `<span class="priv-badge on">${tr('Partenaire mondial')}</span>` : ''}
+          ${b.buyoutCovered ? `<span class="priv-tag">${tr('Rachat couvert')}</span>` : ''}
+          ${b.walkedAway ? `<span class="priv-tag">${tr('S’est retirée')}</span>` : ''}
+        </div>
+        <p class="fineprint">${esc(b.person || '')} · ${esc(tr('{fee}/an · +{bonus}/but ou passe', { fee: euros(b.fee), bonus: euros(b.bonus) }))}${b.signingBonus ? ` · ${esc(tr('Prime signature {b}', { b: euros(b.signingBonus) }))}` : ''}</p>
+      </div>
+      ${b.walkedAway ? '' : `<button type="button" class="btn primary" data-mlwar="${esc(w.id)}" data-waract="accept" data-warbid="${esc(b.id)}">${tr('Signer')}</button>`}
+    </div>`).join('');
+    const matchHtml = w.incumbentMatch ? `<div class="ml-war-match">
+      <div><b>${esc(tr('{brand} s’aligne pour te garder', { brand: w.incumbentMatch.brand }))}</b>
+        <p class="fineprint">${esc(tr('{fee}/an · +{bonus}/but ou passe', { fee: euros(w.incumbentMatch.fee), bonus: euros(w.incumbentMatch.bonus) }))}</p></div>
+      <button type="button" class="btn primary" data-mlwar="${esc(w.id)}" data-waract="match_incumbent">${esc(tr('Rester chez {brand}', { brand: w.incumbentMatch.brand }))}</button>
+    </div>` : '';
+    return `<div class="card ml-war-card">
+      <div class="ml-sec-head">
+        <div>
+          <span class="priv-badge on">${esc(tr('Enchère de sponsors'))} · ${esc(mlSponsorCatLabel(w.category))}</span>
+          <h4>${esc(w.existingBrand ? tr('Les rivaux veulent débaucher ton contrat ({brand})', { brand: w.existingBrand }) : tr('Bataille de marques pour la catégorie {cat}', { cat: mlSponsorCatLabel(w.category) }))}</h4>
+          ${w.buyoutCost ? `<p class="fineprint">${esc(tr('Clause de rachat estimée : {cost} (offerte par les marques marquées Rachat couvert).', { cost: euros(w.buyoutCost) }))}</p>` : ''}
+        </div>
+        <span class="fineprint">${esc(tr('Tour {r} / 2', { r: w.round || 0 }))}</span>
+      </div>
+      <div class="ml-war-bids">${bidsHtml}</div>
+      ${matchHtml}
+      <div class="ml-offer-acts">
+        <button type="button" class="btn" data-mlwar="${esc(w.id)}" data-waract="leverage"${(w.round || 0) >= 2 || !state.agent?.name ? ' disabled' : ''}>${state.agent?.name ? tr('Faire monter les enchères (agent)') : tr('Agent requis pour négocier')}</button>
+        <button type="button" class="btn" data-mlwar="${esc(w.id)}" data-waract="decline">${tr('Décliner l’enchère')}</button>
+      </div>
+    </div>`;
+  }).join('')}</div>` : '';
+
+  const oneTimeMinDate = simDate ? mlAddDays(simDate, 1) : '';
+  const oneTimeHtml = oneTimeOffers.length ? `<div class="ml-list">${oneTimeOffers.map((o) => {
+    const dealFn = ML_ONETIME_DEAL_LABELS[o.dealKey];
+    const dealTitle = dealFn ? dealFn() : o.dealKey.replace(/_/g, ' ');
+    return `<div class="card ml-ot-card" data-otid="${esc(o.id)}">
+      <div class="ml-offer-info">
+        <div class="ml-sp-head"><span class="priv-badge on">${tr('Opération ponctuelle')}</span><span class="priv-tag">${esc(mlSponsorCatLabel(o.category))}</span></div>
+        <h4>${esc(o.brand)} · ${esc(dealTitle)}</h4>
+        <p class="fineprint">${esc(tr('Cachet total {fee} (25 % d’acompte à la signature) · Médias +{m}, Supporters +{f}', { fee: euros(o.fee), m: o.mediaBoost || 5, f: o.fanBoost || 4 }))}</p>
+      </div>
+      <div class="ml-ot-acts">
+        <label class="per-field"><span>${tr('Date du tournage / événement')}</span><input type="date" class="ml-ot-date" value="${esc(o.suggestedDate || oneTimeMinDate)}"${oneTimeMinDate ? ` min="${esc(oneTimeMinDate)}"` : ''}></label>
+        <button type="button" class="btn primary" data-mlonetime="${esc(o.id)}" data-otact="accept">${tr('Planifier & accepter')}</button>
+        <button type="button" class="btn" data-mlonetime="${esc(o.id)}" data-otact="decline">${tr('Refuser')}</button>
+      </div>
+    </div>`;
+  }).join('')}</div>` : '';
+
   const offersHtml = (hub.offers || []).length ? `<div class="ml-list">${hub.offers.map((o) => {
     const oCats = Array.isArray(o.categories) && o.categories.length ? o.categories : [o.category || 'lifestyle'];
     return `<div class="card ml-offer">
-      <div class="ml-offer-info"><div class="ml-sp-head">${oCats.map((c) => `<span class="priv-tag">${esc(mlSponsorCatLabel(c))}</span>`).join('')}</div><h4>${esc(o.brand)}</h4><p class="fineprint">${esc(o.person)} · ${esc(tr('{fee}/an · +{bonus}/but ou passe', { fee: euros(o.fee), bonus: euros(o.bonus) }))}</p></div>
+      <div class="ml-offer-info"><div class="ml-sp-head">${oCats.map((c) => `<span class="priv-tag">${esc(mlSponsorCatLabel(c))}</span>`).join('')}${o.isGlobalPartner ? `<span class="priv-badge on">${tr('Partenaire mondial')}</span>` : ''}${o.upgradeSponsorId ? `<span class="priv-tag">${tr('Extension prestige')}</span>` : ''}</div><h4>${esc(o.brand)}</h4><p class="fineprint">${esc(o.person)} · ${esc(tr('{fee}/an · +{bonus}/but ou passe', { fee: euros(o.fee), bonus: euros(o.bonus) }))}</p></div>
       <div class="ml-offer-acts">
-        <button type="button" class="btn primary" data-mloff="${esc(o.id)}" data-offact="accept"${slotCap !== null && hub.sponsors.length >= slotCap ? ' disabled' : ''}>${tr('Signer')}</button>
+        <button type="button" class="btn primary" data-mloff="${esc(o.id)}" data-offact="accept"${!o.upgradeSponsorId && slotCap !== null && hub.sponsors.length >= slotCap ? ' disabled' : ''}>${tr('Signer')}</button>
         <button type="button" class="btn" data-mloff="${esc(o.id)}" data-offact="negotiate"${o.negotiated ? ' disabled' : ''}>${tr('Négocier')}</button>
         <button type="button" class="btn" data-mloff="${esc(o.id)}" data-offact="decline">${tr('Refuser')}</button>
       </div>
@@ -9322,27 +9714,38 @@ function renderMyLife(page) {
 
   const activeSponsorsHtml = hub.sponsors.length ? hub.sponsors.map((sp) => {
     const spCats = Array.isArray(sp.categories) && sp.categories.length ? sp.categories : [sp.category || 'lifestyle'];
-    return `<div class="card ml-sp-card" data-spid="${esc(sp.id)}">
-      <div class="ml-sp-brand-row">
-        <div class="ml-sp-brand-id">
-          ${mlSponsorMedallionHtml(sp)}
-          <div class="ml-sp-head">
-            ${spCats.map((c) => `<span class="priv-tag">${esc(mlSponsorCatLabel(c))}</span>`).join('')}
-            ${sp.linkedBootDeal ? `<span class="priv-badge on">${tr('Lié aux crampons (Mails)')}</span>` : ''}
-            <span class="fineprint">${esc(sp.until ? tr('Jusqu’au {d}', { d: shortDate(sp.until) }) : '')}</span>
-          </div>
-        </div>
-        <div class="ml-media-acts">
-          <button type="button" class="ml-media-btn" data-mlimg-target="sponsor" data-mlimg-id="${esc(sp.id)}" title="${esc(tr('Logo personnalisé'))}">${hi('camera')}</button>
-          ${sp.customImage ? `<button type="button" class="ml-media-btn" data-mlimg-clear="sponsor" data-mlimg-id="${esc(sp.id)}" title="${esc(tr('Retirer le logo'))}">${hi('xmark')}</button>` : ''}
+    const headRow = `<div class="ml-sp-brand-row">
+      <div class="ml-sp-brand-id">
+        ${mlSponsorMedallionHtml(sp)}
+        <div class="ml-sp-head">
+          ${spCats.map((c) => `<span class="priv-tag">${esc(mlSponsorCatLabel(c))}</span>`).join('')}
+          ${sp.isGlobalPartner ? `<span class="priv-badge on">${tr('Partenaire mondial')}</span>` : ''}
+          ${sp.linkedBootDeal ? `<span class="priv-badge on">${tr('Lié aux crampons (Mails)')}</span>` : ''}
+          <span class="fineprint">${esc(sp.until ? tr('Jusqu’au {d}', { d: shortDate(sp.until) }) : '')}</span>
         </div>
       </div>
+      <div class="ml-media-acts">
+        <button type="button" class="ml-media-btn" data-mlimg-target="sponsor" data-mlimg-id="${esc(sp.id)}" title="${esc(tr('Logo personnalisé'))}">${hi('camera')}</button>
+        ${sp.customImage ? `<button type="button" class="ml-media-btn" data-mlimg-clear="sponsor" data-mlimg-id="${esc(sp.id)}" title="${esc(tr('Retirer le logo'))}">${hi('xmark')}</button>` : ''}
+      </div>
+    </div>`;
+    if (!isCustomSp) {
+      return `<div class="card ml-sp-card is-readonly" data-spid="${esc(sp.id)}">
+        ${headRow}
+        <div class="ml-sp-readonly">
+          <div><h4>${esc(sp.brand)}</h4><p class="fineprint">${esc(tr('{fee}/an · +{bonus}/but ou passe', { fee: euros(sp.fee || 0), bonus: euros(sp.bonus || 0) }))}${sp.notes ? ` · ${esc(sp.notes)}` : ''}</p></div>
+        </div>
+      </div>`;
+    }
+    return `<div class="card ml-sp-card" data-spid="${esc(sp.id)}">
+      ${headRow}
       <div class="ml-sp-grid">
         <label class="per-field"><span>${tr('Nom de la marque')}</span><input class="ml-sp-brand" value="${esc(sp.brand)}" maxlength="80"></label>
         <label class="per-field"><span>${tr('Montant annuel (€)')}</span><input class="ml-sp-fee" type="number" min="0" step="1000" value="${esc(sp.fee || 0)}"></label>
         <label class="per-field"><span>${tr('Prime but/passe (€)')}</span><input class="ml-sp-bonus" type="number" min="0" step="250" value="${esc(sp.bonus || 0)}"></label>
         <label class="per-field"><span>${tr('Fin du contrat')}</span><input class="ml-sp-until" type="date" value="${esc(sp.until || '')}"></label>
         <label class="per-field"><span>${tr('Notes personnelles')}</span><input class="ml-sp-notes" value="${esc(sp.notes || '')}" placeholder="${esc(tr('Clause ou détail libre…'))}" maxlength="140"></label>
+        <label class="ml-gp-check"><input type="checkbox" class="ml-sp-global"${sp.isGlobalPartner ? ' checked' : ''}><span>${tr('Partenaire mondial (add-on prestige)')}</span></label>
         <div class="per-field ml-sp-cats-field"><span>${tr('Catégories (choix multiples & personnalisé)')}</span>${mlSponsorCatPickerHtml(spCats)}</div>
       </div>
       <div class="ml-sp-acts">
@@ -9352,13 +9755,18 @@ function renderMyLife(page) {
     </div>`;
   }).join('') : `<p class="fineprint">${tr('Aucun sponsor actif pour l’instant.')}</p>`;
 
-  const obligationsHtml = pendingObs.length ? pendingObs.map((ob) => `<div class="card ml-ob">
-    <div><b>${esc(ob.brand)}</b><div class="fineprint">${esc((ML_OBLIGATION_LABELS[ob.kind] || ML_OBLIGATION_LABELS.brand_appearance)())} · ${esc(tr('Avant le {d}', { d: shortDate(ob.dueDate) }))} · +${esc(euros(ob.rewardCash))}</div></div>
-    <div class="ml-offer-acts">
-      <button type="button" class="btn primary" data-mlob="${esc(ob.id)}" data-obskip="0">${tr('Honorer')}</button>
-      <button type="button" class="btn" data-mlob="${esc(ob.id)}" data-obskip="1">${tr('Passer')}</button>
-    </div>
-  </div>`).join('') : `<p class="fineprint">${tr('Aucune obligation en cours.')}</p>`;
+  const obligationsHtml = pendingObs.length ? pendingObs.map((ob) => {
+    const maxObDate = mlAddDays(ob.dueDate || simDate, 14);
+    return `<div class="card ml-ob" data-obid="${esc(ob.id)}">
+      <div><b>${esc(ob.brand)}</b><div class="fineprint">${esc((ML_OBLIGATION_LABELS[ob.kind] || ML_OBLIGATION_LABELS.brand_appearance)())} · ${esc(tr('Avant le {d}', { d: shortDate(ob.dueDate) }))} · +${esc(euros(ob.rewardCash))}</div></div>
+      <div class="ml-offer-acts">
+        <input type="date" class="ml-ob-date" value="${esc(ob.dueDate || simDate)}"${simDate ? ` min="${esc(simDate)}"` : ''} max="${esc(maxObDate)}" aria-label="${esc(tr('Reporter l’échéance'))}">
+        <button type="button" class="btn" data-mlob-move="${esc(ob.id)}">${tr('Décaler')}</button>
+        <button type="button" class="btn primary" data-mlob="${esc(ob.id)}" data-obskip="0">${tr('Honorer')}</button>
+        <button type="button" class="btn" data-mlob="${esc(ob.id)}" data-obskip="1">${tr('Passer')}</button>
+      </div>
+    </div>`;
+  }).join('') : `<p class="fineprint">${tr('Aucune obligation en cours.')}</p>`;
 
   const shopCat = view.mlShopCat || 'all';
   const shopFilterBtns = Object.entries(ML_ASSET_CAT_LABELS).map(([k, fn]) => `<button type="button" class="ml-chip${shopCat === k ? ' on' : ''}" data-mlshopcat="${k}">${esc(fn())}</button>`).join('');
@@ -9422,7 +9830,18 @@ function renderMyLife(page) {
     <td class="num ${r.amount >= 0 ? 'pos' : 'neg'}">${r.amount >= 0 ? `+${esc(euros(r.amount))}` : esc(euros(r.amount))}</td>
   </tr>`).join('');
 
-  const agenda = mlAgendaItems(s, hub, cal, calMonth);
+  const agKey = mlAgendaCalKey(state, calMonth, simDate, cal);
+  if (tab === 'calendar' && view.mlCalAgendaKey !== agKey && !view.mlCalAgendaLoading) {
+    view.mlCalAgendaLoading = true;
+    live.getCalendarAgenda(calMonth).then((ag) => {
+      view.mlCalAgenda = ag;
+      view.mlCalAgendaKey = agKey;
+      view.mlCalAgendaLoading = false;
+      if (current === 'mylife' && (view.mlTab || 'overview') === 'calendar') renderMyLife(page);
+    }).catch(() => { view.mlCalAgendaLoading = false; });
+  }
+  const agenda = (view.mlCalAgendaKey === agKey && view.mlCalAgenda) ? view.mlCalAgenda : mlAgendaItems(s, hub, cal, calMonth);
+  const squadRoster = agenda.squadRoster || [];
   const byDay = new Map();
   for (const it of agenda.items) {
     if (!byDay.has(it.date)) byDay.set(it.date, []);
@@ -9454,19 +9873,67 @@ function renderMyLife(page) {
     if (it.kind === 'sponsor') return tr('Sponsor');
     if (it.kind === 'window') return tr('Mercato');
     if (it.kind === 'life') return tr('Événement');
+    if (it.kind === 'birthday') return tr('Anniversaire');
+    if (it.kind === 'scheduled') return tr('Activité planifiée');
+    if (it.kind === 'system_event') {
+      const fn = ML_SYSEV_LABELS[it.eventKey];
+      return fn ? fn() : tr('Événement');
+    }
     return it.customCategory || (ML_CAL_CAT_LABELS[it.category] || ML_CAL_CAT_LABELS.personal)();
+  };
+  const calItemTitle = (it) => {
+    if (it.kind === 'scheduled' && it.activityId) {
+      const act = ML_ACTIONS_UI.find((a) => a.id === it.activityId);
+      if (act && it.title === act.id.replace(/_/g, ' ')) return act.label();
+    }
+    if (it.kind === 'system_event' && it.eventKey && it.eventKey !== 'match_eve') {
+      const fn = ML_SYSEV_LABELS[it.eventKey];
+      if (fn) return fn();
+    }
+    if (it.kind === 'birthday') return tr('Anniversaire de {name}', { name: it.name || it.title || '' });
+    return it.title;
   };
   const selItemsHtml = selItems.length
     ? `<ul class="ml-cal-items">${selItems.map((it) => `<li class="ml-cal-item ml-cal-item--${esc(it.kind)}">
         <div>
           <span class="ml-tag">${esc(calKindLabel(it))}</span>
-          <b>${esc(it.title)}</b>
+          <b>${esc(calItemTitle(it))}</b>
           ${it.spoilerHidden ? `<small class="ml-spoiler-note">${esc(it.detail ? `${it.detail} · ` : '')}${tr('Résultat masqué')}</small>` : (it.detail ? `<small>${esc(it.detail)}</small>` : '')}
         </div>
-        ${it.kind === 'custom' && it.id ? `<button type="button" class="per-p-del" data-caldel="${esc(it.id)}" aria-label="${esc(tr('Supprimer'))}">−</button>` : ''}
+        <div class="ml-cal-item-acts">
+          ${it.kind === 'birthday' && it.clash && it.bdayKey ? `<button type="button" class="btn ml-bday-shift" data-bdayflip="${esc(it.bdayKey)}" title="${esc(tr('Basculer le report entre la veille et le lendemain du match'))}">${it.shiftedBy > 0 ? tr('Décaler (-1j)') : tr('Décaler (+1j)')}</button>` : ''}
+          ${(it.kind === 'custom' || it.kind === 'scheduled') && it.id ? `<button type="button" class="per-p-del" data-caldel="${esc(it.id)}" aria-label="${esc(tr('Supprimer'))}">−</button>` : ''}
+        </div>
       </li>`).join('')}</ul>`
     : `<p class="fineprint">${tr('Journée calme : tu peux ajouter un événement personnel ou avancer dans le calendrier.')}</p>`;
   const calCatOpts = `${Object.entries(ML_CAL_CAT_LABELS).map(([k, fn]) => `<option value="${k}">${esc(fn())}</option>`).join('')}<option value="__custom__">${esc(tr('Personnalisé…'))}</option>`;
+  const calActOpts = ML_ACTIONS_UI.map((a) => `<option value="${esc(a.id)}">${esc(a.label())} (${esc(a.tags().join(' · '))})</option>`).join('');
+  const decisionsCardHtml = pendingDecs.length ? `<div class="card ml-dec-card">
+    <div class="ml-sec-head"><span class="priv-badge on">${esc(trn(pendingDecs.length, '{n} décision calendrier', '{n} décisions calendrier'))}</span><span class="fineprint">${esc(eventMode === 'games_only' ? tr('Mode Matchs uniquement') : tr('Événements du jour'))}</span></div>
+    ${pendingDecs.map((dec) => {
+      const hdr = mlDecisionHeader(dec);
+      return `<div class="ml-dec-item">
+        <div><h4>${esc(hdr.title)}</h4><p class="fineprint">${esc(hdr.sub)}</p></div>
+        <div class="ml-dec-choices">${(dec.choices || []).map((ch) => {
+          const chLblFn = ML_DECISION_CHOICE_LABELS[ch.id];
+          const chLbl = chLblFn ? chLblFn() : ch.id;
+          const tags = mlDecisionChoiceTags(ch);
+          return `<button type="button" class="ml-dil-btn" data-caldec="${esc(dec.id)}" data-calchoice="${esc(ch.id)}"><b>${esc(chLbl)}</b>${tags.length ? `<small>${esc(tags.join(' · '))}</small>` : ''}</button>`;
+        }).join('')}</div>
+      </div>`;
+    }).join('')}
+  </div>` : '';
+  const squadBdaysHtml = squadRoster.length ? `<details class="ml-custom-box ml-squad-bdays" id="ml-sqbday-box">
+    <summary>${esc(tr('Anniversaires du vestiaire ({n} coéquipiers)', { n: squadRoster.length }))}</summary>
+    <div class="ml-sqbday-body">
+      <p class="fineprint">${tr('Dates générées automatiquement si vides, modifiables à tout moment. En cas de match, l’anniversaire est reporté la veille ou le lendemain.')}</p>
+      <div class="ml-sqbday-grid">${squadRoster.map((sq) => `<label class="ml-sqbday-row">
+        <span><b>${esc(sq.name)}</b><small>${esc(sq.pos || '')}${sq.isClose ? ` · ${esc(tr('Proche'))}` : ''}</small></span>
+        <input type="text" class="ml-sqbday-in" data-sqkey="${esc(sq.key)}" value="${esc(sq.dob || '')}" placeholder="YYYY-MM-DD ou --MM-DD" maxlength="10">
+      </label>`).join('')}</div>
+      <div class="ml-cal-foot"><button type="button" class="btn primary" id="ml-sqbday-save">${tr('Enregistrer les anniversaires')}</button></div>
+    </div>
+  </details>` : '';
   const calHistHtml = (cal.history || []).slice(0, 6).map((h) => {
     const rLabel = (ML_RHYTHM_LABELS[h.rhythm] || ML_RHYTHM_LABELS.training)();
     const detail = h.matches ? `${rLabel} · ${tr('{n} match(s) révélé(s).', { n: h.matches })}` : rLabel;
@@ -9550,6 +10017,9 @@ function renderMyLife(page) {
     </section>
 
     <section class="ml-panel"${tab === 'sponsors' ? '' : ' hidden'}>
+      ${spModeBannerHtml}
+      ${warsHtml ? `<div class="card ml-card"><h3>${tr('Enchères & sollicitations rivales')}</h3>${warsHtml}</div>` : ''}
+      ${oneTimeHtml ? `<div class="card ml-card"><h3>${tr('Opérations & contrats ponctuels')}</h3>${oneTimeHtml}</div>` : ''}
       <div class="card ml-card">
         <h3>${tr('Offres entrantes')}</h3>
         ${offersHtml}
@@ -9562,20 +10032,22 @@ function renderMyLife(page) {
             : tr('Débloque des places illimitées au statut Superstar ou dès 2M d’abonnés Kop.')}</span>
         </div>
         <div class="ml-sp-list">${activeSponsorsHtml}</div>
-        <details class="ml-custom-box">
+        ${isCustomSp ? `<details class="ml-custom-box">
           <summary>${tr('+ Ajouter un sponsor personnalisé')}</summary>
           <div class="ml-sp-add">
-            <label class="per-field"><span>${tr('Modèle rapide')}</span><select id="ml-sp-preset">${spPresetOpts}</select></label>
             <div class="ml-sp-grid">
+              <label class="per-field"><span>${tr('Catégorie principale')}</span><select id="ml-newsp-cat">${mlCatalogCatOptsHtml(catalog, 'boots')}</select></label>
+              <label class="per-field"><span>${tr('Marque du catalogue')}</span><select id="ml-newsp-brand-sel">${mlCatalogBrandOptsHtml(catalog, 'boots', '')}</select></label>
               <label class="per-field"><span>${tr('Nom de la marque')}</span><input id="ml-newsp-brand" placeholder="${esc(tr('Nom du sponsor (éditable)'))}" maxlength="80"></label>
               <label class="per-field"><span>${tr('Montant annuel (€)')}</span><input id="ml-newsp-fee" type="number" min="0" step="5000" value="150000" placeholder="${esc(tr('Montant annuel (€)'))}"></label>
               <label class="per-field"><span>${tr('Prime but/passe (€)')}</span><input id="ml-newsp-bonus" type="number" min="0" step="500" value="2500" placeholder="${esc(tr('Prime but/passe (€)'))}"></label>
               <label class="per-field"><span>${tr('Fin du contrat')}</span><input id="ml-newsp-until" type="date" value="${esc(`${Number(String(s.gameDate || '2026-08-01').slice(0, 4)) + 2}-06-30`)}"></label>
-              <div class="per-field ml-sp-cats-field"><span>${tr('Catégories (choix multiples & personnalisé)')}</span>${mlSponsorCatPickerHtml(['lifestyle'], 'id="ml-newsp-cats"')}</div>
+              <label class="ml-gp-check"><input type="checkbox" id="ml-newsp-global"><span>${tr('Partenaire mondial (add-on prestige)')}</span></label>
+              <div class="per-field ml-sp-cats-field"><span>${tr('Catégories (choix multiples & personnalisé)')}</span>${mlSponsorCatPickerHtml(['boots'], 'id="ml-newsp-cats"')}</div>
             </div>
             <button type="button" class="btn primary" id="ml-newsp-go"${slotCap !== null && hub.sponsors.length >= slotCap ? ' disabled' : ''}>${tr('Ajouter')}</button>
           </div>
-        </details>
+        </details>` : `<p class="fineprint">${tr('En mode Réaliste, l’ajout ou l’édition manuelle est verrouillé pour préserver les enchères et exclusivités.')}</p>`}
       </div>
       <div class="card ml-card">
         <h3>${tr('Obligations partenaires')}</h3>
@@ -9656,6 +10128,9 @@ function renderMyLife(page) {
           <div class="ml-cal-legend">
             <span><i class="ml-dot ml-dot--match"></i>${tr('Match')}</span>
             <span><i class="ml-dot ml-dot--sponsor"></i>${tr('Sponsor')}</span>
+            <span><i class="ml-dot ml-dot--birthday"></i>${tr('Anniversaire')}</span>
+            <span><i class="ml-dot ml-dot--scheduled"></i>${tr('Planifié')}</span>
+            <span><i class="ml-dot ml-dot--system_event"></i>${tr('Événement')}</span>
             <span><i class="ml-dot ml-dot--custom"></i>${tr('Personnel')}</span>
             <span><i class="ml-dot ml-dot--window"></i>${tr('Mercato')}</span>
           </div>
@@ -9669,19 +10144,35 @@ function renderMyLife(page) {
             </div>
           </div>
           ${selItemsHtml}
-          <details class="ml-custom-box">
-            <summary>${tr('+ Ajouter un événement au calendrier')}</summary>
-            <div class="ml-custom-form">
-              <label class="per-field"><span>${tr('Date')}</span><input id="ml-calev-date" type="date" value="${esc(calDay)}"></label>
-              <label class="per-field"><span>${tr('Titre')}</span><input id="ml-calev-title" placeholder="${esc(tr('ex. Dîner famille, séance photo, visite fondation…'))}" maxlength="100"></label>
-              <label class="per-field"><span>${tr('Catégorie')}</span><select id="ml-calev-cat">${calCatOpts}</select></label>
-              <label class="per-field" id="ml-calev-cat-custom-wrap" hidden><span>${tr('Catégorie personnalisée')}</span><input id="ml-calev-cat-custom" placeholder="${esc(tr('ex. Gala, Entraînement perso…'))}" maxlength="40"></label>
-              <button type="button" class="btn primary" id="ml-calev-go">${tr('Planifier')}</button>
+          <div class="ml-scheduler">
+            <div class="ml-sec-head">
+              <h4>${tr('Planifier à l’avance')}</h4>
+              <div class="ml-chips">
+                <button type="button" class="ml-chip${(view.mlSchedMode || 'activity') === 'activity' ? ' on' : ''}" data-schedmode="activity">${tr('Activité hors terrain')}</button>
+                <button type="button" class="ml-chip${view.mlSchedMode === 'event' ? ' on' : ''}" data-schedmode="event">${tr('Événement personnalisé')}</button>
+              </div>
             </div>
-          </details>
+            ${(view.mlSchedMode || 'activity') === 'activity'
+              ? `<div class="ml-custom-form">
+                  <label class="per-field"><span>${tr('Date')}</span><input id="ml-sched-date" type="date" value="${esc(calDay)}"></label>
+                  <label class="per-field"><span>${tr('Activité')}</span><select id="ml-sched-act">${calActOpts}</select></label>
+                  <label class="per-field"><span>${tr('Avec qui ? (optionnel)')}</span><input id="ml-sched-comp" placeholder="${esc(tr('ex. Capitaine, famille, agent…'))}" maxlength="60"></label>
+                  <label class="per-field"><span>${tr('Note (optionnel)')}</span><input id="ml-sched-title" placeholder="${esc(tr('Libellé personnalisé…'))}" maxlength="100"></label>
+                  <button type="button" class="btn primary" id="ml-sched-act-go">${tr('Planifier')}</button>
+                </div>`
+              : `<div class="ml-custom-form">
+                  <label class="per-field"><span>${tr('Date')}</span><input id="ml-calev-date" type="date" value="${esc(calDay)}"></label>
+                  <label class="per-field"><span>${tr('Titre')}</span><input id="ml-calev-title" placeholder="${esc(tr('ex. Dîner famille, séance photo, visite fondation…'))}" maxlength="100"></label>
+                  <label class="per-field"><span>${tr('Catégorie')}</span><select id="ml-calev-cat">${calCatOpts}</select></label>
+                  <label class="per-field" id="ml-calev-cat-custom-wrap" hidden><span>${tr('Catégorie personnalisée')}</span><input id="ml-calev-cat-custom" placeholder="${esc(tr('ex. Gala, Entraînement perso…'))}" maxlength="40"></label>
+                  <button type="button" class="btn primary" id="ml-calev-go">${tr('Planifier')}</button>
+                </div>`}
+          </div>
           ${calHistHtml ? `<div class="ml-cal-hist"><h4>${tr('Journal du calendrier')}</h4><ul class="ml-feed">${calHistHtml}</ul></div>` : ''}
         </div>
       </div>
+      ${decisionsCardHtml}
+      ${squadBdaysHtml}
     </section>
   </div>`;
 
@@ -9761,12 +10252,52 @@ function renderMyLife(page) {
       } catch (err) { toast(err.message, true); }
     };
   }
-  page.querySelectorAll('[data-mloff]').forEach((b) => {
+  page.querySelectorAll('[data-mlwar]').forEach((b) => {
     b.onclick = async () => {
-      try { state = await live.answerLifeSponsorOffer(b.dataset.mloff, b.dataset.offact); render(); } catch (err) { toast(err.message, true); }
+      try {
+        await runAndOpenScene(() => live.answerBiddingWar(b.dataset.mlwar, b.dataset.waract, b.dataset.warbid || null));
+      } catch (err) { toast(err.message, true); }
     };
   });
-  page.querySelectorAll('.ml-sp-card').forEach((card) => {
+  page.querySelectorAll('[data-mlonetime]').forEach((b) => {
+    b.onclick = async () => {
+      const card = b.closest('.ml-ot-card');
+      const dateVal = card?.querySelector('.ml-ot-date')?.value || null;
+      try {
+        state = await live.answerOneTimeDeal(b.dataset.mlonetime, b.dataset.otact, dateVal);
+        view.mlCalAgendaKey = null;
+        toast(b.dataset.otact === 'accept' ? tr('Opération ponctuelle planifiée au calendrier.') : tr('Proposition refusée.'));
+        render();
+      } catch (err) { toast(err.message, true); }
+    };
+  });
+  if ($('#ml-sp-open-settings')) $('#ml-sp-open-settings').onclick = () => openSettings('rg-sponsormode');
+  page.querySelectorAll('[data-mloff]').forEach((b) => {
+    b.onclick = async () => {
+      try {
+        state = await live.answerLifeSponsorOffer(b.dataset.mloff, b.dataset.offact, false);
+        render();
+      } catch (err) {
+        if (b.dataset.offact === 'accept' && String(err.message || '').includes('Conflit de catégorie')) {
+          const ok = await kConfirm({
+            title: tr('Conflit de catégorie exclusif'),
+            body: tr('Tu as déjà un contrat actif dans cette catégorie exclusive. Souhaites-tu déclencher le rachat du contrat actuel et signer cette offre ?'),
+            ok: tr('Racheter et signer'),
+            cancel: tr('Annuler'),
+          });
+          if (!ok) return;
+          try {
+            state = await live.answerLifeSponsorOffer(b.dataset.mloff, 'accept', true);
+            toast(tr('Rachat effectué et nouveau sponsor signé.'));
+            render();
+          } catch (e2) { toast(e2.message, true); }
+          return;
+        }
+        toast(err.message, true);
+      }
+    };
+  });
+  page.querySelectorAll('.ml-sp-card:not(.is-readonly)').forEach((card) => {
     const id = card.dataset.spid;
     bindSponsorCatPicker(card);
     const saveBtn = card.querySelector('.ml-sp-save');
@@ -9780,6 +10311,7 @@ function renderMyLife(page) {
             brand: card.querySelector('.ml-sp-brand').value,
             category: categories[0],
             categories,
+            isGlobalPartner: Boolean(card.querySelector('.ml-sp-global')?.checked),
             fee: Number(card.querySelector('.ml-sp-fee').value) || 0,
             bonus: Number(card.querySelector('.ml-sp-bonus').value) || 0,
             until: card.querySelector('.ml-sp-until').value,
@@ -9800,34 +10332,81 @@ function renderMyLife(page) {
     }
   });
   if ($('#ml-newsp-cats')) bindSponsorCatPicker($('#ml-newsp-cats'));
-  const spPresetSel = $('#ml-sp-preset');
-  if (spPresetSel) {
-    spPresetSel.onchange = () => {
-      const p = ML_SPONSOR_PRESETS_UI[Number(spPresetSel.value)];
-      if (!p) return;
-      $('#ml-newsp-brand').value = p.brand;
-      $('#ml-newsp-fee').value = p.fee;
-      $('#ml-newsp-bonus').value = p.bonus;
-      if ($('#ml-newsp-cats')) mlSetSponsorCatPicker($('#ml-newsp-cats'), p.categories || [p.category]);
+  const newSpCat = $('#ml-newsp-cat');
+  const newSpBrandSel = $('#ml-newsp-brand-sel');
+  if (newSpCat && newSpBrandSel) {
+    newSpCat.onchange = () => {
+      const cat = newSpCat.value;
+      newSpBrandSel.innerHTML = mlCatalogBrandOptsHtml(catalog, cat, '');
+      if ($('#ml-newsp-cats')) mlSetSponsorCatPicker($('#ml-newsp-cats'), [cat]);
+    };
+  }
+  if (newSpBrandSel) {
+    newSpBrandSel.onchange = () => {
+      const val = newSpBrandSel.value;
+      if (!val) return;
+      if (val === '__custom__') {
+        $('#ml-newsp-brand').value = '';
+        $('#ml-newsp-brand').focus();
+        return;
+      }
+      const opt = newSpBrandSel.selectedOptions?.[0];
+      $('#ml-newsp-brand').value = val;
+      if (opt?.dataset.fee) $('#ml-newsp-fee').value = opt.dataset.fee;
+      if (opt?.dataset.bonus) $('#ml-newsp-bonus').value = opt.dataset.bonus;
+      const cats = (opt?.dataset.cats || newSpCat?.value || '').split(',').filter(Boolean);
+      if ($('#ml-newsp-cats') && cats.length) mlSetSponsorCatPicker($('#ml-newsp-cats'), cats);
     };
   }
   if ($('#ml-newsp-go')) {
     $('#ml-newsp-go').onclick = async () => {
+      const categories = $('#ml-newsp-cats') ? readSponsorCatPicker($('#ml-newsp-cats')) : ['lifestyle'];
+      const payload = {
+        brand: $('#ml-newsp-brand').value,
+        category: categories[0],
+        categories,
+        isGlobalPartner: Boolean($('#ml-newsp-global')?.checked),
+        fee: Number($('#ml-newsp-fee').value) || 0,
+        bonus: Number($('#ml-newsp-bonus').value) || 0,
+        until: $('#ml-newsp-until').value,
+      };
       try {
-        const categories = $('#ml-newsp-cats') ? readSponsorCatPicker($('#ml-newsp-cats')) : ['lifestyle'];
-        state = await live.addLifeSponsor({
-          brand: $('#ml-newsp-brand').value,
-          category: categories[0],
-          categories,
-          fee: Number($('#ml-newsp-fee').value) || 0,
-          bonus: Number($('#ml-newsp-bonus').value) || 0,
-          until: $('#ml-newsp-until').value,
-        });
+        state = await live.addLifeSponsor(payload);
         toast(tr('Sponsor ajouté.'));
+        render();
+      } catch (err) {
+        if (String(err.message || '').includes('Conflit de catégorie')) {
+          const ok = await kConfirm({
+            title: tr('Conflit de catégorie exclusif'),
+            body: tr('Un sponsor actif occupe déjà une catégorie exclusive sélectionnée. Souhaites-tu racheter l’ancien contrat et ajouter celui-ci ?'),
+            ok: tr('Racheter et ajouter'),
+            cancel: tr('Annuler'),
+          });
+          if (!ok) return;
+          try {
+            state = await live.addLifeSponsor({ ...payload, allowBuyout: true });
+            toast(tr('Ancien contrat racheté et sponsor ajouté.'));
+            render();
+          } catch (e2) { toast(e2.message, true); }
+          return;
+        }
+        toast(err.message, true);
+      }
+    };
+  }
+  page.querySelectorAll('[data-mlob-move]').forEach((b) => {
+    b.onclick = async () => {
+      const card = b.closest('.ml-ob');
+      const nextDate = card?.querySelector('.ml-ob-date')?.value;
+      if (!nextDate) return;
+      try {
+        state = await live.rescheduleLifeObligation(b.dataset.mlobMove, nextDate);
+        view.mlCalAgendaKey = null;
+        toast(tr('Échéance reportée au {d}.', { d: shortDate(nextDate) }));
         render();
       } catch (err) { toast(err.message, true); }
     };
-  }
+  });
   page.querySelectorAll('[data-mlob]').forEach((b) => {
     b.onclick = async () => {
       const skip = b.dataset.obskip === '1';
@@ -9936,6 +10515,43 @@ function renderMyLife(page) {
   page.querySelectorAll('[data-calday]').forEach((b) => {
     b.onclick = () => { view.mlCalDay = b.dataset.calday; renderMyLife(page); };
   });
+  page.querySelectorAll('[data-caldec]').forEach((b) => {
+    b.onclick = async () => {
+      try {
+        await runAndOpenScene(() => live.resolveCalendarDecision(b.dataset.caldec, b.dataset.calchoice), tr('Décision enregistrée.'));
+      } catch (err) { toast(err.message, true); }
+    };
+  });
+  page.querySelectorAll('[data-bdayflip]').forEach((b) => {
+    b.onclick = async () => {
+      try {
+        state = await live.flipBirthdayShift(b.dataset.bdayflip);
+        view.mlCalAgendaKey = null;
+        toast(tr('Date d’anniversaire ajustée.'));
+        render();
+      } catch (err) { toast(err.message, true); }
+    };
+  });
+  page.querySelectorAll('[data-schedmode]').forEach((b) => {
+    b.onclick = () => { view.mlSchedMode = b.dataset.schedmode; renderMyLife(page); };
+  });
+  if ($('#ml-sched-act-go')) {
+    $('#ml-sched-act-go').onclick = async () => {
+      try {
+        const date = $('#ml-sched-date').value;
+        state = await live.scheduleCalendarActivity({
+          date,
+          activityId: $('#ml-sched-act').value,
+          title: $('#ml-sched-title')?.value || '',
+          companion: $('#ml-sched-comp')?.value || '',
+        });
+        view.mlCalAgendaKey = null;
+        if (date) { view.mlCalMonth = date.slice(0, 7); view.mlCalDay = date; }
+        toast(tr('Activité planifiée au calendrier.'));
+        render();
+      } catch (err) { toast(err.message, true); }
+    };
+  }
   if ($('#ml-calev-cat')) {
     $('#ml-calev-cat').onchange = () => {
       if ($('#ml-calev-cat-custom-wrap')) $('#ml-calev-cat-custom-wrap').hidden = $('#ml-calev-cat').value !== '__custom__';
@@ -9952,6 +10568,7 @@ function renderMyLife(page) {
           category: cat,
           customCategory: cat === '__custom__' ? $('#ml-calev-cat-custom')?.value || '' : '',
         });
+        view.mlCalAgendaKey = null;
         if (date) { view.mlCalMonth = date.slice(0, 7); view.mlCalDay = date; }
         toast(tr('Événement ajouté au calendrier.'));
         render();
@@ -9962,9 +10579,25 @@ function renderMyLife(page) {
     b.onclick = async () => {
       const ok = await kConfirm({ title: tr('Supprimer cet événement ?'), body: tr('Retirer cet événement personnalisé du calendrier ?'), ok: tr('Supprimer'), cancel: tr('Annuler') });
       if (!ok) return;
-      try { state = await live.removeCalendarEvent(b.dataset.caldel); render(); } catch (err) { toast(err.message, true); }
+      try { state = await live.removeCalendarEvent(b.dataset.caldel); view.mlCalAgendaKey = null; render(); } catch (err) { toast(err.message, true); }
     };
   });
+  if ($('#ml-sqbday-save')) {
+    $('#ml-sqbday-save').onclick = async () => {
+      const overrides = {};
+      page.querySelectorAll('.ml-sqbday-in').forEach((inp) => {
+        const k = inp.dataset.sqkey;
+        const v = inp.value.trim();
+        if (k && v) overrides[k] = v;
+      });
+      try {
+        state = await live.saveSquadBirthdays(overrides);
+        view.mlCalAgendaKey = null;
+        toast(tr('Anniversaires du vestiaire enregistrés.'));
+        render();
+      } catch (err) { toast(err.message, true); }
+    };
+  }
   if ($('#ml-sfx-settings')) $('#ml-sfx-settings').onclick = () => openSettings('rg-save');
   if ($('#ml-sfx-apply')) {
     $('#ml-sfx-apply').onclick = async () => {
@@ -10045,12 +10678,11 @@ const RG_TABS = [
   ['save', 'Sauvegarde', 'Où LifeLegend lit ta carrière, et ce qu’il a le droit d’y écrire.'],
   ['ai', 'Intelligence artificielle', 'Le fournisseur, le modèle et la clé qui écrivent ton monde.'],
   ['look', 'Apparence', 'La langue et les couleurs de LifeLegend.'],
-  ['world', 'Le monde', 'Comment la presse et les supporters réagissent à ta carrière.'],
-  ['me', 'Ton joueur', 'Ce que le monde sait de ton joueur. Son nom, son pseudo, son poste et sa photo se changent sur Kop : Profil › Éditer le profil.'],
+  ['world', 'Le monde', 'Comment la presse, les sponsors, le calendrier et les supporters réagissent à ta carrière.'],
   ['about', 'À propos', ''],
 ];
-// L'onglet de chaque section qu'ouvrent les autres pages (« Réglages de l'IA », « Ajouter ma clé… », la bio de Panthéon).
-const RG_SECTION_TAB = { 'rg-save': 'save', 'rg-key': 'save', 'rg-names': 'save', 'rg-ai': 'ai', 'rg-lang': 'look', 'rg-theme': 'look', 'rg-tone': 'world', 'rg-calmode': 'world', 'rg-replays': 'world', 'rg-mebio': 'me', 'rg-mepersona': 'me', 'rg-privacy': 'me', 'rg-clubaliases': 'me', 'rg-lifeevents': 'me', 'rg-about': 'about', 'rg-credits': 'about', 'rg-update': 'about' };
+// L'onglet de chaque section qu'ouvrent les autres pages (« Réglages de l'IA », « Ajouter ma clé… »).
+const RG_SECTION_TAB = { 'rg-save': 'save', 'rg-key': 'save', 'rg-names': 'save', 'rg-reset': 'save', 'rg-ai': 'ai', 'rg-lang': 'look', 'rg-theme': 'look', 'rg-tone': 'world', 'rg-sponsormode': 'world', 'rg-eventmode': 'world', 'rg-calmode': 'world', 'rg-replays': 'world', 'rg-about': 'about', 'rg-credits': 'about', 'rg-update': 'about' };
 const rgRow = (id, label, control, note = '') => `<div class="rg-row"${id ? ` id="${id}"` : ''}><div class="rg-label"><h3>${label}</h3>${note ? `<p>${note}</p>` : ''}</div><div class="rg-ctl">${control}</div></div>`;
 const rgSwitch = (id, on, label, note = '') => `<label class="rg-switch"><input type="checkbox" id="${id}"${on ? ' checked' : ''}><span class="rg-switch-text"><b>${label}</b>${note ? `<small>${note}</small>` : ''}</span></label>`;
 // Miniature d'un thème : le cadre de LifeLegend (rail, barre, blocs), clair ou sombre ; Automatique est coupé en diagonale.
@@ -10253,13 +10885,141 @@ function bindClubAliasesForm() {
   });
 }
 
+async function confirmAndResetCareer() {
+  const name = state?.snapshot?.player?.name || settings?.savePath || '';
+  const ok1 = await kConfirm({
+    title: tr('Réinitialiser cette carrière ?'),
+    body: tr('Tu vas effacer l’univers LifeLegend de cette carrière ({player}) : articles, Kop, Mails, Vestiaire, Ma vie et calendrier. Ta sauvegarde Football Life (.bin) reste intacte sur ton disque.', { player: name || tr('carrière active') }),
+    ok: tr('Continuer la réinitialisation'),
+    cancel: tr('Annuler'),
+  });
+  if (!ok1) return false;
+  const ok2 = await kConfirm({
+    title: tr('Confirmation définitive'),
+    body: tr('Cette action est irréversible pour les données narratives de cette carrière. Souhaites-tu vraiment repartir de zéro ?'),
+    ok: tr('Tout réinitialiser'),
+    cancel: tr('Garder ma carrière'),
+  });
+  if (!ok2) return false;
+  try {
+    const res = await live.resetCareer();
+    if (res?.settings) settings = res.settings;
+    state = null;
+    skCache = { key: null, data: undefined, loading: null };
+    view.setup = null;
+    view.mlCalAgenda = null;
+    view.mlCalAgendaKey = null;
+    view.mlSponsorCatalog = null;
+    view.mlSponsorCatKey = null;
+    view.edition = null;
+    current = 'mylife';
+    toast(tr('Carrière réinitialisée : prêt pour un nouveau départ.'));
+    render();
+    viewScrollTo(0);
+    return true;
+  } catch (err) {
+    toast(err.message, true);
+    return false;
+  }
+}
+
+function renderPlayerProfile(page) {
+  if (!state || !state.snapshot) {
+    page.innerHTML = empty(tr('Aucune carrière chargée'), tr('Choisis ta sauvegarde et lance une synchro pour éditer le profil du joueur.'));
+    return;
+  }
+  const s = state.snapshot;
+  const agentInfo = state.agent?.name
+    ? `${state.agent.name}${state.agent.agency ? ` · ${state.agent.agency}` : ''}`
+    : '';
+  page.innerHTML = `<div class="rg pp-page">
+    <header class="card pp-head">
+      <div class="pp-head-id">
+        <span class="dc-portrait">${myFaceIn(fbInitials(s.player?.name || 'LL'))}</span>
+        <div>
+          <span class="k-eyebrow">${tr('Profil du joueur')}</span>
+          <h1>${esc(s.player?.name || '')}</h1>
+          <p class="fineprint">${esc([s.club?.name, state.persona?.playerDob ? tr('Né(e) le {d}', { d: fmtDate(state.persona.playerDob) }) : '', agentInfo ? tr('Agent : {agent}', { agent: agentInfo }) : ''].filter(Boolean).join(' · '))}</p>
+        </div>
+      </div>
+      <div class="pp-head-acts">
+        <button type="button" class="btn" id="pp-open-kop">${tr('Profil social Kop')}</button>
+        <button type="button" class="btn primary" id="pp-save-top">${tr('Enregistrer le profil')}</button>
+      </div>
+    </header>
+
+    <div class="settings rg-main">
+      ${rgRow('rg-mebio', tr('Identité & histoire'), `<p class="su-ask">${tr('Qui incarnes-tu ?')}</p><div class="saves su-kind">${kindOptions('pp-kind', state.playerKind)}</div>
+        ${state.playerKind === 'real' ? '' : privacyNoticeHtml('pp')}
+        <textarea id="pp-bio" aria-label="${tr('Identité & histoire')}" class="${state.playerKind === 'real' ? 'hidden' : ''}" rows="6" maxlength="${BIO_MAX}">${esc([state.bio?.text, ...(state.myLife || [])].filter(Boolean).join('\n'))}</textarea>
+        <p class="fineprint">${tr('Pour modifier son nom d’affichage, son @pseudo, sa bio Kop, sa photo ou sa bannière sociale, ouvre son Profil social Kop.')}</p>`,
+        tr('D’où vient ton joueur, ses premiers clubs, son caractère et sa vie privée. Panthéon et la presse en font leur référence dès la prochaine édition.'))}
+      ${rgRow('rg-mepersona', tr('Personnalité, anniversaire & cercle intime'), personaFormHtml('pp', state.persona),
+        tr('Renseigne la date de naissance du joueur et de tes proches pour générer leurs anniversaires dans le calendrier. Les proches marqués « Proche » déclenchent fêtes et dîners ; les autres proposent messages et cadeaux.'))}
+      ${rgRow('rg-privacy', tr('Confidentialité'), privacyFormHtml('pp', state.privacy || settings.privacy || { enabled: true, fields: {}, customPeople: [] }, { playerName: s.player?.name || '', handle: state.profile?.handle || '', persona: state.persona }))}
+      ${rgRow('rg-clubaliases', tr('Anciens clubs & équipes non reconnues'), clubAliasesFormHtml(state),
+        tr('Personnalise le nom d’affichage des anciens clubs dans Panthéon, Mails et la presse.'))}
+      ${rgRow('rg-lifeevents', tr('Dates de vie'), `${lifeEventsFormHtml(state.lifeEvents || [], s.gameDate || '')}<div class="pp-ev-foot"><button type="button" class="btn" id="pp-open-cal">${tr('Voir le calendrier dans Ma vie')}</button></div>`,
+        tr('Dates importantes hors football synchronisées avec le calendrier et les médias.'))}
+      ${rgRow('rg-reset', tr('Réinitialisation'), `<div class="pp-danger"><p class="fineprint">${tr('Efface uniquement les données narratives LifeLegend pour cette carrière (les fichiers .bin du jeu restent intacts).')}</p><button type="button" class="btn ml-danger" id="pp-reset-career">${tr('Réinitialiser cette carrière')}</button></div>`)}
+    </div>
+
+    <footer class="rg-foot"><p class="fineprint">${tr('Pense à enregistrer après avoir modifié tes traits, dates de naissance ou proches.')}</p>
+      <button type="button" class="btn" id="pp-cancel">${tr('Annuler')}</button><button type="button" class="btn primary" id="pp-save">${tr('Enregistrer le profil')}</button></footer>
+  </div>`;
+
+  const syncRealVisibility = (isReal) => {
+    $('#pp-bio')?.classList.toggle('hidden', isReal);
+    $('#rg-mepersona')?.classList.toggle('hidden', isReal);
+    $('#rg-mebio .priv-notice')?.classList.toggle('hidden', isReal);
+  };
+  syncRealVisibility(state.playerKind === 'real');
+  page.querySelectorAll('input[name=pp-kind]').forEach((r) => { r.onchange = () => syncRealVisibility(r.value === 'real'); });
+  bindPersonaForm('pp');
+  bindPrivacyForm('pp', { getBio: () => $('#pp-bio')?.value || '', getPlayer: () => state.snapshot?.player?.name || '', getHandle: () => state.profile?.handle || '', getPersona: () => readPersonaForm('pp') });
+  bindClubAliasesForm();
+  bindLifeEventsForm(s.gameDate || '');
+
+  $('#pp-open-kop').onclick = () => shellGo('tribune', '[data-twnav="mine"]');
+  $('#pp-open-cal').onclick = () => shellGo('mylife', null, 'calendar');
+  $('#pp-reset-career').onclick = confirmAndResetCareer;
+  $('#pp-cancel').onclick = () => render();
+
+  const saveProfilePage = async () => {
+    try {
+      const kind = document.querySelector('input[name=pp-kind]:checked')?.value || null;
+      state = await live.saveBio({ text: $('#pp-bio')?.value || '', kind });
+      if (state.myLife?.length) state = await live.saveLife([]);
+      if (kind !== 'real') {
+        const pers = readPersonaForm('pp');
+        if (pers) state = await live.savePersona(pers);
+      }
+      const priv = readPrivacyForm('pp');
+      if (priv) state = await live.savePrivacy(priv);
+      const clubAliases = readClubAliasesForm();
+      if (clubAliases && Object.keys(clubAliases).length) state = await live.setClubAlias(clubAliases);
+      const lifeEvs = readLifeEventsForm();
+      if (lifeEvs) state = await live.saveLifeEvents(lifeEvs);
+      view.mlCalAgenda = null;
+      toast(tr('Profil du joueur enregistré.'));
+      render();
+    } catch (err) {
+      toast(err.message, true);
+    }
+  };
+  $('#pp-save').onclick = saveProfilePage;
+  $('#pp-save-top').onclick = saveProfilePage;
+}
+
 async function renderSettings(page) {
   const prov = providers[settings.provider] || {};
   const colors = themeColors(settings.colors);
-  const tabs = RG_TABS.filter(([id]) => state || id !== 'me');
+  const tabs = RG_TABS;
   const tab = tabs.some(([id]) => id === view.rgTab) ? view.rgTab : 'save';
   const npOv = state?.nationalPaperOverride || { mode: 'auto', presetId: '', customName: '' };
   const npVal = npOv.mode === 'preset' && npOv.presetId ? `preset:${npOv.presetId}` : npOv.mode === 'custom' ? 'custom' : 'auto';
+  const sponsorMode = settings.sponsorMode || 'realistic';
+  const eventMode = settings.eventMode || 'realistic';
   const panel = (id, rows) => { const [, label, note] = RG_TABS.find(([x]) => x === id); return `<section class="rg-panel" data-rgpanel="${id}"${id === tab ? '' : ' hidden'}><div class="rg-panel-head"><h2>${tr(label)}</h2>${note ? `<p>${tr(note)}</p>` : ''}</div>${rows.join('')}</section>`; };
   page.innerHTML = `
     <div class="rg">${state ? '' : welcomeHtml(true)}
@@ -10280,8 +11040,9 @@ async function renderSettings(page) {
       <button class="btn" id="browse-game">${tr('Choisir le dossier du jeu…')}</button>
       <p class="fineprint">${tr('La sauvegarde ne contient que les numéros des autres joueurs. Leurs noms (et les écussons) sont lus dans les fichiers du jeu ou du patch, comme Football Life, seulement s’ils correspondent à ta carrière. Avec plusieurs jeux installés, LifeLegend prend pour chaque carrière celui qui lui correspond.')}</p>`),
     rgRow('', tr('Écrire dans la sauvegarde'), rgSwitch('offerredirect', settings.offerRedirect, tr('Réorientation d’offres (expérimental) : autoriser LifeLegend à modifier ma sauvegarde'), tr('Avec l’attitude « Je veux partir », ton agent peut faire passer une vraie offre reçue dans le jeu au nom d’un autre club. LifeLegend écrit alors dans ta sauvegarde, jeu fermé, et en garde une copie. Testé sur peu de carrières : laisse décoché si tu ne veux prendre aucun risque.'))
-      + rgSwitch('influencewrites', settings.influenceWrites, tr('Influence : effets réels dans le jeu : autoriser LifeLegend à écrire dans ma sauvegarde les décisions de mon entraîneur et de mon club'), tr('Une formation acceptée par ton entraîneur, un transfert accepté par ton club pendant un mercato : LifeLegend les écrit dans ta sauvegarde quand tu le lui demandes, jeu fermé, et en garde une copie. La formation est vérifiée dans Football Life 2027 ; le transfert reste expérimental. Sans ces deux options, LifeLegend ne fait que lire ta sauvegarde.'))
+      + rgSwitch('influencewrites', settings.influenceWrites, tr('Influence : effets réels dans le jeu : autoriser LifeLegend à écrire dans ma sauvegarde les décisions de mon entraîneur et de mon club'), tr('Une formation acceptée par ton entraîneur, un transfert accepté pendant un mercato : LifeLegend les écrit dans ta sauvegarde quand tu le lui demandes, jeu fermé, et en garde une copie. La formation est vérifiée dans Football Life 2027 ; le transfert reste expérimental. Sans ces deux options, LifeLegend ne fait que lire ta sauvegarde.'))
       + rgSwitch('lifesaveeffects', settings.lifeSaveEffects, tr('Ma vie : effets réels dans la sauvegarde (forme & affection coach)'), tr('Les actions de tes journées libres et tes dilemmes accumulent des bonus ou malus de forme et d’affection coach. Quand cette option est activée, un bouton dans Ma vie te permet d’écrire ces effets dans ta sauvegarde (jeu fermé, copie automatique conservée). Laisse décoché si tu préfères garder Ma vie purement narratif.'))),
+    ...(state ? [rgRow('rg-reset', tr('Réinitialiser la carrière'), `<div class="pp-danger"><p class="fineprint">${tr('Efface uniquement les données LifeLegend de cette carrière (sans toucher à tes fichiers .bin).')}</p><button type="button" class="btn ml-danger" id="rg-reset-career">${tr('Réinitialiser cette carrière')}</button></div>`)] : []),
   ])}
     ${panel('ai', [
     rgRow('rg-ai', tr('Fournisseur'), `<select id="provider" aria-label="${tr('Fournisseur')}">${Object.entries(providers).map(([id, p]) => `<option value="${id}"${id === settings.provider ? ' selected' : ''}>${esc(tr(p.label))}</option>`).join('')}</select>`),
@@ -10304,33 +11065,28 @@ async function renderSettings(page) {
   ])}
     ${panel('world', [
     rgRow('rg-tone', tr('Le ton du monde'), `<p class="fineprint">${tr('Pas de réglage de ton : la pression médiatique suit la taille de ton club et de son championnat (et l’Europe, la sélection, ta notoriété), et le drame suit l’enjeu du moment (titre, maintien, coupe, fin de mercato, crise).')}</p>`),
+    rgRow('rg-sponsormode', tr('Système de sponsors'), `<select id="sponsormode" aria-label="${tr('Système de sponsors')}">
+      <option value="realistic"${sponsorMode === 'realistic' ? ' selected' : ''}>${tr('Réaliste (offres, enchères, exclusivités & rachats)')}</option>
+      <option value="custom"${sponsorMode === 'custom' ? ' selected' : ''}>${tr('Personnalisé (édition libre & sélection dans le catalogue)')}</option>
+    </select><p class="fineprint">${tr('En mode réaliste, les contrats se gagnent par offres, enchères entre rivaux et accords ponctuels. Passe en Personnalisé pour ajouter ou ajuster manuellement des sponsors existants.')}</p>`),
+    rgRow('rg-eventmode', tr('Événements & vie du calendrier'), `<select id="eventmode" aria-label="${tr('Événements & vie du calendrier')}">
+      <option value="realistic"${eventMode === 'realistic' ? ' selected' : ''}>${tr('Réaliste (anniversaires, décisions, événements système & pulses quotidiens)')}</option>
+      <option value="games_only"${eventMode === 'games_only' ? ' selected' : ''}>${tr('Matchs uniquement (calendrier épuré)')}</option>
+    </select><p class="fineprint">${tr('Choisis si les journées avancées et les anniversaires déclenchent des décisions et brèves quotidiennes.')}</p>`),
     ...(state ? [rgRow('rg-natpaper', tr('Journal national'), `<select id="natpaper-mode" aria-label="${tr('Journal national')}">
         <option value="auto"${npVal === 'auto' ? ' selected' : ''}>${tr('Automatique selon le championnat')}</option>
         ${ML_NATIONAL_PAPERS.map((p) => `<option value="preset:${esc(p.id)}"${npVal === `preset:${p.id}` ? ' selected' : ''}>${esc(p.name)} (${esc(p.country)})</option>`).join('')}
         <option value="custom"${npVal === 'custom' ? ' selected' : ''}>${tr('Nom personnalisé…')}</option>
       </select>
       <label id="natpaper-custom-wrap" class="${npOv.mode === 'custom' ? '' : 'hidden'}">${tr('Nom du journal personnalisé')}<input id="natpaper-custom" maxlength="60" value="${esc(npOv.customName || '')}" placeholder="${tr('Ex. Le Quotidien du Foot')}"></label>
-      <p class="fineprint">${tr('En mode automatique, le quotidien national, sa rédaction et son débat télévisé s’adaptent automatiquement au pays de ton championnat (et changent si tu es transféré à l’étranger).')}</p>`)] : []),
+      <p class="fineprint">${tr('En mode automatique, le quotidien national, sa rédaction et son débat télévisé s’adaptent automatiquement au pays de ton championnat (et changent si tu es transféré à l’étranger).')}</p>`),
+      rgRow('', tr('Profil du joueur'), `<div class="pp-shortcut"><p class="fineprint">${tr('L’histoire, la date de naissance, la personnalité, les proches et le bouclier de confidentialité se trouvent désormais dans Profil du joueur.')}</p><button type="button" class="btn" id="rg-go-pp">${tr('Ouvrir le Profil du joueur')}</button></div>`)] : []),
     rgRow('rg-calmode', tr('Calendrier'), rgSwitch('calendarmode', settings.calendarMode === 'full', tr('Mode Calendrier Complet (jour par jour, anti-spoilers)'), tr('Si tu joues plusieurs matchs d’affilée dans le jeu avant de synchroniser, LifeLegend met les matchs en file d’attente et te laisse avancer jour par jour ou événement par événement sans te spoiler les résultats. Décoche pour revenir à la synchro directe classique.'))),
     rgRow('', tr('Supporters'), rgSwitch('fanvulgarity', settings.fanVulgarity !== false, tr('Supporters vulgaires après de très mauvais résultats'), tr('Le ton des supporters suit tes résultats, comme en vrai : après une soirée catastrophe, certains peuvent t’insulter et réclamer ta vente. Décoche pour qu’ils restent durs mais sans vulgarité.'))),
     rgRow('rg-replays', tr('Ralentis et vidéos'), rgSwitch('replays', settings.replays !== false, tr('Publier sur Kop les ralentis que je sauvegarde dans le jeu'), tr('La minute et le buteur du ralenti sont aussi donnés aux journalistes. Le ralenti du jeu n’est pas une vidéo : pour avoir les images, enregistre l’écran pendant que le jeu le montre avec la Xbox Game Bar ({keys} pour démarrer et arrêter). LifeLegend trouve la vidéo toute seule et l’ajoute au post du ralenti.', { keys: '<b>Win + Alt + R</b>' }))
       + `<p class="fineprint">${tr('Dossier des vidéos')}${colon()} <code id="clips-dir">${esc(settings.clipsDir || tr('Vidéos\\Captures (par défaut, captures du jeu seulement)'))}</code></p>
       <button class="btn" id="browse-clips">${tr('Choisir un autre dossier…')}</button>`),
   ])}
-    ${state ? panel('me', [
-    // « Ton histoire » réunit la biographie et l'ancien « Ma vie » : ses lignes, s'il en reste, s'ajoutent au texte.
-    rgRow('rg-mebio', tr('Ton histoire'), `<p class="su-ask">${tr('Qui incarnes-tu ?')}</p><div class="saves su-kind">${kindOptions('rg-kind', state.playerKind)}</div>
-      ${state.playerKind === 'real' ? '' : privacyNoticeHtml('rg')}
-      <textarea id="bio" aria-label="${tr('Ton histoire')}" class="${state.playerKind === 'real' ? 'hidden' : ''}" rows="6" maxlength="${BIO_MAX}">${esc([state.bio?.text, ...(state.myLife || [])].filter(Boolean).join('\n'))}</textarea>`,
-      tr('D’où vient ton joueur, ses premiers clubs, son caractère, et aussi sa vie d’aujourd’hui : sa famille, sa ville, son chien… Tout le monde dans ce monde la tient pour vraie, et Panthéon en fait le premier chapitre de sa page à la prochaine édition.')),
-    rgRow('rg-mepersona', tr('Personnalité & cercle intime'), personaFormHtml('rg', state.persona),
-      tr('Choisis un archétype, des traits sur mesure, tes racines et les proches qui comptent. Les éléments marqués Protégé alimentent automatiquement le Bouclier de confidentialité.')),
-    rgRow('rg-privacy', tr('Confidentialité'), privacyFormHtml('rg', state.privacy || settings.privacy || { enabled: true, fields: {}, customPeople: [] }, { playerName: state.snapshot?.player?.name || '', handle: state.profile?.handle || '' })),
-    rgRow('rg-clubaliases', tr('Anciens clubs & équipes non reconnues'), clubAliasesFormHtml(state),
-      tr('Si un ancien club de ton parcours a été remplacé ou retiré de la base du jeu par un patch (affiché comme « Club inconnu »), ou si tu préfères personnaliser son nom d’affichage dans Panthéon, Mails et les articles, modifie-le ici.')),
-    rgRow('rg-lifeevents', tr('Dates de vie'), lifeEventsFormHtml(state.lifeEvents || [], state.snapshot?.gameDate || ''),
-      tr('Ajoute des dates importantes hors football (anniversaire, événement caritatif, déménagement…). Quand le jeu atteint cette date, la presse, les supporters et le vestiaire peuvent réagir.')),
-  ]) : ''}
     ${panel('about', [
     rgRow('rg-about', tr('À propos de LifeLegend'), `<p class="fineprint">${esc(/-/.test(appVersion || '') ? tr('Version {v} · bêta', { v: appVersion }) : tr('Version {v}', { v: appVersion || '—' }))}</p>
       <p class="fineprint">${tr('Créé à l’origine par {author} — édition enrichie {fork}.', { author: '<b>Saamz09</b>', fork: '<b>BAL_lifelegendmod</b>' })}</p>
@@ -10348,6 +11104,8 @@ async function renderSettings(page) {
     </div>`;
   page.querySelectorAll('[data-rgtab]').forEach((b) => { b.onclick = () => rgShowTab(b.dataset.rgtab); });
   rgTabInView();
+  if ($('#rg-reset-career')) $('#rg-reset-career').onclick = confirmAndResetCareer;
+  if ($('#rg-go-pp')) $('#rg-go-pp').onclick = () => go('playerprofile');
   if ($('#rg-intro-btn')) $('#rg-intro-btn').onclick = () => playIntro({ save: false });
   // Vérifier les mises à jour : la réponse sous le bouton, avec le lien de la nouvelle version s'il y en a une.
   const upd = $('#rg-update-btn');
@@ -10444,17 +11202,6 @@ async function renderSettings(page) {
       $('#natpaper-custom-wrap')?.classList.toggle('hidden', $('#natpaper-mode').value !== 'custom');
     };
   }
-  const syncRealVisibility = (isReal) => {
-    $('#bio')?.classList.toggle('hidden', isReal);
-    $('#rg-mepersona')?.classList.toggle('hidden', isReal);
-    $('#rg-mebio .priv-notice')?.classList.toggle('hidden', isReal);
-  };
-  if (state) syncRealVisibility(state.playerKind === 'real');
-  page.querySelectorAll('input[name=rg-kind]').forEach((r) => { r.onchange = () => syncRealVisibility(r.value === 'real'); });
-  if (state) bindPersonaForm('rg');
-  if (state) bindPrivacyForm('rg', { getBio: () => $('#bio')?.value || '', getPlayer: () => state.snapshot?.player?.name || '', getHandle: () => state.profile?.handle || '', getPersona: () => readPersonaForm('rg') });
-  if (state) bindClubAliasesForm();
-  if (state) bindLifeEventsForm(state.snapshot?.gameDate || '');
   $('#browse-clips').onclick = async () => {
     try {
       const dir = await live.browseClips();
@@ -10529,6 +11276,8 @@ async function saveSettings() {
     influenceWrites: $('#influencewrites').checked,
     lifeSaveEffects: $('#lifesaveeffects').checked,
     calendarMode: nextCalMode,
+    sponsorMode: $('#sponsormode')?.value || settings.sponsorMode || 'realistic',
+    eventMode: $('#eventmode')?.value || settings.eventMode || 'realistic',
     factCheck: $('#factcheck').checked,
     tribuneThreads: $('#tribunethreads').checked,
     replays: $('#replays').checked,
@@ -10555,23 +11304,6 @@ async function saveSettings() {
       const r = await live.setCalendarMode(nextCalMode);
       if (r?.settings) settings = r.settings;
       if (r?.state) state = r.state;
-    }
-    // Le nom, le pseudo et le poste se changent sur Kop (Éditer le profil) : ici, « Ton histoire ». Elle contient déjà les
-    // anciennes lignes de « Ma vie » : une fois l'histoire enregistrée, on les vide (pas de doublon).
-    if (state && $('#bio')) {
-      const kind = document.querySelector('input[name=rg-kind]:checked')?.value || null;
-      state = await live.saveBio({ text: $('#bio').value, kind });
-      if (state.myLife?.length) state = await live.saveLife([]);
-      if (kind !== 'real') {
-        const pers = readPersonaForm('rg');
-        if (pers) state = await live.savePersona(pers);
-      }
-      const priv = readPrivacyForm('rg');
-      if (priv) state = await live.savePrivacy(priv);
-      const clubAliases = readClubAliasesForm();
-      if (clubAliases && Object.keys(clubAliases).length) state = await live.setClubAlias(clubAliases);
-      const lifeEvs = readLifeEventsForm();
-      if (lifeEvs) state = await live.saveLifeEvents(lifeEvs);
     }
     pendingSave = null;
     pendingGameDir = null;

@@ -5,6 +5,7 @@
 
 const { leagueTable } = require('../save/blReader');
 const { windowOpen } = require('./mercato');
+const { extractPersonaAgent } = require('./persona');
 
 // Niveau des championnats suivis (0 à 1) : Angleterre, Espagne, Italie, Allemagne, France, puis Portugal, Pays-Bas.
 const LEAGUE_LEVEL = { 0x11: 0.62, 0x13: 0.58, 0x12: 0.56, 0x32: 0.56, 0x14: 0.5, 0x16: 0.4, 0x15: 0.38 };
@@ -14,6 +15,8 @@ const AGENTS = [
   ['Julien Moreau', 'Moreau Sports Management'], ['Karim Belkacem', 'KB Football Agency'], ['Sofia Lindqvist', 'Nordic Talent Group'],
   ['Marco Ferraris', 'Ferraris & Partners'], ['Nadia Haddad', 'Haddad Player Services'], ['Lucas Vermeulen', 'Orange Line Sports'],
 ];
+const DEFAULT_AGENT_NAMES = new Set(AGENTS.map(([name]) => name));
+const DEFAULT_AGENCIES = new Set(AGENTS.map(([, agency]) => agency));
 
 const STANCES = { stay: 'je veux prolonger', open: 'ouvert à tout', leave: 'je veux partir' };
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
@@ -24,11 +27,66 @@ function hash(str) {
   return h;
 }
 
+function syncAgentWithPersona(state) {
+  if (!state || typeof state !== 'object') return false;
+  const pAgent = extractPersonaAgent(state.persona);
+  let changed = false;
+  if (pAgent?.name) {
+    if (!state.agent) {
+      const [, defaultAgency] = AGENTS[hash(state.careerId || '') % AGENTS.length];
+      state.agent = { name: pAgent.name, agency: defaultAgency, stance: 'open', lastReportOn: null, reported: null, market: null, customFromPersona: true };
+      changed = true;
+    }
+    if (state.agent.name !== pAgent.name) {
+      state.agent.name = pAgent.name;
+      changed = true;
+    }
+    if (!state.agent.customFromPersona) {
+      state.agent.customFromPersona = true;
+      changed = true;
+    }
+    const surname = pAgent.name.split(/\s+/).at(-1);
+    const desiredAgency = surname ? `${surname} Sports Management` : '';
+    if ((!state.agent.agency || DEFAULT_AGENCIES.has(state.agent.agency)) && desiredAgency && state.agent.agency !== desiredAgency) {
+      state.agent.agency = desiredAgency;
+      changed = true;
+    }
+    if (Array.isArray(state.mail)) {
+      for (const m of state.mail) {
+        if (m && m.role === 'agent' && m.from !== pAgent.name) {
+          m.from = pAgent.name;
+          changed = true;
+        }
+      }
+    }
+    return changed;
+  }
+  if (state.agent?.customFromPersona) {
+    const [name, agency] = AGENTS[hash(state.careerId || '') % AGENTS.length];
+    if (state.agent.name !== name) { state.agent.name = name; changed = true; }
+    if (!state.agent.agency || DEFAULT_AGENCIES.has(state.agent.agency) || state.agent.agency.endsWith('Sports Management')) {
+      if (state.agent.agency !== agency) { state.agent.agency = agency; changed = true; }
+    }
+    delete state.agent.customFromPersona;
+    changed = true;
+    if (Array.isArray(state.mail)) {
+      for (const m of state.mail) {
+        if (m && m.role === 'agent' && !DEFAULT_AGENT_NAMES.has(m.from)) {
+          m.from = name;
+          changed = true;
+        }
+      }
+    }
+  }
+  return changed;
+}
+
 function ensureAgent(state) {
   if (!state.agent) {
     const [name, agency] = AGENTS[hash(state.careerId) % AGENTS.length];
     state.agent = { name, agency, stance: 'open', lastReportOn: null, reported: null, market: null };
   }
+  syncAgentWithPersona(state);
   return state.agent;
 }
 
@@ -287,4 +345,4 @@ function agentFacts(agent) {
   };
 }
 
-module.exports = { ensureAgent, computeMarket, applyStance, extensionByStance, reportDue, agentFacts, STANCES, clubPrestige, formIndex, monthsBetween, hash };
+module.exports = { ensureAgent, syncAgentWithPersona, computeMarket, applyStance, extensionByStance, reportDue, agentFacts, STANCES, clubPrestige, formIndex, monthsBetween, hash };

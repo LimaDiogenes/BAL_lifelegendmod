@@ -2,6 +2,8 @@
 // Calendrier complet jour par jour (Phase D) : file d'attente anti-spoilers lorsque le joueur joue
 // plusieurs matchs d'affilée dans PES / Football Life avant de revenir dans LifeLegend.
 
+const { birthdaysInMonth } = require('./calendarEvents');
+
 const CALENDAR_EVENT_CATEGORIES = ['family', 'sponsor', 'training', 'media', 'charity', 'personal'];
 const MAX_CUSTOM_EVENTS = 40;
 const MAX_REVEALED_IDS = 180;
@@ -31,6 +33,10 @@ function ensureCalendar(state, snapshot = state?.snapshot) {
       pendingMatches: [],
       revealedMatchIds: [],
       customEvents: [],
+      systemEvents: [],
+      pendingDecisions: [],
+      resolvedDecisionIds: [],
+      birthdayShiftOverrides: {},
       history: [],
     };
   }
@@ -38,6 +44,10 @@ function ensureCalendar(state, snapshot = state?.snapshot) {
   cal.pendingMatches ||= [];
   cal.revealedMatchIds ||= [];
   cal.customEvents ||= [];
+  cal.systemEvents ||= [];
+  cal.pendingDecisions ||= [];
+  cal.resolvedDecisionIds ||= [];
+  cal.birthdayShiftOverrides ||= {};
   cal.history ||= [];
   if (!cal.simDate && fallbackDate) cal.simDate = fallbackDate;
   if (!cal.saveDate && (state?.saveSnapshot?.gameDate || fallbackDate)) {
@@ -277,6 +287,17 @@ function collectEventDates(state, simDate, maxDate) {
   for (const ob of state.lifeHub?.obligations || []) if (ob.status === 'pending') add(ob.dueDate);
   for (const ev of state.lifeEvents || []) add(ev.date);
   for (const ev of cal.customEvents || []) add(ev.date);
+  for (const ev of cal.systemEvents || []) add(ev.date);
+  if (state.lifeHub?.calibrated || state.persona?.playerDob) {
+    const startMonth = String(simDate).slice(0, 7);
+    const endMonth = String(maxDate).slice(0, 7);
+    const months = startMonth === endMonth ? [startMonth] : [startMonth, endMonth];
+    for (const mIso of months) {
+      for (const b of birthdaysInMonth(state, mIso, { includeAutoSquad: Boolean(state.lifeHub?.calibrated) })) {
+        if (b.closeness === 'self' || b.closeness === 'close' || b.closeness === 'close_teammate') add(b.date);
+      }
+    }
+  }
   for (const w of fullSnap?.windows || []) {
     add(w.open);
     add(w.eve);
@@ -446,7 +467,27 @@ function calendarAgenda(state, monthIso = null) {
     if (inMonth(ev.date)) items.push({ date: ev.date, kind: 'life', title: ev.title, detail: '' });
   }
   for (const ev of cal.customEvents || []) {
-    if (inMonth(ev.date)) items.push({ id: ev.id, date: ev.date, kind: 'custom', category: ev.category, customCategory: ev.customCategory || '', title: ev.title, detail: '' });
+    if (inMonth(ev.date)) items.push({ id: ev.id, date: ev.date, kind: ev.kind === 'onetime' ? 'sponsor' : ev.kind === 'scheduled' ? 'scheduled' : 'custom', category: ev.category, customCategory: ev.customCategory || '', activityId: ev.activityId || null, title: ev.title, detail: '' });
+  }
+  for (const ev of cal.systemEvents || []) {
+    if (inMonth(ev.date)) items.push({ id: ev.id, date: ev.date, kind: 'system_event', eventKey: ev.eventKey, category: ev.category, title: ev.title, detail: ev.competition || '' });
+  }
+  for (const b of birthdaysInMonth(state, ref, { includeAutoSquad: true })) {
+    items.push({
+      id: b.id,
+      date: b.date,
+      kind: 'birthday',
+      bdayKey: b.key,
+      name: b.name,
+      role: b.role,
+      closeness: b.closeness,
+      actualDate: b.actualDate,
+      shiftedBy: b.shiftedBy,
+      clash: b.clash,
+      ageTurning: b.ageTurning,
+      title: b.name,
+      detail: b.clash ? `${b.actualDate} (${b.shiftedBy > 0 ? `+${b.shiftedBy}d` : `${b.shiftedBy}d`})` : '',
+    });
   }
   for (const w of state.snapshot?.windows || []) {
     if (inMonth(w.open)) items.push({ date: w.open, kind: 'window', title: w.kind, detail: 'open' });

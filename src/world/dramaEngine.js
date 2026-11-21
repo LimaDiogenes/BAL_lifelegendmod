@@ -15,6 +15,9 @@ const DRAMA_KINDS = [
   'media_cold_war',
   'invincible_target',
   'quote_boomerang',
+  'sponsor_war',
+  'sponsor_roots',
+  'betting_ban_fallout',
 ];
 
 const isIsoDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || '').trim());
@@ -208,6 +211,69 @@ function detectDramaCandidates({ state = {}, snapshot = {}, changes = {}, mem = 
       angle: `Pundits and rival accounts dig up what he actually said on ${qCand.date} ("${qCand.text.slice(0, 140)}") to test whether he lives up to it now`,
       targetFacet: qCand.id,
     });
+  }
+
+  // 10. Guerre d'enchères ou rachat de sponsor (sponsor_war)
+  if (hub?.calibrated) {
+    const activeWar = (hub.biddingWars || [])[0] || null;
+    const recentSwitch = hub.lastSponsorSwitch && daysBetween(hub.lastSponsorSwitch.on, gameDate) <= 21 ? hub.lastSponsorSwitch : null;
+    if (activeWar) {
+      const rivals = (activeWar.bids || []).filter((b) => !b.walkedAway).map((b) => b.brand).join(' vs ');
+      candidates.push({
+        kind: 'sponsor_war',
+        heat: 3,
+        headline: `Bidding war off the pitch: ${rivals || activeWar.category} fight over ${player.name || 'him'}`,
+        angle: `Rival brands (${rivals}) are fighting over ${player.name || 'his'} signature in ${activeWar.category}${activeWar.existingBrand ? ` while trying to poach him from ${activeWar.existingBrand}` : ''}, fueling debate over money vs focus`,
+        targetFacet: `war:${activeWar.category}`,
+      });
+    } else if (recentSwitch) {
+      candidates.push({
+        kind: 'sponsor_war',
+        heat: 2,
+        headline: recentSwitch.kind === 'loyalty_renewal'
+          ? `${player.name || 'He'} stayed loyal to ${recentSwitch.brand}`
+          : `${recentSwitch.to} poaches ${player.name || 'him'} in blockbuster switch`,
+        angle: recentSwitch.kind === 'loyalty_renewal'
+          ? `After rejecting rival offers to re-sign with ${recentSwitch.brand}, supporters praise loyalty while commercial pundits debate the money left on the table`
+          : `Leaving ${recentSwitch.from?.join(', ') || 'a former partner'} for ${recentSwitch.to}${recentSwitch.buyoutCovered ? ' with buyout fees covered' : ''} triggers fierce "sold out vs smart business" reactions`,
+        targetFacet: `switch:${recentSwitch.on}`,
+      });
+    }
+
+    // 11. Sponsors locaux / luxe ostentatoire (sponsor_roots)
+    const localDeals = (hub.sponsors || []).filter((s) => s.category === 'local' || (Array.isArray(s.categories) && s.categories.includes('local')));
+    const isBig = hub.stage === 'established' || hub.stage === 'superstar' || (state?.profile?.followers || 0) >= 400000;
+    const lastLoss = (row?.form || []).slice(-1).some((c) => /^[dl]/i.test(String(c || '')));
+    const luxuryOwned = (hub.assets || []).filter((a) => ['exotic_supercar', 'luxury_villa'].includes(a.catalogId)).map((a) => a.name || a.catalogId);
+    if (isBig && localDeals.length) {
+      candidates.push({
+        kind: 'sponsor_roots',
+        heat: 2,
+        headline: `Still backing ${localDeals[0].brand}: superstar who never forgot home`,
+        angle: `Feature writers spotlight how ${player.name || 'he'} still represents hometown sponsor ${localDeals[0].brand} alongside global giants — warmly embraced by locals even as elitist pundits raise eyebrows`,
+        targetFacet: `local:${localDeals[0].brand}`,
+      });
+    } else if (lastLoss && luxuryOwned.length) {
+      candidates.push({
+        kind: 'sponsor_roots',
+        heat: 2,
+        headline: `Flashy off the pitch? Tabloids zoom in after a setback`,
+        angle: `After a frustrating result, grumpy critics contrast his glamorous off-pitch image (${luxuryOwned[0]}) against on-pitch demands`,
+        targetFacet: `luxury:${luxuryOwned[0]}`,
+      });
+    }
+
+    // 12. Retrait forcé d'un sponsor de paris sportifs (betting_ban_fallout)
+    if (hub.regulatoryNews?.kind === 'betting_ban' && daysBetween(hub.regulatoryNews.on, gameDate) <= 21) {
+      const terminated = (hub.regulatoryNews.brands || []).join(', ');
+      candidates.push({
+        kind: 'betting_ban_fallout',
+        heat: 2,
+        headline: `League gambling crackdown ends ${terminated} deal`,
+        angle: `League rules in ${hub.regulatoryNews.country || 'his new country'} forced the automatic termination of his ${terminated} partnership — pundits debate regulation vs lost commercial revenue`,
+        targetFacet: `betban:${terminated}`,
+      });
+    }
   }
 
   return candidates;

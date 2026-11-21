@@ -17,6 +17,8 @@ const DEFAULT_SETTINGS = {
   influenceWrites: false, // écrire dans la sauvegarde les décisions obtenues par l'influence : formation, transferts (expérimental)
   lifeSaveEffects: false, // écrire les effets Ma vie (forme, confiance coach) dans la sauvegarde (expérimental)
   calendarMode: 'basic', // 'basic' (synchro directe) ou 'full' (calendrier jour par jour sans spoiler)
+  sponsorMode: 'realistic', // 'realistic' (offres, enchères, exclusivités) ou 'custom' (édition manuelle)
+  eventMode: 'realistic', // 'realistic' (anniversaires, vie quotidienne, décisions) ou 'games_only' (matchs seulement)
   clipsDir: '',      // dossier des vidéos enregistrées (vide = Vidéos\Captures, captures du jeu seulement)
   provider: 'google',
   model: 'gemini-3.6-flash',
@@ -104,6 +106,30 @@ class Store {
   activeCareer() {
     const a = this.readJson(path.join(this.dir, 'active.json'), null);
     return a ? this.loadCareer(a.careerId) : null;
+  }
+
+  deleteCareer(careerId = null) {
+    const active = this.readJson(path.join(this.dir, 'active.json'), null);
+    const targetId = String(careerId || active?.careerId || '').trim();
+    if (targetId) {
+      if (targetId.includes('..') || /[\\/]/.test(targetId)) {
+        throw new Error('Identifiant de carrière invalide.');
+      }
+      const dir = path.join(this.dir, 'careers', targetId);
+      try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+      if (!active || active.careerId === targetId) {
+        try { fs.rmSync(path.join(this.dir, 'active.json'), { force: true }); } catch { /* ignore */ }
+      }
+    } else {
+      try { fs.rmSync(path.join(this.dir, 'active.json'), { force: true }); } catch { /* ignore */ }
+    }
+    const cur = this.readJson(path.join(this.dir, 'settings.json'), {});
+    if (cur && cur.pendingBio) {
+      const next = { ...cur };
+      delete next.pendingBio;
+      this.writeJson(path.join(this.dir, 'settings.json'), next);
+    }
+    return { deletedId: targetId || null };
   }
 }
 
