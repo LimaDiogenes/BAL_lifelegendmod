@@ -144,7 +144,14 @@ const bundledMyLifeUrl = (id) => {
   const f = appPaths.mylifeMedia?.[String(id).toLowerCase()];
   return f ? `media/mylife/${encodeURI(f)}` : null;
 };
-const mlResolveArtUrl = (id, customFile = null) => lifeMediaUrl(customFile) || bundledMyLifeUrl(id);
+const mlResolveArtUrl = (id, customFile = null, category = null, name = null) => {
+  const nameSlug = name ? String(name).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') : '';
+  return lifeMediaUrl(customFile)
+    || bundledMyLifeUrl(id)
+    || (nameSlug && bundledMyLifeUrl(nameSlug))
+    || (category && bundledMyLifeUrl(`cat_${category}`))
+    || null;
+};
 const stadiumUrl = (f) => (!f ? null : String(f).startsWith('data:') ? f : appPaths.careersDir && state ? fileUrl(`${appPaths.careersDir}\\${state.careerId}\\stadiums\\${f}`) : null);
 // Les visages des joueurs et des entraîneurs, lus dans les fichiers du jeu, seulement pour ceux qu'une page affiche : { nom : fichier }.
 let faceFiles = {}, faceAsked = new Set(), faceWanted = new Set(), faceTimer = null, faceCareer = null, faceScope = null;
@@ -8856,12 +8863,17 @@ function mlActionBadgeSvg(id) {
 }
 
 function mlSponsorMedallionHtml(sp) {
-  const img = lifeMediaUrl(sp?.customImage);
+  const brandSlug = String(sp?.brand || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  const cat = (Array.isArray(sp?.categories) && sp.categories[0]) || sp?.category || 'lifestyle';
+  const img = lifeMediaUrl(sp?.customImage)
+    || bundledMyLifeUrl(sp?.presetId)
+    || bundledMyLifeUrl(sp?.id)
+    || (brandSlug && bundledMyLifeUrl(brandSlug))
+    || bundledMyLifeUrl(`sponsor_${cat}`);
   if (img) return `<span class="ml-sp-logo has-img"><img src="${esc(img)}" alt="${esc(sp.brand || '')}"></span>`;
   const brand = String(sp?.brand || '?').trim();
   const words = brand.split(/\s+/).filter(Boolean);
   const mono = words.length > 1 ? `${words[0][0] || ''}${words[1][0] || ''}` : brand.slice(0, 2);
-  const cat = (Array.isArray(sp?.categories) && sp.categories[0]) || sp?.category || 'lifestyle';
   const tones = {
     boots: '#b91c1c', apparel: '#1d4ed8', beverage: '#047857', automotive: '#991b1b',
     watches: '#92400e', lifestyle: '#6d28d9', tech: '#0f766e', travel: '#0369a1',
@@ -8876,7 +8888,7 @@ function openLifeSceneModal(scene) {
   document.querySelectorAll('.ml-scene-back').forEach((el) => el.remove());
   const back = document.createElement('div');
   back.className = 'ml-scene-back';
-  const img = mlResolveArtUrl(scene.refId, scene.image);
+  const img = mlResolveArtUrl(scene.refId, scene.image, scene.category, scene.headline);
   const art = img ? `<img src="${esc(img)}" alt="">` : mlAssetArtSvg(scene.refId, scene.category);
   const deltas = [];
   for (const [k, v] of Object.entries(scene.deltas?.meters || {})) {
@@ -9175,7 +9187,7 @@ function renderMyLife(page) {
   const recentScenes = Array.isArray(hub.scenes) ? hub.scenes : [];
   const scenesHtml = recentScenes.length
     ? `<div class="ml-scenes-list">${recentScenes.slice(0, 6).map((sc, idx) => {
-        const scImg = mlResolveArtUrl(sc.refId, sc.image);
+        const scImg = mlResolveArtUrl(sc.refId, sc.image, sc.category, sc.headline);
         const rCount = Array.isArray(sc.reactions) ? sc.reactions.length : 0;
         return `<button type="button" class="ml-scene-row" data-mlscene="${idx}">
           <span class="ml-scene-thumb">${scImg ? `<img src="${esc(scImg)}" alt="">` : mlAssetArtSvg(sc.refId, sc.category)}</span>
@@ -9197,7 +9209,7 @@ function renderMyLife(page) {
       const cid = a.catalogId || a.id;
       const catItem = !a.custom ? ML_ASSET_CATALOG_UI.find((c) => c.id === cid) : null;
       const label = a.custom ? a.name : (catItem ? catItem.label() : mlFormatAssetName(cid));
-      const img = mlResolveArtUrl(cid, a.customImage || (!a.custom && hub.catalogImages?.[cid]));
+      const img = mlResolveArtUrl(cid, a.customImage || (!a.custom && hub.catalogImages?.[cid]), a.category, a.name);
       return `<button type="button" class="ml-showcase-item" data-mlgo-shop="1">
         <span class="ml-showcase-thumb">${img ? `<img src="${esc(img)}" alt="${esc(label)}">` : mlAssetArtSvg(cid, a.category)}</span>
         <span class="ml-showcase-txt"><b>${esc(label)}</b><small>${esc(a.customCategory || (ML_ASSET_CAT_LABELS[a.category] || ML_ASSET_CAT_LABELS.custom)())}</small></span>
@@ -9266,7 +9278,7 @@ function renderMyLife(page) {
   const catalogCards = catalogFiltered.map((a) => {
     const owned = (hub.assets || []).find((x) => x.catalogId === a.id);
     const customImg = owned?.customImage || hub.catalogImages?.[a.id] || null;
-    const imgUrl = mlResolveArtUrl(a.id, customImg);
+    const imgUrl = mlResolveArtUrl(a.id, customImg, a.category);
     const metaLines = [
       a.price > 0 ? tr('Prix : {p}', { p: euros(a.price) }) : tr('Gratuit'),
       a.monthlyCost > 0 ? tr('Entretien : {p}/mois', { p: euros(a.monthlyCost) }) : '',
@@ -9293,7 +9305,7 @@ function renderMyLife(page) {
       </div>
     </div>`;
   }).join('') + ownedCustom.map((a) => {
-    const imgUrl = mlResolveArtUrl(a.id, a.customImage);
+    const imgUrl = mlResolveArtUrl(a.id, a.customImage, a.category, a.name);
     return `<div class="card ml-shop-card owned">
       <div class="ml-card-media">
         ${imgUrl ? `<img src="${esc(imgUrl)}" alt="${esc(a.name)}">` : mlAssetArtSvg(a.id, a.category)}
