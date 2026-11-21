@@ -393,6 +393,7 @@ function ensureLifeHub(state, snapshot = state?.snapshot) {
     hub.stage = est.stage;
     stampEstimate(hub, est);
   }
+  syncBootSponsor(state, hub);
   return hub;
 }
 
@@ -463,11 +464,56 @@ function normalizeSponsorEntry(raw, fallbackId, today) {
   };
 }
 
+function isBootCategorySponsor(s) {
+  if (!s) return false;
+  if (s.linkedBootDeal || String(s.category || '').toLowerCase() === 'boots') return true;
+  return Array.isArray(s.categories) && s.categories.some((c) => String(c || '').toLowerCase() === 'boots');
+}
+
 function syncBootSponsor(state, hub) {
+  if (!hub) return;
   const deal = state?.sponsor?.deal;
+  const bootSp = (hub.sponsors || []).find(isBootCategorySponsor);
+
+  // Cas 1 : Le joueur a défini un sponsor 'boots' dans Ma vie (calibration ou ajout/édition) et state.sponsor.deal est vide (ou lié).
+  if (bootSp && (!deal || bootSp.id !== 'boot_deal' || hub.renamedBootBrand)) {
+    for (const s of hub.sponsors) s.linkedBootDeal = (s === bootSp);
+    if (state) {
+      if (!state.sponsor) state.sponsor = { offer: null, deal: null, history: [], news: null, closedOn: null };
+      const prevBrand = state.sponsor.deal?.brand;
+      state.sponsor.deal = {
+        ...(state.sponsor.deal || {}),
+        id: state.sponsor.deal?.id || bootSp.id,
+        brand: bootSp.brand,
+        fee: bootSp.fee || 0,
+        bonus: bootSp.bonus || 0,
+        since: bootSp.since || state.sponsor.deal?.since || state?.snapshot?.gameDate || '',
+        until: bootSp.until || state.sponsor.deal?.until || '',
+        status: 'signed',
+        person: state.sponsor.deal?.person || 'Marco Ferri',
+        via: state.sponsor.deal?.via || (state?.agent?.name ? 'agent' : 'direct'),
+        contributions: state.sponsor.deal?.contributions || 0,
+        counted: Array.isArray(state.sponsor.deal?.counted) ? state.sponsor.deal.counted : [],
+      };
+      if (prevBrand && prevBrand.toLowerCase() !== bootSp.brand.toLowerCase()) {
+        state.sponsor.deal.bootId = null;
+        state.sponsor.deal.photo = null;
+        state.sponsor.deal.logo = null;
+      }
+      // Si une offre d'équipementier était en attente dans Mails alors qu'il a déjà un sponsor crampons, on la retire.
+      if (state.sponsor.offer) state.sponsor.offer = null;
+    }
+    if (Array.isArray(hub.offers)) {
+      hub.offers = hub.offers.filter((o) => !isBootCategorySponsor(o));
+    }
+    return;
+  }
+
   const existingIdx = hub.sponsors.findIndex((s) => s.linkedBootDeal);
   if (!deal) {
-    if (existingIdx >= 0) hub.sponsors.splice(existingIdx, 1);
+    if (existingIdx >= 0 && hub.sponsors[existingIdx].id === 'boot_deal') {
+      hub.sponsors.splice(existingIdx, 1);
+    }
     hub.renamedBootBrand = false;
     return;
   }
@@ -569,9 +615,10 @@ function calibrateLifeHub(state, snapshot, payload = {}, newId = () => `id_${Dat
 
   // Préserve le deal équipementier éventuel et ajoute jusqu'au plafond les sponsors existants choisis.
   hub.sponsors = [];
-  syncBootSponsor(state, hub);
   const cap = sponsorSlotCap(state.profile?.followers || est.followers, est.stage);
   const rawList = Array.isArray(payload.existingSponsors) ? payload.existingSponsors : [];
+  const incomingHasBoots = rawList.some(isBootCategorySponsor);
+  if (!incomingHasBoots) syncBootSponsor(state, hub);
   for (const item of rawList) {
     if (cap !== null && hub.sponsors.length >= cap) break;
     const norm = normalizeSponsorEntry(item, newId(), today);
@@ -579,6 +626,7 @@ function calibrateLifeHub(state, snapshot, payload = {}, newId = () => `id_${Dat
     if (isDuplicateSponsor(hub.sponsors, norm)) continue;
     hub.sponsors.push(norm);
   }
+  syncBootSponsor(state, hub);
 
   hub.ledger = [];
   addLedger(hub, { date: today, amount: chosenCash, kind: 'opening', label: `calibration:${startMode}` });
@@ -590,7 +638,17 @@ function makeSponsorOffer(state, snapshot, hub, newId) {
   const today = snapshot.gameDate;
   const est = estimateStartProfile(snapshot, state);
   const openKeys = new Set(hub.offers.map((o) => `${o.brand.toLowerCase()}|${normalizeSponsorCategories(o).join(',')}`));
-  const candidates = SPONSOR_PRESETS.filter((p) => !isDuplicateSponsor(hub.sponsors, p) && !openKeys.has(`${p.brand.toLowerCase()}|${normalizeSponsorCategories(p).join(',')}`));
+  const coveredCats = new Set(
+    (hub.sponsors || [])
+      .flatMap((s) => normalizeSponsorCategories(s).map((c) => String(c).toLowerCase()))
+      .filter((c) => c !== 'global')
+  );
+  const candidates = SPONSOR_PRESETS.filter((p) => {
+    if (isDuplicateSponsor(hub.sponsors, p)) return false;
+    if (openKeys.has(`${p.brand.toLowerCase()}|${normalizeSponsorCategories(p).join(',')}`)) return false;
+    if (coveredCats.has(String(p.category || '').toLowerCase())) return false;
+    return true;
+  });
   if (!candidates.length) return null;
 
   const idx = hashStr(`${state.careerId}|${today}|mloff`) % candidates.length;
@@ -819,6 +877,7 @@ function addSponsor(state, payload = {}, gameDate = '', newId = () => `id_${Date
   if (!entry) throw new Error('Nom de sponsor requis.');
   if (isDuplicateSponsor(hub.sponsors, entry)) throw new Error('Ce sponsor existe déjà.');
   hub.sponsors.push(entry);
+  syncBootSponsor(state, hub);
   hub.meters.sponsors = clamp(hub.meters.sponsors + 4, 0, 100);
   scheduleNextObligation(hub, gameDate, newId);
   pushRecent(hub, { date: gameDate, kind: 'sponsor', text: `Signed sponsor deal with ${entry.brand}` });
@@ -829,6 +888,7 @@ function updateSponsor(state, payload = {}) {
   const hub = ensureLifeHub(state, state.snapshot);
   const sp = hub.sponsors.find((s) => s.id === payload.id);
   if (!sp) throw new Error('Élément introuvable.');
+  const wasBoot = isBootCategorySponsor(sp);
   const brand = cleanText(payload.brand, 80);
   if (!brand) throw new Error('Nom de sponsor requis.');
   sp.brand = brand;
@@ -841,13 +901,20 @@ function updateSponsor(state, payload = {}) {
   if (payload.until !== undefined) sp.until = cleanText(payload.until, 10);
   if (payload.notes !== undefined) sp.notes = cleanText(payload.notes, 140);
 
-  if (sp.linkedBootDeal && state.sponsor?.deal) {
-    state.sponsor.deal.brand = sp.brand;
-    state.sponsor.deal.fee = sp.fee;
-    state.sponsor.deal.bonus = sp.bonus;
-    if (sp.until) state.sponsor.deal.until = sp.until;
+  if (sp.linkedBootDeal || isBootCategorySponsor(sp)) {
     hub.renamedBootBrand = true;
+    if (state.sponsor?.deal) {
+      state.sponsor.deal.brand = sp.brand;
+      state.sponsor.deal.fee = sp.fee;
+      state.sponsor.deal.bonus = sp.bonus;
+      if (sp.until) state.sponsor.deal.until = sp.until;
+    }
   }
+  if (wasBoot && !isBootCategorySponsor(sp)) {
+    sp.linkedBootDeal = false;
+    if (state.sponsor?.deal) state.sponsor.deal = null;
+  }
+  syncBootSponsor(state, hub);
   for (const ob of hub.obligations) {
     if (ob.sponsorId === sp.id) ob.brand = sp.brand;
   }
@@ -860,7 +927,10 @@ function removeSponsor(state, id, gameDate = '') {
   if (idx < 0) throw new Error('Élément introuvable.');
   const removed = hub.sponsors.splice(idx, 1)[0];
   hub.obligations = hub.obligations.filter((o) => o.sponsorId !== id);
-  if (removed.linkedBootDeal && state.sponsor?.deal) state.sponsor.deal = null;
+  if ((removed.linkedBootDeal || isBootCategorySponsor(removed)) && state.sponsor?.deal) {
+    state.sponsor.deal = null;
+  }
+  syncBootSponsor(state, hub);
   pushRecent(hub, { date: gameDate, kind: 'sponsor', text: `Ended deal with ${removed.brand}` });
   return hub;
 }
@@ -1035,6 +1105,8 @@ module.exports = {
   isDuplicateSponsor,
   estimateStartProfile,
   ensureLifeHub,
+  syncBootSponsor,
+  isBootCategorySponsor,
   calibrateLifeHub,
   lifeHubTick,
   buyAsset,

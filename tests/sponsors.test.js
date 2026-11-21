@@ -4,7 +4,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { parseBoots } = require('../src/save/boots');
+const { parseBoots, findBrandBootId } = require('../src/save/boots');
 const { sponsorTick, answerSponsor, sponsorFacts, eligible, tierOf, brandPool, seasonEnd } = require('../src/world/sponsors');
 const { sponsorTexts, SPONSOR_LANGUAGES } = require('../src/world/sponsorTexts');
 
@@ -163,4 +163,23 @@ test('les six langues ont tous leurs textes, sans trou', () => {
     const all = [L.subject(o), L.direct(o), L.agent(o), ...['accepted', 'declined', 'up', 'no', 'lapsed', 'ended'].flatMap((k) => [L[k].direct(o), L[k].agent(o)])];
     for (const text of all) assert.ok(text && !/undefined/.test(text), `${lang} : ${text}`);
   }
+});
+
+test('FL27 full-model Boots.bin strings normalize to canonical maker and findBrandBootId locates a matching boot', () => {
+  const rec = (id, brand) => { const b = Buffer.alloc(304); b.writeUInt16LE(id, 0); b.write(brand, 204); return b; };
+  const catalog = parseBoots(Buffer.concat([
+    rec(1088, 'ADIDAS PREDATOR ELITE FG'),
+    rec(1289, "ADIDAS F50 HYPERFAST ELITE FG 'CHAOS VS CONTROL'"),
+    rec(2050, 'NIKE MERCURIAL VAPOR 16 ELITE'),
+    rec(3010, 'PUMA FUTURE 7 ULTIMATE FG/AG'),
+  ]));
+  assert.deepStrictEqual(catalog, [
+    { id: 1088, brand: 'adidas' },
+    { id: 1289, brand: 'adidas' },
+    { id: 2050, brand: 'NIKE' },
+    { id: 3010, brand: 'PUMA' },
+  ]);
+  assert.ok([1088, 1289].includes(findBrandBootId(catalog, 'adidas')));
+  assert.strictEqual(findBrandBootId(catalog, 'Nike Football'), 2050);
+  assert.strictEqual(findBrandBootId(catalog, 'Unknown Brand'), null);
 });

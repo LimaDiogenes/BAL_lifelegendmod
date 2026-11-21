@@ -3819,6 +3819,14 @@ button:active:not(:disabled), .btn:active:not(:disabled) { transform: scale(.97)
 .sp-earned span { color: var(--ink-3); font-size: 12px; }
 .sp-none { margin: 0 0 6px; color: var(--ink-3); font-size: 14px; }
 .sp-offer--ds { margin-bottom: 8px; }
+.ds-partners { display: grid; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.ds-partners-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ds-partners-list { display: grid; gap: 6px; }
+.ds-partner-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r-m); background: var(--surface); }
+.ds-partner-row > div { display: grid; gap: 2px; min-width: 0; }
+.ds-partner-row b { font-size: 13px; font-weight: 700; }
+.ds-partner-row small { color: var(--ink-3); font-size: 12px; }
+.ds-partner-row > span { flex: none; color: var(--ink-2); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
 @media (max-width: 620px) {
   .sp-offer { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; }
   .sp-art { grid-row: auto; aspect-ratio: 2 / 1; }
@@ -4127,6 +4135,11 @@ html, body { height: 100%; overflow: hidden; background: var(--sh-back); }
 :root[data-theme="dark"] .site.site-national:has(> .gz) { background: linear-gradient(118deg, transparent 18%, rgba(255, 255, 255, .035) 30%, transparent 44%), linear-gradient(118deg, transparent 56%, rgba(255, 255, 255, .025) 68%, transparent 80%), var(--pg-back); }
 /* Les logos de compétition (souvent sombres) sur une pastille claire, comme les écussons de Scoreline. */
 :root[data-theme="dark"] .gz-rub-logo, :root[data-theme="dark"] .gz .gz-comp-logo { padding: 6px; border-radius: var(--r-m); background: #f2f3f7; }
+/* Halo subtil autour des écussons sombres (Juventus, Verona…) sur les cartes sombres de La Transversale. */
+:root[data-theme="dark"] .gz-sc .gz-crest, :root[data-theme="dark"] .gz-table .gz-crest, :root[data-theme="dark"] .gz-clubs .gz-crest, :root[data-theme="dark"] .gz-sb-team .gz-crest, :root[data-theme="dark"] .gz-totw .gz-crest { filter: drop-shadow(0 0 1px rgba(255, 255, 255, .65)) drop-shadow(0 1px 2px rgba(0, 0, 0, .35)); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .gz-sc .gz-crest, :root:not([data-theme="light"]) .gz-table .gz-crest, :root:not([data-theme="light"]) .gz-clubs .gz-crest, :root:not([data-theme="light"]) .gz-sb-team .gz-crest, :root:not([data-theme="light"]) .gz-totw .gz-crest { filter: drop-shadow(0 0 1px rgba(255, 255, 255, .65)) drop-shadow(0 1px 2px rgba(0, 0, 0, .35)); }
+}
 /* Le texte à la couleur de la ligue prend sa version claire : une ligue sans couleur (noir) resterait invisible. */
 :root[data-theme="dark"] .gz .gz-word, :root[data-theme="dark"] .gz-top:not(:hover), :root[data-theme="dark"] .gz-share-btn:hover, :root[data-theme="dark"] .gz-read b { color: var(--tv-text); }
 

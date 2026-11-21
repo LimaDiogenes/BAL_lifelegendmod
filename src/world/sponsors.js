@@ -93,11 +93,36 @@ function say(state, offer, text, gameDate, unread = false) {
 }
 const closeOffer = (sp, offer, status, on) => { sp.history.push({ id: offer.id, brand: offer.brand, status, on, bootId: offer.bootId, fee: offer.fee, person: offer.person, photo: offer.photo, logo: offer.logo, threadId: offer.threadId, bonus: offer.bonus, until: offer.until, via: offer.via, seasons: offer.seasons, expires: offer.expires, tier: offer.tier, negotiated: offer.negotiated }); sp.offer = null; sp.closedOn = on; };
 
+function findLifeBootSponsor(state) {
+  return (state?.lifeHub?.sponsors || []).find((s) => s && s.brand && (
+    s.linkedBootDeal
+    || String(s.category || '').toLowerCase() === 'boots'
+    || (Array.isArray(s.categories) && s.categories.some((c) => String(c || '').toLowerCase() === 'boots'))
+  )) || null;
+}
+
 // À chaque synchro : compte les primes, ferme ce qui est arrivé à terme, propose un contrat si le moment s'y prête.
 // Rend { mail, offer } : le mail à publier, et l'offre dont il reste à préparer les images.
 function sponsorTick(state, snapshot, { language = 'fr', newId, catalog = [] }) {
   const out = { mail: null, offer: null };
   const sp = ensureSponsor(state), today = snapshot.gameDate, L = sponsorTexts(language);
+  const lifeBoot = findLifeBootSponsor(state);
+  if (lifeBoot && !sp.deal) {
+    sp.deal = {
+      id: lifeBoot.id || 'boot_deal',
+      brand: lifeBoot.brand,
+      fee: lifeBoot.fee || 0,
+      bonus: lifeBoot.bonus || 0,
+      since: lifeBoot.since || today,
+      until: lifeBoot.until || seasonEnd(today, 2),
+      status: 'signed',
+      person: PEOPLE[hash(`${lifeBoot.brand}|contact`) % PEOPLE.length],
+      via: state.agent?.name ? 'agent' : 'direct',
+      contributions: 0,
+      counted: [],
+    };
+    sp.offer = null;
+  }
   const deal = sp.deal;
   if (deal) {
     for (const f of snapshot.fixtures || []) {
@@ -164,7 +189,7 @@ function answerSponsor(state, choice, { language = 'fr', gameDate }) {
 
 // Pour les rédactions : un fait de plus, sans requête de plus.
 function sponsorFacts(state) {
-  const deal = state?.sponsor?.deal;
+  const deal = state?.sponsor?.deal || findLifeBootSponsor(state);
   return deal ? { brand: deal.brand, since: deal.since, until: deal.until } : undefined;
 }
 

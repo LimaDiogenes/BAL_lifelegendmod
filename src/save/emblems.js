@@ -8,7 +8,7 @@ const path = require('path');
 const zlib = require('zlib');
 const { listCpk, readCpkEntry, unwrapWesys } = require('./cpk');
 const { decryptSave } = require('./pesCrypt');
-const { siderRoots } = require('./gameDb');
+const { siderRoots, detectGameFolders } = require('./gameDb');
 
 // Variantes : _b / _w (même écusson pour fond clair ou sombre), _l = grande taille.
 const EMBLEM_RE = /(?:^|\/)common\/render\/symbol\/flag\/e_(\d{6})_([rf])(_[bw])?(_l)?\.png$/i;
@@ -19,9 +19,9 @@ const CUSTOM_SIZE = 256, CUSTOM_OFFSET = 80; // TEMBLEM : en-tête de 80 octets 
 const LOGO_RE = /(?:^|\/)common\/render\/symbol\/emblemLc\/emb_(\d{4})(_[bw])?_l\.png$/i;
 
 // Index des écussons et logos des archives, dans l'ordre de chargement du jeu (download/ récent d'abord, puis Data/).
-let cached = null;
+const cachedByDir = new Map();
 function archiveIndex(gameDir) {
-  if (cached?.gameDir === gameDir) return cached.map;
+  if (cachedByDir.has(gameDir)) return cachedByDir.get(gameDir).map;
   const map = new Map();
   const logos = new Map();
   for (const sub of ['download', 'Data']) {
@@ -50,10 +50,10 @@ function archiveIndex(gameDir) {
       }
     }
   }
-  cached = { gameDir, map, logos };
+  cachedByDir.set(gameDir, { map, logos });
   return map;
 }
-const logoIndex = (gameDir) => { archiveIndex(gameDir); return cached.logos; };
+const logoIndex = (gameDir) => { archiveIndex(gameDir); return cachedByDir.get(gameDir).logos; };
 
 // PNG à partir de pixels RGBA (pour les écussons importés).
 const CRC = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
@@ -120,6 +120,7 @@ function ensureEmblems({ gameDir, savePath, clubs, outDir }) {
   const out = {};
   const saveDir = path.dirname(savePath);
   const patched = gameDir ? isPatchedGame(gameDir) : false;
+  let fallbackDirs = null;
   fs.mkdirSync(outDir, { recursive: true });
   for (const c of clubs) {
     const name = c.emblemSlot != null ? `${c.id}-t${c.emblemSlot}.png` : `${c.id}.png`; // un autre écusson importé = un autre fichier
@@ -128,6 +129,13 @@ function ensureEmblems({ gameDir, savePath, clubs, outDir }) {
     let png = null;
     try {
       png = (c.emblemSlot != null ? customEmblem(saveDir, c.emblemSlot) : null) || (gameDir ? archiveEmblem(gameDir, c.id, Boolean(c.fakeOk || patched)) : null);
+      if (!png && gameDir) {
+        if (!fallbackDirs) fallbackDirs = detectGameFolders().filter((d) => d !== gameDir);
+        for (const altDir of fallbackDirs) {
+          png = archiveEmblem(altDir, c.id, Boolean(c.fakeOk || isPatchedGame(altDir)));
+          if (png) break;
+        }
+      }
     } catch { png = null; }
     if (!png) continue;
     fs.writeFileSync(file, png);
