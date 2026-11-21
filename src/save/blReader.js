@@ -80,10 +80,13 @@ function readDescription(desc) {
 
 function readTeams(d, L) {
   const teams = new Map();
-  for (let k = 0; k < 4096; k++) {
+  const maxTeams = L?.coach ? Math.min(4096, Math.floor((L.coach - 8) / TEAM_STRIDE)) : Math.min(750, Math.ceil(d.length / TEAM_STRIDE));
+  for (let k = 0; k < maxTeams; k++) {
     const o = TEAM_STRIDE * k;
-    if (o + 0x9A > d.length || d[o + 0x54] === 0 || d[o + 0x54] === 0xFF) break;
+    if (o + 0x9A > d.length) break;
+    if (d[o + 0x54] === 0 || d[o + 0x54] === 0xFF) continue;
     const ref = d.readUInt32LE(o + 0x50);
+    if ((ref & 0x3FFF) !== k || !(ref >>> 14)) continue;
     const team = {
       ref,
       id: ref >>> 14,

@@ -2444,4 +2444,10 @@ window.LL_I18N.de = {
   "Sauvegarde la plus récente chargée : {player}.": "Neuester Spielstand geladen: {player}.",
   "Nouvelle carrière détectée : {player}.": "Neue Karriere erkannt: {player}.",
   "Configurer": "Einrichten",
+  "Renommer les anciens clubs": "Frühere Vereine umbenennen",
+  "Aucun ancien club enregistré dans le bilan de carrière de cette sauvegarde.": "Keine früheren Vereine in der Karrierebilanz dieses Spielstands verzeichnet.",
+  "Non reconnu dans la sauvegarde": "Im Spielstand nicht erkannt",
+  "Nom du club enregistré.": "Vereinsname gespeichert.",
+  "Anciens clubs & équipes non reconnues": "Frühere Vereine & nicht erkannte Teams",
+  "Si un ancien club de ton parcours a été remplacé ou retiré de la base du jeu par un patch (affiché comme « Club inconnu »), ou si tu préfères personnaliser son nom d’affichage dans Panthéon, Mails et les articles, modifie-le ici.": "Wenn ein früherer Verein deiner Laufbahn durch einen Patch ersetzt oder aus der Spieldatenbank entfernt wurde (angezeigt als „Unbekannter Verein“) oder du seinen Anzeigenamen in Panthéon, Mails und Artikeln anpassen möchtest, bearbeite ihn hier.",
 };

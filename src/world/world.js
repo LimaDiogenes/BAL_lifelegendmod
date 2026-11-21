@@ -13,7 +13,7 @@ const { normalizePersona, personaFacts } = require('./persona');
 const { ASSET_CATALOG, estimateStartProfile, ensureLifeHub, calibrateLifeHub: applyCalibration, lifeHubTick, buyAsset, sellAsset, addSponsor, updateSponsor, removeSponsor, answerSponsorOffer, completeObligation, performAction, answerDilemma, lifeHubFacts, clearPendingSaveEffects } = require('./lifeHub');
 const { saveLifeImage, removeLifeImage } = require('./lifeMedia');
 const { buildSceneAndReactions } = require('./lifeScenes');
-const { ensureCalendar, ingestSyncCalendar, advanceCalendar, flushCalendarToSave, addCustomCalendarEvent, removeCustomCalendarEvent } = require('./calendar');
+const { ensureCalendar, buildVisibleSnapshot, ingestSyncCalendar, advanceCalendar, flushCalendarToSave, addCustomCalendarEvent, removeCustomCalendarEvent } = require('./calendar');
 const { applyLifeEffects } = require('../save/lifeEffectsWrite');
 const { DEFAULT_PAPER_ID, normalizePaperOverride, resolveNationalPaper, paperDeskTemplate } = require('./nationalPaper');
 const { updateRival, rivalFacts, rivalInNews } = require('./rival');
@@ -65,14 +65,43 @@ function saveNationalPaper({ store, payload }) {
   return state;
 }
 
+function applyAliasClubPage(state, store, refKey, aliasName) {
+  const numRef = Number(refKey);
+  if (!aliasName || !Number.isFinite(numRef) || numRef <= 0) return;
+  const teamId = numRef >>> 14;
+  if (!teamId) return;
+  const h = clubHandle({ name: aliasName }).toLowerCase();
+  state.clubPages ||= {};
+  const embFile = `${teamId}.png`;
+  const embPath = store?.dir && state?.careerId ? path.join(store.dir, 'careers', state.careerId, 'emblems', embFile) : null;
+  const hasEmb = embPath && fs.existsSync(embPath);
+  const prev = state.clubPages[h] || {};
+  state.clubPages[h] = {
+    ...prev,
+    handle: prev.handle || clubHandle({ name: aliasName }),
+    name: aliasName,
+    emblem: prev.emblem || (hasEmb ? embFile : null),
+  };
+}
+
 function saveClubAlias({ store, clubRef, name }) {
   const state = store.activeCareer();
   if (!state) throw new Error('Synchronise ta sauvegarde une première fois.');
-  const clean = String(name || '').trim().slice(0, 80);
   state.clubAliases ||= {};
-  const key = String(clubRef);
-  if (clean) state.clubAliases[key] = clean;
-  else delete state.clubAliases[key];
+  const entries = (clubRef && typeof clubRef === 'object')
+    ? Object.entries(clubRef)
+    : [[clubRef, name]];
+  for (const [k, rawName] of entries) {
+    const key = String(k || '').trim();
+    if (!key) continue;
+    const clean = String(rawName || '').trim().slice(0, 80);
+    if (clean) {
+      state.clubAliases[key] = clean;
+      applyAliasClubPage(state, store, key, clean);
+    } else {
+      delete state.clubAliases[key];
+    }
+  }
   store.saveCareer(state);
   return state;
 }
@@ -767,6 +796,9 @@ function refreshEmblems({ state, career, settings, store }) {
   }
   const wanted = new Set(clubAccountsFacts(state.snapshot).map((x) => x.handle.replace(/^@/, '').toLowerCase()));
   if (career.nationalTeam?.name) wanted.add(clubHandle(career.nationalTeam).toLowerCase());
+  for (const t of career.teams.values()) {
+    if (t.name && realTeam(t)) wanted.add(clubHandle(t).toLowerCase());
+  }
   for (const p of state.feed) for (const x of [p, ...(p.replies || [])]) if (x.author.type === 'club') wanted.add(x.author.handle.toLowerCase());
   const compClubs = new Map();
   const clubComps = new Map(); // pseudo du club -> ses compétitions (championnats d'abord)
@@ -781,11 +813,23 @@ function refreshEmblems({ state, career, settings, store }) {
     }
   }
   const teams = [...wanted].map((h) => [h, byHandle.get(h)]).filter(([, t]) => t);
+  const aliasRefs = new Map();
+  for (const c of career.player?.careerRecords?.clubs || []) {
+    if (c.clubRef) aliasRefs.set(String(c.clubRef), c.name || state.clubAliases?.[String(c.clubRef)] || null);
+  }
+  for (const [k, v] of Object.entries(state.clubAliases || {})) {
+    if (v) aliasRefs.set(String(k), v);
+  }
+  const extraClubs = [];
+  for (const [refStr] of aliasRefs) {
+    const id = Number(refStr) >>> 14;
+    if (id > 0 && !teams.some(([, t]) => t.id === id)) extraClubs.push({ id, emblemSlot: null, fakeOk: true });
+  }
   // Le faux écusson de PES n'est gardé que pour les clubs inventés par le jeu (sans vrai compte).
   const files = ensureEmblems({
     gameDir,
     savePath: settings.savePath,
-    clubs: teams.map(([, t]) => ({ id: t.id, emblemSlot: t.emblemSlot, fakeOk: !realClubHandle(t) })),
+    clubs: [...teams.map(([, t]) => ({ id: t.id, emblemSlot: t.emblemSlot, fakeOk: !realClubHandle(t) })), ...extraClubs],
     outDir,
   });
   const leagueOf = new Set((state.snapshot.table || []).map((r) => r.ref));
@@ -795,6 +839,16 @@ function refreshEmblems({ state, career, settings, store }) {
     league: leagueOf.has(t.ref) ? state.snapshot.league?.name || null : null,
     follows: clubComps.get(h) || [],
   }]));
+  for (const [refStr, aliasName] of aliasRefs) {
+    if (!aliasName) continue;
+    const id = Number(refStr) >>> 14;
+    const h = clubHandle({ name: aliasName }).toLowerCase();
+    if (!state.clubPages[h]) {
+      state.clubPages[h] = { handle: clubHandle({ name: aliasName }), name: aliasName, emblem: files[id] || null, stadium: null, league: null, follows: [] };
+    } else if (!state.clubPages[h].emblem && files[id]) {
+      state.clubPages[h].emblem = files[id];
+    }
+  }
   // Abonnés des comptes de clubs : calés sur ceux relevés dans PES (Rennes), estimés pour les autres.
   try {
     const counts = clubFollowers({ career, leagueId: state.snapshot.league?.id, clubs: teams.filter(([, t]) => !isNationalTeam(t)).map(([h, t]) => ({ handle: h, ref: t.ref, name: t.name, follows: clubComps.get(h) || [] })) });
@@ -919,6 +973,17 @@ function loadState(store) {
     ensureLifeHub(state, state.snapshot);
     ensureCalendar(state, state.snapshot);
     state.nationalPaper = paperForState(state, state.snapshot);
+    const hasAnyEmblem = Object.values(state.clubPages || {}).some((p) => p?.emblem);
+    if (!hasAnyEmblem) {
+      try {
+        const settings = store.getSettings?.();
+        if (settings?.savePath && fs.existsSync(settings.savePath)) {
+          const career = readSave(settings.savePath);
+          refreshEmblems({ state, career, settings, store });
+          store.saveCareer(state);
+        }
+      } catch { /* sauvegarde ou jeu indisponible au chargement : réessayé à la prochaine synchro */ }
+    }
   }
   return state;
 }
@@ -1809,10 +1874,13 @@ function gameDirFor(career, settings) {
   if (dirs.length <= 1) return dirs[0] || null;
   const key = `${settings.savePath}|${dirs.join('|')}`;
   if (!gameDirCache.has(key)) {
+    const yearMatch = /\b(202[4-9])\b/.exec(String(settings.savePath || ''));
+    const saveYear = yearMatch ? yearMatch[1] : null;
     let best = dirs[0], bestRate = -1;
     for (const d of dirs) {
       let rate = 0;
       try { const db = loadGameDb(d); rate = db ? matchRate(career, db) : 0; } catch { rate = 0; }
+      if (saveYear && d.includes(saveYear)) rate += 0.02;
       if (rate > bestRate) { best = d; bestRate = rate; }
     }
     gameDirCache.set(key, best);
@@ -1903,7 +1971,7 @@ async function syncInner({ store, settings, log, t }) {
   logSaveLayout(career.layout, log);
   const db = playerDb(career, settings, log);
   const names = db?.names || null;
-  const snapshot = buildSnapshot(career, db || names);
+  let snapshot = buildSnapshot(career, db || names);
   const nameOf = (id) => (id === career.player.id ? career.player.name : (names?.has(id) ? prettyName(names.get(id)) : null));
   log(`${snapshot.player.name} · ${snapshot.club.name} · ${snapshot.league.name || '?'} · ${snapshot.gameDate}`);
 
@@ -1926,17 +1994,30 @@ async function syncInner({ store, settings, log, t }) {
   // Nom affiché resté identique au nom du jeu (ex. ancien « M. DEPAY ») : on suit la nouvelle mise en forme.
   if (state.profile.displayName.toUpperCase() === snapshot.player.name.toUpperCase()) state.profile.displayName = snapshot.player.name;
 
-  const prevGameDate = state.snapshot?.gameDate || null;
+  const lastEditionDate = state.editions?.at(-1)?.gameDate || null;
+  const baseSnap = state.syncedSnapshot
+    || ((state.lastSync?.deferredCalendar || (lastEditionDate && state.snapshot?.gameDate && state.snapshot.gameDate > lastEditionDate))
+      ? buildVisibleSnapshot(snapshot, lastEditionDate)
+      : state.snapshot);
+  const prevGameDate = baseSnap?.gameDate || null;
   const calIngest = ingestSyncCalendar(state, snapshot, { calendarMode: settings.calendarMode || 'basic' });
+  let activeSnap = snapshot;
   if (calIngest.deferred) {
-    ensureLifeHub(state, state.snapshot);
-    state.nationalPaper = paperForState(state, calIngest.visibleSnapshot || state.snapshot || snapshot);
-    state.lastSync = { published: false, deferredCalendar: true, queuedMatches: calIngest.queuedCount, gameDate: calIngest.visibleSnapshot.gameDate, saveDate: snapshot.gameDate };
-    store.saveCareer(state);
-    log(`Calendrier complet : ${calIngest.queuedCount} match(s) en attente jusqu’au ${snapshot.gameDate}. Avance dans Ma vie › Calendrier.`);
-    return state;
+    if (calIngest.queuedCount <= 1) {
+      flushCalendarToSave(state);
+      activeSnap = snapshot;
+    } else {
+      if (!diffSnapshots(baseSnap, state.snapshot).newResults.length && state.calendar?.pendingMatches?.length) {
+        advanceCalendar(state, { mode: 'target', targetDate: state.calendar.pendingMatches[0].date });
+      }
+      activeSnap = state.snapshot || calIngest.visibleSnapshot || snapshot;
+      if (state.calendar?.pendingMatches?.length) {
+        log(`Calendrier complet : publication jusqu’au ${activeSnap.gameDate} (${state.calendar.pendingMatches.length} autre(s) match(s) en attente dans Ma vie › Calendrier).`);
+      }
+    }
   }
-  const changes = diffSnapshots(state.snapshot, snapshot);
+  snapshot = activeSnap;
+  const changes = diffSnapshots(baseSnap, snapshot);
   // Mise à l'écart écrite par LifeLegend (src/world/conduct.js) : ces jours d'indisponibilité ne sont pas une blessure.
   if (sanctionActive(state, snapshot.gameDate) || endedRecently(state, snapshot.gameDate)) { changes.injury = null; changes.recovered = false; }
   // Le jeu n'efface pas tout de suite le journal du match précédent : on archive chaque chronologie.
@@ -2122,8 +2203,9 @@ async function syncInner({ store, settings, log, t }) {
   let scoresData;
   const scoresNow = () => { if (scoresData === undefined) scoresData = buildScores(career, { nameOf, clubRef: snapshot.club.ref, leagueId: snapshot.league.id, playerId: career.player.id, today: snapshot.gameDate }); return scoresData; };
   const saveAll = () => {
+    state.syncedSnapshot = state.snapshot;
     try { refreshEmblems({ state, career, settings, store }); } catch (err) { log(`Écussons : lecture impossible (${err.message}).`); }
-    recordNotoriety(state, snapshot); // abonnés, valeur, image dans la presse du jour (courbes de Scoreline)
+    recordNotoriety(state, state.snapshot); // abonnés, valeur, image dans la presse du jour (courbes de Scoreline)
     store.saveCareer(state);
     if (settings.pendingBio) store.saveSettings({ pendingBio: null });
     store.saveAux(careerId, 'clubs', clubs);
