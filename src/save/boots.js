@@ -14,6 +14,30 @@ const RECORD = 304, ID_AT = 0, BRAND_AT = 204, BRAND_LEN = 100;
 const THUMB_DIR = 'common/render/thumbnail/spike';
 const THUMB_RE = /(?:^|\/)common\/render\/thumbnail\/spike\/(k\d+_[tl])\.dds$/i;
 const BRAND_FIX = { 'New Balace': 'New Balance' }; // une faute de frappe de la table
+const KNOWN_BOOT_MAKERS = [
+  [/^adidas\b/i, 'adidas'],
+  [/^nike\b/i, 'NIKE'],
+  [/^puma\b/i, 'PUMA'],
+  [/^mizuno\b/i, 'MIZUNO'],
+  [/^new balan?ce\b/i, 'New Balance'],
+  [/^umbro\b/i, 'UMBRO'],
+  [/^under armour\b/i, 'UNDER ARMOUR'],
+  [/^asics\b/i, 'ASICS'],
+  [/^lotto\b/i, 'LOTTO'],
+  [/^skechers\b/i, 'Skechers'],
+  [/^(decathlon|kipsta)\b/i, 'Kipsta'],
+  [/^joma\b/i, 'Joma'],
+  [/^diadora\b/i, 'Diadora'],
+];
+
+function normalizeBootBrand(rawBrand) {
+  const fixed = BRAND_FIX[rawBrand] || rawBrand;
+  if (!fixed || fixed.split(/\s+/).length <= 2) return fixed;
+  for (const [re, canonical] of KNOWN_BOOT_MAKERS) {
+    if (re.test(fixed)) return canonical;
+  }
+  return fixed;
+}
 
 // Le catalogue : [{ id, brand }]. Une table d'une autre forme (un autre patch) ne donne rien plutôt que des marques fausses.
 function parseBoots(data) {
@@ -24,9 +48,23 @@ function parseBoots(data) {
     const raw = data.subarray(o + BRAND_AT, o + BRAND_AT + BRAND_LEN);
     const end = raw.indexOf(0);
     const brand = raw.subarray(0, end < 0 ? raw.length : end).toString('utf8').trim();
-    if (id && brand) out.push({ id, brand: BRAND_FIX[brand] || brand });
+    if (id && brand) out.push({ id, brand: normalizeBootBrand(brand) });
   }
   return out;
+}
+
+function findBrandBootId(catalog, brandName, seed = 0) {
+  if (!Array.isArray(catalog) || !catalog.length || !brandName) return null;
+  const q = String(brandName).trim().toLowerCase();
+  const qFirst = q.split(/\s+/)[0];
+  const matches = catalog.filter((b) => {
+    const c = String(b.brand || '').trim().toLowerCase();
+    return c === q || c.startsWith(qFirst) || q.startsWith(c);
+  });
+  if (!matches.length) return null;
+  const sorted = matches.map((b) => b.id).sort((a, b) => a - b);
+  const recent = sorted.slice(Math.floor(sorted.length / 2));
+  return recent[Math.abs(Number(seed) || 0) % recent.length];
 }
 function bootCatalog(gameDir) {
   try { return parseBoots(loadDbTable(gameDir, 'Boots.bin')?.data); } catch { return []; }
@@ -83,4 +121,4 @@ function ensureBootImages({ gameDir, id, outDir }) {
   return out;
 }
 
-module.exports = { parseBoots, bootCatalog, ensureBootImages, bootCode };
+module.exports = { parseBoots, bootCatalog, ensureBootImages, bootCode, findBrandBootId };

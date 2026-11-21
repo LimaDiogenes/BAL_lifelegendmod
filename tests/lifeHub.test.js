@@ -31,6 +31,7 @@ const {
   lifeHubFacts,
 } = require('../src/world/lifeHub');
 const world = require('../src/world/world');
+const { sponsorTick, sponsorFacts } = require('../src/world/sponsors');
 
 const tmpDirs = [];
 function makeTmpDir() {
@@ -319,5 +320,58 @@ describe('Phase C My Life Hub, Mid-Career Calibration & Sim Engine', () => {
     for (const secret of ['Sonia', 'Mendes', 'Niteroi', '2996000']) {
       assert.equal(outgoingPrompts[0].includes(secret), false, `Prompt leaked secret "${secret}"`);
     }
+  });
+
+  it('syncs My Life boots sponsors into state.sponsor.deal, blocks competing offers, and propagates FACTS', () => {
+    const snap = makeSuperstarSnapshot('2028-10-15');
+    snap.fixtures = [{ id: 'f1', played: true, date: '2028-10-14', me: { goals: 1, assists: 1, rating: 7.5, starter: true } }];
+    const catalog = [
+      ...Array.from({ length: 20 }, (_, i) => ({ id: 1000 + i, brand: 'Nike' })),
+      ...Array.from({ length: 20 }, (_, i) => ({ id: 2000 + i, brand: 'PUMA' })),
+      ...Array.from({ length: 20 }, (_, i) => ({ id: 3000 + i, brand: 'adidas' })),
+    ];
+    const state = {
+      careerId: '99-boots-sync',
+      profile: { followers: 2500000 },
+      snapshot: snap,
+      agent: { name: 'Lucas Vermeulen' },
+      sponsor: { offer: { id: 'old_puma', brand: 'PUMA', status: 'open' }, deal: null, history: [], news: null, closedOn: null },
+      mail: [],
+    };
+
+    calibrateLifeHub(state, snap, {
+      startMode: 'cash_only',
+      cash: 500000,
+      existingSponsors: [
+        { brand: 'adidas', categories: ['boots', 'apparel'], fee: 3000000, bonus: 1500, until: '2035-12-31' },
+      ],
+    }, () => 'sp_adidas');
+
+    assert.ok(state.sponsor.deal, 'calibrating a boots sponsor populates state.sponsor.deal');
+    assert.equal(state.sponsor.deal.brand, 'adidas');
+    assert.equal(state.sponsor.offer, null, 'open competing boot offer is cleared');
+    assert.equal(sponsorFacts(state).brand, 'adidas');
+
+    const tickOut = sponsorTick(state, snap, { language: 'en', newId: () => 'm_id', catalog });
+    assert.equal(tickOut.mail, null);
+    assert.equal(tickOut.offer, null);
+
+    // Next matchday tick in lifeHub should not offer competing 'boots' or 'apparel' presets
+    const laterSnap = makeSuperstarSnapshot('2028-10-20');
+    state.snapshot = laterSnap;
+    lifeHubTick(state, laterSnap, {
+      changes: { newResults: [{ id: 'f2', played: true, date: '2028-10-19', me: { goals: 1, assists: 0, rating: 7.4, starter: true } }] },
+      newId: () => 'off_next',
+    });
+    for (const off of state.lifeHub.offers) {
+      assert.ok(!['boots', 'apparel'].includes(String(off.category).toLowerCase()), `Unexpected competing offer category: ${off.category}`);
+    }
+
+    // Removing the boots sponsor clears state.sponsor.deal, and adding another boots sponsor re-syncs it
+    removeSponsor(state, state.lifeHub.sponsors[0].id, laterSnap.gameDate);
+    assert.equal(state.sponsor.deal, null);
+
+    addSponsor(state, { brand: 'Mizuno Pro', category: 'boots', fee: 450000, bonus: 2000, until: '2032-06-30' }, laterSnap.gameDate, () => 'sp_miz');
+    assert.equal(state.sponsor.deal?.brand, 'Mizuno Pro');
   });
 });

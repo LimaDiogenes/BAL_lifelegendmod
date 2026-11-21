@@ -148,8 +148,31 @@ function isLifeMediaReferenced(hub, file) {
 
 const langOfStore = (store) => store.getSettings?.()?.language || 'en';
 
+function ensureBootDealMedia(state, store, career = null, settings = null) {
+  const deal = state?.sponsor?.deal;
+  if (!deal?.brand || !state?.careerId || !store?.dir) return false;
+  if (deal.photo && (!deal.photoBrand || deal.photoBrand.toLowerCase() === deal.brand.toLowerCase())) return false;
+  try {
+    const stg = settings || store.getSettings?.() || {};
+    const gDir = (career ? gameDirFor(career, stg) : null) || stg.gameDir || detectGameFolders()[0] || null;
+    if (!gDir) return false;
+    const catalog = boots.bootCatalog(gDir);
+    const bootId = deal.bootId || boots.findBrandBootId(catalog, deal.brand);
+    if (!bootId) return false;
+    const imgs = boots.ensureBootImages({ gameDir: gDir, id: bootId, outDir: path.join(store.dir, 'careers', state.careerId, 'boots') });
+    deal.bootId = bootId;
+    deal.photo = imgs.photo || null;
+    deal.logo = imgs.logo || null;
+    deal.photoBrand = deal.brand;
+    return Boolean(deal.photo || deal.logo);
+  } catch {
+    return false;
+  }
+}
+
 const calibrateCareerLifeHub = ({ store, payload }) => withCareer(store, (state) => {
   applyCalibration(state, state.snapshot, payload, newId);
+  ensureBootDealMedia(state, store);
 });
 
 const buyLifeAsset = ({ store, payload }) => withCareer(store, (state) => {
@@ -194,10 +217,12 @@ const sellLifeAsset = ({ store, assetId }) => withCareer(store, (state) => {
 
 const addLifeSponsor = ({ store, payload }) => withCareer(store, (state) => {
   addSponsor(state, payload, state.snapshot?.gameDate || '', newId);
+  ensureBootDealMedia(state, store);
 });
 
 const updateLifeSponsor = ({ store, payload }) => withCareer(store, (state) => {
   updateSponsor(state, payload);
+  ensureBootDealMedia(state, store);
 });
 
 const removeLifeSponsor = ({ store, id }) => withCareer(store, (state) => {
@@ -205,6 +230,7 @@ const removeLifeSponsor = ({ store, id }) => withCareer(store, (state) => {
   const target = hub.sponsors.find((s) => s.id === id);
   const oldImg = target?.customImage || null;
   removeSponsor(state, id, state.snapshot?.gameDate || '');
+  ensureBootDealMedia(state, store);
   if (oldImg && !isLifeMediaReferenced(state.lifeHub, oldImg)) {
     removeLifeImage(lifeMediaDir(store, state), oldImg);
   }
@@ -212,6 +238,7 @@ const removeLifeSponsor = ({ store, id }) => withCareer(store, (state) => {
 
 const answerLifeSponsorOffer = ({ store, offerId, choice }) => withCareer(store, (state) => {
   answerSponsorOffer(state, offerId, choice, state.snapshot?.gameDate || '', newId);
+  ensureBootDealMedia(state, store);
 });
 
 const completeLifeObligation = ({ store, obligationId, skip }) => withCareer(store, (state) => {
@@ -970,7 +997,10 @@ function loadState(store) {
   // Carrière pas encore resynchronisée : la vue de l'agent n'a pas encore les chiffres par attitude.
   if (state?.agent?.view && state.agent.market && !state.agent.view.extensionByStance) state.agent.view.extensionByStance = extensionByStance(state.agent.market);
   if (state?.snapshot) {
+    const hadDeal = Boolean(state.sponsor?.deal);
     ensureLifeHub(state, state.snapshot);
+    const mediaAdded = ensureBootDealMedia(state, store);
+    if ((!hadDeal && state.sponsor?.deal) || mediaAdded) store.saveCareer(state);
     ensureCalendar(state, state.snapshot);
     state.nationalPaper = paperForState(state, state.snapshot);
     const hasAnyEmblem = Object.values(state.clubPages || {}).some((p) => p?.emblem);
@@ -2254,6 +2284,7 @@ async function syncInner({ store, settings, log, t }) {
   // Hub "Ma vie" (src/world/lifeHub.js) : salaires, sponsors multi-slots, patrimoine, jauges et dilemmes hors terrain.
   try {
     lifeHubTick(state, snapshot, { changes, newId });
+    ensureBootDealMedia(state, store, career, settings);
   } catch (err) { log(`Ma vie : ${err.message}`); }
   // Des matchs restés sans article après une synchro de secours comptent comme une nouvelle : l'édition les rattrape.
   if (!hasNews(changes) && !mercatoNews && !state.missedResults?.length) {

@@ -78,21 +78,50 @@ function readDescription(desc) {
   return info;
 }
 
+// Équipes d'une carrière créée sous Football Life 2026 / SmokePatch puis sauvegardée sous FL 2027 : quand l'ID a quitté
+// Team.bin, le jeu écrit '\0' sur le 1er octet (+0x54, +0x9A, +0xA0) en laissant le reste de la chaîne (+0x55…) intact.
+const LEGACY_PATCH_TEAMS = {
+  164: ['Yokohama FC', 'YFC'], 165: ['Shonan Bellmare', 'SHN'], 167: ['Albirex Niigata', 'NGT'],
+  204: ['Leicester City', 'LEI'], 210: ['SC Bastia', 'SCB'], 232: ['VfL Wolfsburg', 'WOL'],
+  246: ['NAC Breda', 'NAC'], 253: ['FC Volendam', 'VOL'], 268: ['Real Zaragoza', 'ZAR'],
+  302: ['Changchun Yatai', 'CCY'], 319: ['SSC Bari', 'BAR'], 328: ['Delfino Pescara', 'PES'],
+  349: ['Heracles Almelo', 'HER'], 394: ['Sheffield Wednesday', 'SHW'], 405: ['Stade Malherbe Caen', 'SMC'],
+  1528: ['Valenciennes FC', 'VA'], 1600: ['Spezia Calcio', 'SPE'], 1695: ['Wisła Kraków', 'WIS'],
+  1746: ['CFR Cluj', 'CLJ'], 1924: ['Godoy Cruz', 'GOD'], 1925: ['CA San Martín SJ', 'CSM'],
+  1989: ['Antalyaspor', 'ANT'], 1996: ['Kayserispor', 'KYS'], 2178: ['APOEL Nicosia', 'APO'],
+  2188: ['SD Huesca', 'HUE'], 2218: ['Deportivo Táchira', 'DEP'], 2360: ['Unión Española', 'UE'],
+  2543: ['Deportes Iquique', 'IQU'], 2614: ['CD Tondela', 'TON'], 2616: ['CD Mirandés', 'MIR'],
+  2652: ['Envigado FC', 'ENV'], 3099: ['FCV Dender', 'DEN'], 4115: ['Tampines Rovers', 'BSC'],
+  4139: ['FC St. Pauli', 'STP'], 4171: ['Al Kuwait SC', 'SGF'], 4200: ['Amiens SC', 'ASC'],
+  4225: ['AC Reggiana 1919', 'REG'], 4252: ['Cultural Leonesa', 'CDL'], 4941: ['BG Pathum United', 'BGP'],
+  4959: ['Paysandu SC', 'PAY'], 5009: ['FC Heidenheim 1846', 'FCH'], 5086: ['Oxford United', 'OXF'],
+  5148: ['Volta Redonda', 'VRE'], 5229: ['FC Fredericia', 'FCF'], 5235: ['Vejle Boldklub', 'VB'],
+  5296: ['FC Sochi', 'SOC'], 5319: ['Livingston FC', 'LIV'], 5376: ['Union Magdalena', 'UMG'],
+  5573: ['Ferroviário AC', 'AFE'], 5652: ['Fatih Karagümrük', 'KAR'], 5909: ['Amazonas FC', 'AMA'],
+  5912: ['Daejeon Hana Citizen', 'DJO'], 5954: ['Avs Futebol SAD', 'AVS'], 6044: ['Thep Xanh Nam Dinh FC', 'EBS'],
+  6052: ['Timor-Leste', 'TLS'], 65817: ['Pohang Steelers', 'POH'], 68179: ['Muangthong United FC', 'ADS'],
+  70923: ['Air Force Club', 'MAG'], 70924: ['Al Wasl FC', 'WAS'], 71311: ['Kaya FC-Iloilo', 'KAY'],
+};
+
 function readTeams(d, L) {
   const teams = new Map();
   const maxTeams = L?.coach ? Math.min(4096, Math.floor((L.coach - 8) / TEAM_STRIDE)) : Math.min(750, Math.ceil(d.length / TEAM_STRIDE));
   for (let k = 0; k < maxTeams; k++) {
     const o = TEAM_STRIDE * k;
     if (o + 0x9A > d.length) break;
-    if (d[o + 0x54] === 0 || d[o + 0x54] === 0xFF) continue;
     const ref = d.readUInt32LE(o + 0x50);
     if ((ref & 0x3FFF) !== k || !(ref >>> 14)) continue;
+    const id = ref >>> 14;
+    const legacy = (d[o + 0x54] === 0 || d[o + 0x54] === 0xFF) ? LEGACY_PATCH_TEAMS[id] : null;
+    if ((d[o + 0x54] === 0 || d[o + 0x54] === 0xFF) && !legacy) continue;
+    const rawName = legacy ? legacy[0] : prettyName(cstr(d, o + 0x54, 0x46));
+    const rawShort = legacy ? legacy[1] : (cstr(d, o + 0x9A, 4) || null);
     const team = {
       ref,
-      id: ref >>> 14,
+      id,
       slot: ref & 0x3FFF,
-      name: prettyName(cstr(d, o + 0x54, 0x46)),
-      short: cstr(d, o + 0x9A, 4) || null,
+      name: rawName,
+      short: rawShort,
       stadium: cstr(d, o + 0xA0, 0x80) || null,
       coach: null,
     };

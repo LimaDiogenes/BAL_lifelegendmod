@@ -5529,18 +5529,48 @@ function dsRelation() {
     <p class="fineprint">${tr('Ce que tu dis de ton entraîneur, de tes coéquipiers et de ton club en conférence de presse, sur Kop et dans le Vestiaire compte : un rappel à l’ordre, puis une ambiance de plus en plus tendue. Le temps et un bon comportement apaisent les choses.')}</p>`;
 }
 
+function activeBootSponsor(st = state) {
+  if (st?.sponsor?.deal) return st.sponsor.deal;
+  const bootSp = (st?.lifeHub?.sponsors || []).find((s) => s?.brand && (
+    s.linkedBootDeal
+    || String(s.category || '').toLowerCase() === 'boots'
+    || (Array.isArray(s.categories) && s.categories.some((c) => String(c || '').toLowerCase() === 'boots'))
+  ));
+  return bootSp || null;
+}
+
 function dsSponsor() {
-  const sp = state.sponsor, o = sp?.deal || sp?.offer;
+  const sp = state.sponsor;
+  const bootDeal = activeBootSponsor(state);
+  const o = bootDeal || sp?.offer || null;
+  const otherSponsors = (state.lifeHub?.sponsors || []).filter(
+    (s) => s?.brand && !s.linkedBootDeal && (!bootDeal || s.brand.toLowerCase() !== String(bootDeal.brand || '').toLowerCase())
+  );
   const head = `<div class="ib-sec"><i class="${o ? 'open' : ''}"></i><span class="ib-eyebrow">${tr('Équipementier')}</span></div>`;
+  let bootHtml;
   if (!o) {
     const last = (sp?.history || []).filter((h) => h.status === 'ended').at(-1);
-    return `${head}<p class="sp-none">${tr('Pas encore de contrat : les marques écriront quand tes matchs et ta notoriété attireront leur attention.')}${last ? ` ${esc(tr('Dernier contrat : {brand}, jusqu’au {d}.', { brand: last.brand, d: spLongDate(last.until) }))}` : ''}</p>`;
+    bootHtml = `${head}<p class="sp-none">${tr('Pas encore de contrat : les marques écriront quand tes matchs et ta notoriété attireront leur attention.')}${last ? ` ${esc(tr('Dernier contrat : {brand}, jusqu’au {d}.', { brand: last.brand, d: spLongDate(last.until) }))}` : ''}</p>`;
+  } else {
+    const deal = Boolean(bootDeal);
+    const earned = deal ? (bootDeal.contributions || 0) * (bootDeal.bonus || 0) : 0;
+    const eyebrow = deal
+      ? (bootDeal.since ? esc(tr('Contrat signé le {d}', { d: spLongDate(bootDeal.since) })) : tr('Contrat actif'))
+      : tr('Une offre t’attend dans Mails.');
+    const actionBtn = o.threadId
+      ? `<button class="sm-btn sm-btn-ghost" data-dsthread="${esc(o.threadId)}">${tr('Voir le mail')}</button>`
+      : `<button class="sm-btn sm-btn-ghost" data-dsmylife="sponsors">${tr('Gérer dans Ma vie')}</button>`;
+    bootHtml = `${head}<article class="sp-offer sp-offer--ds">${spVisual(o)}<div class="sp-main"><span class="sp-eyebrow">${eyebrow}</span>${spTerms(o)}
+    ${deal ? `<p class="sp-earned"><small>${tr('Primes gagnées')}</small><b>${esc(spMoney(earned))}</b><span>${esc(trn(bootDeal.contributions || 0, '{n} but ou passe D.', '{n} buts ou passes D.'))}</span></p>` : ''}
+    ${actionBtn}${SP_FICTION()}</div></article>`;
   }
-  const deal = Boolean(sp.deal);
-  const earned = deal ? (sp.deal.contributions || 0) * sp.deal.bonus : 0;
-  return `${head}<article class="sp-offer sp-offer--ds">${spVisual(o)}<div class="sp-main"><span class="sp-eyebrow">${deal ? esc(tr('Contrat signé le {d}', { d: spLongDate(sp.deal.since) })) : tr('Une offre t’attend dans Mails.')}</span>${spTerms(o)}
-    ${deal ? `<p class="sp-earned"><small>${tr('Primes gagnées')}</small><b>${esc(spMoney(earned))}</b><span>${esc(trn(sp.deal.contributions || 0, '{n} but ou passe D.', '{n} buts ou passes D.'))}</span></p>` : ''}
-    <button class="sm-btn sm-btn-ghost" data-dsthread="${esc(o.threadId)}">${tr('Voir le mail')}</button>${SP_FICTION()}</div></article>`;
+  if (!otherSponsors.length) return bootHtml;
+  const rows = otherSponsors.map((s) => {
+    const cats = (Array.isArray(s.categories) && s.categories.length ? s.categories : [s.category]).filter(Boolean).map(mlSponsorCatLabel).join(' · ');
+    const fee = Number(s.fee) ? `${euros(s.fee)} / ${tr('Par saison').toLowerCase()}` : '';
+    return `<div class="ds-partner-row"><div><b>${esc(s.brand)}</b>${cats ? `<small>${esc(cats)}</small>` : ''}</div>${fee ? `<span>${esc(fee)}</span>` : ''}</div>`;
+  }).join('');
+  return `${bootHtml}<div class="ds-partners"><div class="ds-partners-head"><span class="ib-eyebrow">${tr('Autres partenaires commerciaux')}</span><button class="sm-btn sm-btn-ghost" data-dsmylife="sponsors">${tr('Gérer dans Ma vie')}</button></div><div class="ds-partners-list">${rows}</div></div>`;
 }
 
 function dossierPage() {
@@ -5686,7 +5716,7 @@ function dossierPage() {
   const dcRow = ({ key, media, name, sub, end, go, dsclub, dim }) => `<button type="button" class="dc-row${(view.dcRow || 'me') === key ? ' on' : ''}${dim ? ' dim' : ''}" data-dcrow="${esc(key)}" data-dcgo="${go}"${dsclub ? ` data-dcclub="${esc(dsclub)}"` : ''} data-q="${esc(plainText(name))}"><span class="dc-ava">${media}</span><span class="dc-row-t"><b>${esc(name)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span>${end ? `<em>${esc(end)}</em>` : ''}</button>`;
   const dcGroup = (title, rows) => (rows.length ? `<div class="dc-group"><h4>${esc(title)}</h4>${rows.join('')}</div>` : '');
   const clubRow = (prefix, c, extra = {}) => dcRow({ key: `${prefix}:${c.team || c.club}`, media: crestHtml(c.team || c.club), name: c.team || c.club, sub: c.league || '', go: 'dc-transfer', dsclub: c.team || c.club, ...extra });
-  const spOne = state.sponsor?.deal || state.sponsor?.offer;
+  const spDeal = activeBootSponsor(state), spOne = spDeal || state.sponsor?.offer;
   const spMedia = spOne && bootFile(spOne.photo) ? `<img class="dc-boot" src="${esc(bootFile(spOne.photo))}" alt="">` : esc(String(spOne?.brand || '?')[0]);
   const sidePath = rec?.clubs?.length
     ? rec.clubs.map((c, idx) => dcRow({ key: `rec:${c.clubRef || idx}`, media: crestHtml(clubLabel(c)), name: clubLabel(c), sub: c.startYear ? String(c.startYear) : '', go: 'dc-path' }))
@@ -5697,7 +5727,7 @@ function dossierPage() {
       ${dcGroup(tr('Offres reçues'), [...(a.plannedMove ? [clubRow('deal', { club: a.plannedMove.club }, { sub: tr('Transfert conclu') })] : []), ...offers.map((o) => clubRow('offer', o, { sub: o.kind === 'extension' ? tr('Prolongation') : tr('Offre de transfert') }))])}
       ${dcGroup(tr('Clubs qui suivent ton dossier'), v.clubs.map((c) => clubRow('follow', c)))}
       ${dcGroup(tr('Où demander ton transfert'), askable.map((c) => clubRow('ask', c, { end: c.chance != null ? pct(c.chance) : '' })))}
-      ${dcGroup(tr('Équipementier'), [spOne ? dcRow({ key: 'sp', media: spMedia, name: spOne.brand, sub: state.sponsor?.deal ? tr('Contrat signé') : tr('Offre en attente'), go: 'dc-sponsor' }) : dcRow({ key: 'sp', media: '–', name: tr('Pas encore de contrat'), go: 'dc-sponsor', dim: true })])}
+      ${dcGroup(tr('Équipementier'), [spOne ? dcRow({ key: 'sp', media: spMedia, name: spOne.brand, sub: spDeal ? tr('Contrat signé') : tr('Offre en attente'), go: 'dc-sponsor' }) : dcRow({ key: 'sp', media: '–', name: tr('Pas encore de contrat'), go: 'dc-sponsor', dim: true })])}
       ${dcGroup(tr('Objectifs'), [dcRow({ key: 'goals', media: hi('flag'), name: tr('Tes objectifs'), sub: [state.objectives?.season, state.objectives?.comeback].filter(Boolean).length ? tr(OBJ_TITLE[(state.objectives.comeback || state.objectives.season).kind]) : tr('Aucun pour l’instant'), go: 'dc-goals' })])}
       ${dcGroup(tr('Relation avec le club'), [dcRow({ key: 'rel', media: hi('user'), name: tr('Ton entraîneur et tes coéquipiers'), sub: tr(REL_LABEL[dsRelationState().coach]), go: 'dc-relation' })])}
       ${dcGroup(tr('Agent'), [dcRow({ key: 'agent', media: fbInitials(a.name), name: a.name, sub: a.agency || '', go: 'dc-agent' })])}
@@ -6751,6 +6781,9 @@ function renderMail(page) {
   page.querySelectorAll('[data-dsthread]').forEach((b) => {
     b.onclick = () => { Object.assign(view, { smDossier: false, smInfluence: false, thread: b.dataset.dsthread, mailFolder: 'all', smReading: true }); render(); };
   });
+  page.querySelectorAll('[data-dsmylife]').forEach((b) => {
+    b.onclick = () => { view.mlTab = b.dataset.dsmylife || 'sponsors'; go('mylife'); };
+  });
   page.querySelectorAll('[data-conductapply]').forEach((b) => {
     b.onclick = async () => {
       const ok = await kConfirm({
@@ -7111,7 +7144,7 @@ function statRow(label, st) {
 let skCache = { key: null, data: undefined, loading: null };
 // Scores du monde du jeu : undefined pendant le chargement, null s'il n'y en a pas encore (aucune synchro récente).
 function skData() {
-  const key = `${state.careerId}|${state.snapshot?.gameDate}|${state.lastSync?.gameDate || ''}`;
+  const key = `${state.careerId}|${state.snapshot?.gameDate}|${state.lastSync?.gameDate || ''}|${state.editions?.length || 0}|${Object.keys(state.clubPages || {}).length}`;
   if (skCache.key === key) return skCache.data;
   if (skCache.loading !== key) {
     skCache.loading = key;
@@ -7140,7 +7173,7 @@ function skIndex(d) {
 
 const SK_SECTIONS = [['scores', 'Scores'], ['joueur', 'Joueur'], ['comps', 'Compétitions'], ['teams', 'Équipes']];
 const SK_INITIALS = { 'UEFA Champions League': 'C1', 'UEFA Europa League': 'C3', 'Coupe de France': 'CF', 'UEFA EURO': 'EU' };
-const skName = (d, ref) => d?.teams?.[ref]?.[0] || '—';
+const skName = (d, ref) => d?.teams?.[ref]?.[0] || state?.clubAliases?.[String(ref)] || '—';
 const skPlayed = (d, i) => d.matches[i][6] !== undefined;
 const skAdd = (iso, n) => { const x = new Date(`${iso}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
 // Logo d'une compétition (lu dans le jeu), sinon ses initiales : le jeu n'a pas les logos sans licence (C1, CF…).
@@ -7799,7 +7832,7 @@ function scPlayer(d) {
     <div class="sc-hero-main"><span class="sc-hero-face">${myFaceIn(esc(String(p.name).split(/\s+/).map((w) => w[0]).slice(0, 2).join('')))}</span>
       <div class="sc-hero-id"><h1>${esc(p.name)}</h1><p class="sc-team" role="link" tabindex="0" data-sk="team" data-v="${s.club.ref}">${scCrest(s.club.name, 22)}<span>${esc(s.club.name)}</span></p>
         <p class="sc-hero-line">${[prof.age ? trn(prof.age, '{n} an', '{n} ans') : null, p.nationality, posLabel(prof.position)].filter(Boolean).map(esc).join('<i></i>')}</p>
-        <div class="sc-hero-facts">${fact('squad', tr('Taille'), prof.height ? `${prof.height} cm` : null)}${fact('stats', tr('Poids'), prof.weight ? `${prof.weight} kg` : null)}${fact('profile', tr('Pied fort'), prof.strongFoot && tr(prof.strongFoot))}${fact('nation', tr('Nationalité'), p.nationality)}${fact('career', tr('Valeur'), prof.marketValue ? millions(prof.marketValue) : null)}${fact('time', tr('Contrat'), p.contractUntil ? fmtDate(p.contractUntil, { day: 'numeric', month: 'short', year: 'numeric' }) : null)}${fact('matches', tr('Arrivée'), p.history?.joinedClub ? fmtDate(p.history.joinedClub, { day: 'numeric', month: 'short', year: 'numeric' }) : null)}${fact('career', tr('Style de jeu'), prof.playingStyle && tr(prof.playingStyle))}${fact('career', tr('Équipementier'), state.sponsor?.deal?.brand)}${fact('stats', tr('Forme'), prof.formArrow && tr(prof.formArrow))}</div>${honours.length ? `<p class="sc-hero-chips">${honours.map((x) => `<span>${esc(x)}</span>`).join('')}</p>` : ''}</div></div>
+        <div class="sc-hero-facts">${fact('squad', tr('Taille'), prof.height ? `${prof.height} cm` : null)}${fact('stats', tr('Poids'), prof.weight ? `${prof.weight} kg` : null)}${fact('profile', tr('Pied fort'), prof.strongFoot && tr(prof.strongFoot))}${fact('nation', tr('Nationalité'), p.nationality)}${fact('career', tr('Valeur'), prof.marketValue ? millions(prof.marketValue) : null)}${fact('time', tr('Contrat'), p.contractUntil ? fmtDate(p.contractUntil, { day: 'numeric', month: 'short', year: 'numeric' }) : null)}${fact('matches', tr('Arrivée'), p.history?.joinedClub ? fmtDate(p.history.joinedClub, { day: 'numeric', month: 'short', year: 'numeric' }) : null)}${fact('career', tr('Style de jeu'), prof.playingStyle && tr(prof.playingStyle))}${fact('career', tr('Équipementier'), activeBootSponsor(state)?.brand)}${fact('stats', tr('Forme'), prof.formArrow && tr(prof.formArrow))}</div>${honours.length ? `<p class="sc-hero-chips">${honours.map((x) => `<span>${esc(x)}</span>`).join('')}</p>` : ''}</div></div>
     <div class="sc-hero-strip">${[['Matchs', t.apps], ['Titulaire', t.starts], ['Minutes', t.minutes], ['Buts', t.goals], ['Passes D.', t.assists]].map(([k, v]) => `<div><small>${tr(k)}</small><b>${v}</b></div>`).join('')}<div class="rate"><small>${tr('Note moy.')}</small><b>${sfRating(t.avgRating)}</b></div></div>
     ${several ? `<p class="sc-fine">${tr('Saison {season}, tous clubs : {clubs}.', { season: esc(s.season || ''), clubs: clubs.map((c) => `${esc(c.club)} (${trn(c.stats.apps, '{n} match', '{n} matchs')})`).join(tr(' puis ')) })}</p>` : ''}</section>`;
   const series = { 'sfa-form': ratingPts, 'sfa-minutes': minutePts };
@@ -8067,7 +8100,7 @@ function renderPantheon(page) {
   const clubsPlayed = [...new Set([...recClubNames, ...seasons.map((x) => x.club), club])];
   const facts = [[tr('Nom complet'), p.name], [tr('Âge'), prof.age ? trn(prof.age, '{n} an', '{n} ans') : null], [tr('Taille'), prof.height ? `${prof.height} cm` : null], [tr('Poids'), prof.weight ? `${prof.weight} kg` : null],
     [tr('Nationalité'), p.nationality], [tr('Pied fort'), prof.strongFoot && tr(prof.strongFoot)], [tr('Poste'), position], [tr('Style de jeu'), prof.playingStyle && tr(prof.playingStyle)],
-    [tr('Arrivée au club'), p.history?.joinedClub && date(p.history.joinedClub)], [tr('Contrat'), p.contractUntil && date(p.contractUntil)], [tr('Équipementier'), state.sponsor?.deal?.brand], [tr('Valeur'), prof.marketValue ? millions(prof.marketValue) : null], [tr('Sélection'), s.nationalTeam?.name]].filter(([, v]) => v);
+    [tr('Arrivée au club'), p.history?.joinedClub && date(p.history.joinedClub)], [tr('Contrat'), p.contractUntil && date(p.contractUntil)], [tr('Équipementier'), activeBootSponsor(state)?.brand], [tr('Valeur'), prof.marketValue ? millions(prof.marketValue) : null], [tr('Sélection'), s.nationalTeam?.name]].filter(([, v]) => v);
   const factsCard = `<section class="pt-card"><div class="pt-facts">${facts.map(([k, v]) => `<div><small>${esc(k)}</small><b>${esc(v)}</b></div>`).join('')}<div><small>${tr('Clubs')}</small><span class="pt-clubs">${clubsPlayed.map((c) => `<span title="${esc(c)}">${crestHtml(c, ' sc-crest s22')}</span>`).join('')}</span></div></div></section>`;
 
   // ----- La biographie : les chapitres suivants (le premier est en haut) -----
@@ -10536,6 +10569,7 @@ function onAutoSync(ev) {
     return;
   }
   state = ev.state;
+  skCache = { key: null, data: undefined, loading: null };
   view.edition = null;
   softRender();
   const published = state.lastSync?.published;
@@ -10564,6 +10598,7 @@ async function doSync({ bioAsked = false } = {}) {
   logLine(tr('Synchronisation…'));
   try {
     state = await live.sync();
+    skCache = { key: null, data: undefined, loading: null };
     view.edition = null;
     if (current === 'settings') current = 'mylife';
     render();
