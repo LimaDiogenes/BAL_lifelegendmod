@@ -608,35 +608,39 @@ function scheduleNextObligation(hub, today, newId) {
   const pick = active[hashStr(`${today}|ob|${hub.obligations.length}`) % active.length];
   const alreadyForBrand = hub.obligations.some((o) => o.status === 'pending' && o.sponsorId === pick.id);
   if (alreadyForBrand) return;
-  const kinds = {
-    boots: 'boot_launch',
-    apparel: 'kit_shoot',
-    fashion: 'vip_event',
-    eyewear: 'kit_shoot',
-    watches: 'vip_event',
-    automotive: 'vip_event',
-    beverage: 'kit_shoot',
-    healthy_beverage: 'kit_shoot',
-    health: 'kit_shoot',
-    phones: 'stream_promo',
-    telecom: 'brand_appearance',
-    airlines: 'brand_gala',
-    hospitality: 'brand_gala',
-    appliances: 'brand_appearance',
-    grooming: 'kit_shoot',
-    finance: 'brand_gala',
-    betting: 'stream_promo',
-    gaming: 'stream_promo',
-    media: 'stream_promo',
-    lifestyle: 'vip_event',
-    local: 'brand_appearance',
+  const kindPools = {
+    boots: ['boot_launch', 'signature_drop', 'community_clinic', 'flagship_signing', 'billboard_campaign'],
+    apparel: ['kit_shoot', 'signature_drop', 'flagship_signing', 'billboard_campaign', 'community_clinic'],
+    fashion: ['vip_event', 'kit_shoot', 'billboard_campaign', 'flagship_signing', 'brand_gala'],
+    eyewear: ['kit_shoot', 'vip_event', 'signature_drop', 'billboard_campaign'],
+    watches: ['watchmaker_atelier', 'vip_event', 'brand_gala', 'signature_drop', 'billboard_campaign'],
+    automotive: ['test_track_day', 'vip_event', 'documentary_spot', 'billboard_campaign', 'brand_gala'],
+    beverage: ['nutrition_lab', 'kit_shoot', 'billboard_campaign', 'community_clinic', 'stream_promo'],
+    healthy_beverage: ['nutrition_lab', 'kit_shoot', 'documentary_spot', 'brand_appearance'],
+    health: ['nutrition_lab', 'documentary_spot', 'community_clinic', 'kit_shoot'],
+    phones: ['stream_promo', 'billboard_campaign', 'flagship_signing', 'documentary_spot'],
+    telecom: ['brand_appearance', 'stream_promo', 'billboard_campaign', 'community_clinic'],
+    airlines: ['first_class_lounge', 'brand_gala', 'billboard_campaign', 'documentary_spot', 'vip_event'],
+    hospitality: ['brand_gala', 'vip_event', 'first_class_lounge', 'documentary_spot'],
+    appliances: ['brand_appearance', 'kit_shoot', 'documentary_spot', 'stream_promo'],
+    grooming: ['kit_shoot', 'signature_drop', 'billboard_campaign', 'vip_event'],
+    finance: ['brand_gala', 'documentary_spot', 'community_clinic', 'brand_appearance'],
+    betting: ['stream_promo', 'brand_appearance', 'vip_event'],
+    gaming: ['esports_showmatch', 'stream_promo', 'flagship_signing', 'documentary_spot'],
+    media: ['stream_promo', 'documentary_spot', 'vip_event', 'brand_appearance'],
+    lifestyle: ['vip_event', 'billboard_campaign', 'signature_drop', 'flagship_signing'],
+    local: ['brand_appearance', 'flagship_signing', 'community_clinic'],
   };
-  const primaryCat = pick.categories?.[0] || pick.category;
+  const primaryCat = pick.categories?.[0] || pick.category || 'lifestyle';
+  const pool = kindPools[primaryCat] || ['brand_appearance', 'kit_shoot', 'vip_event', 'billboard_campaign'];
+  const usedByBrand = hub.obligations.filter((o) => o.brand === pick.brand).length;
+  const chosenKind = pool[(hashStr(`${pick.brand}|${today}|${hub.obligations.length}`) + usedByBrand) % pool.length];
   hub.obligations.push({
     id: newId(),
     sponsorId: pick.id,
     brand: pick.brand,
-    kind: kinds[primaryCat] || 'brand_appearance',
+    category: primaryCat,
+    kind: chosenKind,
     dueDate: addDaysIso(today, 21),
     rewardCash: roundStep(Math.max(2500, (pick.fee || 40000) * 0.04), 500),
     status: 'pending',

@@ -9006,6 +9006,16 @@ const ML_OBLIGATION_LABELS = {
   stream_promo: () => tr('Événement promo / live partenaire'),
   brand_gala: () => tr('Gala annuel du partenaire'),
   brand_appearance: () => tr('Obligation promotionnelle sponsor'),
+  billboard_campaign: () => tr('Campagne d’affichage mondiale'),
+  signature_drop: () => tr('Présentation édition signature'),
+  test_track_day: () => tr('Essai sur circuit & journée média'),
+  first_class_lounge: () => tr('Tournage salon VIP & campagne voyage'),
+  esports_showmatch: () => tr('Showmatch gaming & duel en direct'),
+  nutrition_lab: () => tr('Session labo performance & récupération'),
+  flagship_signing: () => tr('Séance de dédicaces en boutique flagship'),
+  watchmaker_atelier: () => tr('Visite privée de la manufacture & shooting'),
+  documentary_spot: () => tr('Mini-documentaire coulisses partenaire'),
+  community_clinic: () => tr('Masterclass jeunes avec le sponsor'),
 };
 
 const ML_ASSET_CAT_LABELS = {

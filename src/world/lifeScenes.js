@@ -228,12 +228,14 @@ function resolveContext(state, snapshot, event, language) {
   const teammate = explicitComp || captain || (pool.length ? pool[hashStr(seed) % pool.length] : '');
   const inner = pickInnerCircle(state, seed);
   const hometown = state?.persona?.roots?.hometown || '';
-  const sponsors = state?.lifeHub?.sponsors || [];
-  const topSponsor = sponsors.find((s) => s?.brand)?.brand || '';
+  const sponsors = (state?.lifeHub?.sponsors || []).filter((s) => s?.brand);
+  const pickedSp = sponsors.length ? sponsors[hashStr(seed) % sponsors.length] : null;
+  const topSponsor = pickedSp?.brand || '';
+  const topSponsorCategory = pickedSp?.categories?.[0] || pickedSp?.category || '';
   const owned = state?.lifeHub?.assets || [];
   const hasChef = owned.some((a) => a.catalogId === 'personal_chef');
   const hasPhysio = owned.some((a) => a.catalogId === 'personal_physio');
-  return { l, player, club, stadium, captain, teammate, inner, hometown, topSponsor, hasChef, hasPhysio, seed };
+  return { l, player, club, stadium, captain, teammate, inner, hometown, topSponsor, topSponsorCategory, hasChef, hasPhysio, seed };
 }
 
 const FAN_PERSONAS = {
@@ -622,24 +624,11 @@ function renderActionScene(ctx, actId, customTitle, focus, handleTag) {
   }
 
   if (actId === 'sponsor_shoot') {
-    const headline = trScene(l, { fr: `Journée studio avec ${sponsorTxt}`, en: `Commercial shoot for ${sponsorTxt}`, pt: `Dia de gravação com ${sponsorTxt}`, es: `Rodaje comercial con ${sponsorTxt}`, it: `Shooting sul set con ${sponsorTxt}`, de: `Werbedreh mit ${sponsorTxt}` });
-    const narrative = trScene(l, {
-      fr: `Projecteurs, stylistes et trois tenues enchaînées en studio pour ${sponsorTxt}. ${player} enchaîne les prises avec décontraction et repart avec une prime bien méritée.`,
-      en: `Studio lights, cameras rolling, and sharp timing on set for ${sponsorTxt}. ${player} nails every take and walks out with a tidy bonus and happier commercial partners.`,
-      pt: `Luzes de estúdio e produção pesada para a campanha da ${sponsorTxt}. ${player} manda bem em cada tomada e ainda volta para casa com o bônus garantido.`,
-      es: `Focos, cámaras y varias tomas en estudio para ${sponsorTxt}. ${player} resuelve la sesión con soltura y refuerza el vínculo comercial.`,
-      it: `Luci da set e ritmo serrato per la campagna di ${sponsorTxt}. ${player} convince davanti alle telecamere e porta a casa il cachet.`,
-      de: `Scheinwerfer und Studio-Set für ${sponsorTxt}: ${player} liefert souverän ab und stärkt die Partnerschaft samt Bonus.`,
-    });
-    const kop = trScene(l, {
-      fr: `${handleTag} sur le plateau de ${sponsorTxt} aujourd'hui 📸🔥 Hâte de voir le spot sortir !`,
-      en: `Behind-the-scenes clips of ${handleTag} shooting with ${sponsorTxt} today 📸🔥 Campaign is going to look clean!`,
-      pt: `Bastidores de ${handleTag} gravando campanha pesada com ${sponsorTxt} 📸🔥 Vem comercial brabo por aí!`,
-      es: `${handleTag} en pleno rodaje hoy con ${sponsorTxt} 📸🔥 ¡Ganas de ver el anuncio!`,
-      it: `Dietro le quinte di ${handleTag} sul set con ${sponsorTxt} 📸🔥 Che stile!`,
-      de: `Einblicke vom Dreh mit ${handleTag} und ${sponsorTxt} 📸🔥 Der Spot wird stark!`,
-    });
-    return { headline, narrative, kop, huddle: null };
+    return renderObligationScene(ctx, sponsorTxt, handleTag, {
+      obligationKind: 'kit_shoot',
+      sponsorCategory: ctx.topSponsorCategory || '',
+      refId: `shoot_${ctx.seed}`,
+    }, null);
   }
 
   if (actId === 'charity_visit') {
@@ -870,33 +859,523 @@ function renderDilemmaScene(ctx, dilemmaId, choiceId, handleTag) {
   return { headline, narrative, kop, huddle, hudEmoji: [['💪', 3], ['🤝', 2]] };
 }
 
-function renderObligationScene(ctx, brand, handleTag) {
-  const { l } = ctx;
-  const headline = trScene(l, {
-    fr: `Événement partenaire honoré : ${brand}`,
-    en: `Partner spotlight with ${brand}`,
-    pt: `Compromisso cumprido com ${brand}`,
-    es: `Evento oficial completado con ${brand}`,
-    it: `Evento partner completato con ${brand}`,
-    de: `Partner-Auftritt für ${brand}`,
-  });
-  const narrative = trScene(l, {
-    fr: `Apparition officielle bouclée pour ${brand} devant partenaires et médias. Contrat respecté au millimètre, prime encaissée et relation au beau fixe.`,
-    en: `Public appearance wrapped smoothly for ${brand}. Contract obligations ticked off in style, partner trust climbs, and a fresh bonus lands in the account.`,
-    pt: `Presença oficial cumprida com categoria para ${brand}. Parceria fortalecida, moral lá em cima com o patrocinador e bônus na conta.`,
-    es: `Aparición oficial completada con éxito para ${brand}. Compromiso cumplido, patrocinador encantado y prima ingresada.`,
-    it: `Apparizione ufficiale riuscita alla grande per ${brand}. Sponsor soddisfatto e bonus subito accreditato.`,
-    de: `Souveräner Auftritt für ${brand}: Pflichttermin mit Bravour erfüllt, starkes Feedback vom Partner und Prämie direkt verbucht.`,
-  });
-  const kop = trScene(l, {
-    fr: `${handleTag} présent avec ${brand} aujourd'hui 🤝🔥 Belle image de marque !`,
-    en: `${handleTag} linking up with ${brand} today 🤝🔥 Clean partnership!`,
-    pt: `${handleTag} marcando presença no evento da ${brand} hoje 🤝🔥 Parceria de respeito!`,
-    es: `${handleTag} brillando hoy en el evento de ${brand} 🤝🔥`,
-    it: `${handleTag} protagonista oggi all'evento ${brand} 🤝🔥`,
-    de: `${handleTag} heute beim offiziellen Termin von ${brand} 🤝🔥 Starkes Duo!`,
-  });
-  return { headline, narrative, kop, huddle: null };
+function renderObligationScene(ctx, brand, handleTag, event = {}, state = null) {
+  const { l, player, club } = ctx;
+  const obKind = String(event?.obligationKind || '').toLowerCase();
+  const matchedSp = (state?.lifeHub?.sponsors || []).find((s) => String(s?.brand || '').toLowerCase() === String(brand || '').toLowerCase());
+  const spCat = String(event?.sponsorCategory || matchedSp?.categories?.[0] || matchedSp?.category || '').toLowerCase();
+
+  const templates = [
+    {
+      id: 'boots_colorway',
+      match: () => obKind === 'boot_launch' || spCat === 'boots',
+      headline: {
+        fr: `Nouveau coloris signature dévoilé avec ${brand}`,
+        en: `Signature boot reveal with ${brand}`,
+        pt: `Chuteira exclusiva lançada com ${brand}`,
+        es: `Presentación de botas exclusivas con ${brand}`,
+        it: `Nuovi scarpini signature svelati con ${brand}`,
+        de: `Signature-Schuh-Release mit ${brand}`,
+      },
+      narrative: {
+        fr: `Projecteurs rasants et caméras haute vitesse sur pelouse humide : ${player} teste et dévoile le dernier modèle ${brand}. Les gros plans sur chaque frappe font déjà le tour des réseaux.`,
+        en: `High-speed phantom cameras on a floodlit pitch: ${player} laces up ${brand}'s newest silhouette and pings top-corner strikes for the launch reel.`,
+        pt: `Câmeras de alta velocidade no gramado iluminado: ${player} calça o novo modelo da ${brand} e grava finalizações no ângulo para o vídeo de lançamento.`,
+        es: `Cámaras de alta velocidad sobre el césped iluminado: ${player} estrena el nuevo modelo de ${brand} clavando disparos a la escuadra para el spot oficial.`,
+        it: `Telecamere ad alta velocità sul prato illuminato: ${player} indossa il nuovo modello ${brand} per lo spot di lancio.`,
+        de: `Highspeed-Kameras unter Flutlicht: ${player} schnürt das neue ${brand}-Modell und jagt Bälle für den Launch-Clip in den Winkel.`,
+      },
+      kop: {
+        fr: `Le nouveau coloris ${brand} porté par ${handleTag} est incroyable 👟🔥 Hâte de les voir dès le prochain match !`,
+        en: `That new ${brand} boot colorway on ${handleTag} is unreal 👟🔥 Need to see those under the stadium lights this weekend!`,
+        pt: `Essa nova chuteira da ${brand} nos pés de ${handleTag} ficou absurda 👟🔥 Já quero ver estreando no próximo jogo!`,
+        es: `Las nuevas botas ${brand} de ${handleTag} son una locura 👟🔥 ¡Ganas de verlas este fin de semana!`,
+        it: `I nuovi scarpini ${brand} di ${handleTag} sono clamorosi 👟🔥 Non vedo l'ora di vederli in campo!`,
+        de: `Der neue ${brand}-Colorway an ${handleTag} sieht überragend aus 👟🔥 Am Wochenende direkt damit treffen!`,
+      },
+      huddle: {
+        fr: `Dis-moi que t'as demandé à ${brand} d'envoyer deux ou trois paires en plus au vestiaire 👀👟`,
+        en: `Tell me you got ${brand} to send a few extra pairs into the dressing room 👀👟`,
+        pt: `Me diz que você pediu pra ${brand} mandar uns pares extras aqui pro vestiário 👀👟`,
+        es: `Dime que le has pedido a ${brand} que mande unos pares extra al vestuario 👀👟`,
+        it: `Dimmi che hai fatto mandare qualche paio extra da ${brand} nello spogliatoio 👀👟`,
+        de: `Sag bitte, dass ${brand} direkt ein paar Extrapaare in die Kabine geschickt hat 👀👟`,
+      },
+    },
+    {
+      id: 'aviation_tarmac',
+      match: () => obKind === 'first_class_lounge' || spCat === 'airlines' || spCat === 'hospitality',
+      headline: {
+        fr: `Tournage sur le tarmac pour ${brand}`,
+        en: `Runway & first-class shoot with ${brand}`,
+        pt: `Campanha de alto voo com ${brand}`,
+        es: `Rodaje en pista y cabina VIP con ${brand}`,
+        it: `Shooting in pista e lounge VIP con ${brand}`,
+        de: `Rollfeld- & First-Class-Dreh mit ${brand}`,
+      },
+      narrative: {
+        fr: `Entre hangar privé et salon première classe, ${player} tourne la nouvelle campagne internationale de ${brand}. Une réalisation cinématographique qui assoit ton statut bien au-delà du championnat.`,
+        en: `Filmed between a private hangar and the flagship cabin, ${player} fronts ${brand}'s new international travel campaign with cinema-grade production.`,
+        pt: `Entre o hangar privado e a cabine executiva, ${player} estrela a nova campanha internacional da ${brand} em clima de cinema.`,
+        es: `Entre el hangar privado y la cabina ejecutiva, ${player} protagoniza la nueva campaña internacional de ${brand} con factura de cine.`,
+        it: `Tra hangar privato e cabina first-class, ${player} guida la nuova campagna globale di ${brand}.`,
+        de: `Zwischen Privat-Hangar und First-Class-Kabine steht ${player} für die neue internationale ${brand}-Kampagne vor der Kamera.`,
+      },
+      kop: {
+        fr: `Du terrain au tarmac : la nouvelle campagne ${brand} avec ${handleTag} a une allure folle ✈️🔥`,
+        en: `From the pitch to the runway — ${handleTag} front and center in the new ${brand} campaign ✈️🔥 Proper global star move!`,
+        pt: `Dos gramados para as nuvens — o novo comercial da ${brand} com ${handleTag} ficou nível cinema ✈️🔥`,
+        es: `Del césped a la pista de despegue: el nuevo spot de ${brand} con ${handleTag} es puro cine ✈️🔥`,
+        it: `Dal prato alla pista di decollo: la nuova campagna ${brand} con ${handleTag} è spettacolare ✈️🔥`,
+        de: `Vom Rasen aufs Rollfeld – die neue ${brand}-Kampagne mit ${handleTag} hat absolutes Kino-Niveau ✈️🔥`,
+      },
+      huddle: {
+        fr: `Maintenant que t'es l'image de ${brand}, c'est toi qui réserves le jet pour le prochain déplacement 😂✈️`,
+        en: `Now that you're the face of ${brand}, you're upgrading the whole squad's seats on the next away trip right? 😂✈️`,
+        pt: `Agora que tá fechado com a ${brand}, já garante a primeira classe pro elenco todo na próxima viagem 😂✈️`,
+        es: `Ahora que eres imagen de ${brand}, nos subirás a todos a primera clase en el próximo viaje ¿no? 😂✈️`,
+        it: `Ora che sei il volto di ${brand}, ci porti tutti in prima classe alla prossima trasferta vero? 😂✈️`,
+        de: `Jetzt wo du das Gesicht von ${brand} bist, fliegen wir zum nächsten Auswärtsspiel aber alle First Class, oder? 😂✈️`,
+      },
+    },
+    {
+      id: 'beverage_hydration',
+      match: () => obKind === 'nutrition_lab' || spCat === 'beverage' || spCat === 'healthy_beverage' || spCat === 'health',
+      headline: {
+        fr: `Spot haute intensité avec ${brand}`,
+        en: `High-voltage performance shoot with ${brand}`,
+        pt: `Comercial de alta energia com ${brand}`,
+        es: `Spot de máxima energía con ${brand}`,
+        it: `Spot ad alta energia con ${brand}`,
+        de: `High-Energy-Kampagne mit ${brand}`,
+      },
+      narrative: {
+        fr: `Capteurs de sprint, éclairages néon et ralentis spectaculaires : ${player} tourne le nouveau spot performance de ${brand}. Une campagne taillée pour tourner en boucle les soirs de match.`,
+        en: `Sprint lasers, neon backlighting, and high-tempo cuts: ${player} headlines ${brand}'s new matchday fuel commercial built to air every big game night.`,
+        pt: `Luzes neon, tiros de velocidade e câmera lenta: ${player} grava o novo comercial de performance da ${brand} feito para dominar os intervalos dos jogos.`,
+        es: `Luces de neón, sprints explosivos y cámara superlenta: ${player} protagoniza el nuevo anuncio de rendimiento de ${brand}.`,
+        it: `Luci al neon, scatti esplosivi e slow-motion: ${player} guida il nuovo spot performance di ${brand}.`,
+        de: `Neonlicht, Sprint-Sensoren und Slow-Motion: ${player} dreht den neuen Performance-Spot für ${brand}.`,
+      },
+      kop: {
+        fr: ` Grosse énergie dans le nouveau spot ${brand} avec ${handleTag} ⚡🥤 Le montage est ultra nerveux !`,
+        en: `High voltage! The new ${brand} spot starring ${handleTag} just dropped and the editing goes crazy ⚡🥤`,
+        pt: `Energia lá no teto! Saiu o novo comercial da ${brand} com ${handleTag} e a edição ficou braba demais ⚡🥤`,
+        es: `¡Pura energía! Acaba de salir el nuevo anuncio de ${brand} con ${handleTag} y el ritmo es brutal ⚡🥤`,
+        it: `Pura energia nel nuovo spot ${brand} con ${handleTag} ⚡🥤 Montaggio pazzesco!`,
+        de: `Volle Ladung Energie im neuen ${brand}-Spot mit ${handleTag} ⚡🥤 Richtig stark geschnitten!`,
+      },
+      huddle: {
+        fr: `Dis à ${brand} de remplir le frigo du vestiaire demain matin, on a tous soif après la séance 😂🥤`,
+        en: `Tell ${brand} to stock the dressing room fridge tomorrow morning, the lads are thirsty 😂🥤`,
+        pt: `Já avisa a ${brand} pra abastecer a geladeira do vestiário amanhã cedo que a rapaziada tá com sede 😂🥤`,
+        es: `Dile a ${brand} que llene la nevera del vestuario mañana por la mañana 😂🥤`,
+        it: `Dì a ${brand} di riempire il frigo dello spogliatoio domani mattina 😂🥤`,
+        de: `Sag ${brand}, sie sollen morgen früh direkt den Kabinen-Kühlschrank vollpacken 😂🥤`,
+      },
+    },
+    {
+      id: 'auto_trackday',
+      match: () => obKind === 'test_track_day' || spCat === 'automotive',
+      headline: {
+        fr: `Journée circuit & caméra embarquée pour ${brand}`,
+        en: `Closed-circuit track shoot with ${brand}`,
+        pt: `Dia de pista e gravação com ${brand}`,
+        es: `Jornada de circuito y rodaje con ${brand}`,
+        it: `Giornata in pista e riprese con ${brand}`,
+        de: `Rennstrecken-Dreh mit ${brand}`,
+      },
+      narrative: {
+        fr: `Casque vissé et micros sur l'échappement : ${player} enchaîne les tours de piste sur circuit fermé avec les pilotes d'essai de ${brand}. Les images embarquées font un carton immédiat.`,
+        en: `On-board cameras and exhaust mics rigged up on a closed circuit: ${player} runs hot laps alongside ${brand}'s test drivers for a high-octane feature.`,
+        pt: `Câmeras onboard e microfones no escapamento em pista fechada: ${player} acelera ao lado dos pilotos da ${brand} em uma gravação eletrizante.`,
+        es: `Cámaras a bordo y circuito cerrado: ${player} rueda a fondo junto a los pilotos de pruebas de ${brand} en un spot espectacular.`,
+        it: `Onboard camera e pista chiusa: ${player} gira in circuito coi collaudatori ${brand} per un video ad alta adrenalina.`,
+        de: `Onboard-Kameras auf abgesperrter Rennstrecke: ${player} dreht mit den Testfahrern von ${brand} schnelle Runden für den neuen Clip.`,
+      },
+      kop: {
+        fr: `Ce son de moteur dans la vidéo ${brand} avec ${handleTag} sur circuit 🏎️💨 Quel duo !`,
+        en: `Hear that engine roar — ${handleTag} taking ${brand} around the test track for their new campaign 🏎️💨`,
+        pt: `Ouve o ronco desse motor no vídeo da ${brand} com ${handleTag} na pista 🏎️💨 Pesado demais!`,
+        es: `Cómo suena ese motor en el vídeo de circuito de ${brand} con ${handleTag} 🏎️💨`,
+        it: `Che rombo nel nuovo video in pista di ${brand} con ${handleTag} 🏎️💨`,
+        de: `Dieser Motorsound im neuen Rennstrecken-Clip von ${brand} mit ${handleTag} 🏎️💨`,
+      },
+      huddle: {
+        fr: `On a vu la vidéo sur circuit avec ${brand} 👀 T'as vraiment conduit ou c'était un cascadeur ? 😂🏎️`,
+        en: `Saw the ${brand} track-day clip 👀 Be honest, did you drive that fast lap or was it the stunt driver? 😂🏎️`,
+        pt: `Vimos o vídeo na pista com a ${brand} 👀 Confessa, foi tu no volante mesmo ou chamaram dublê? 😂🏎️`,
+        es: `Vimos el vídeo en circuito con ${brand} 👀 Confiesa, ¿conducías tú o era el piloto especialista? 😂🏎️`,
+        it: `Visto il video in pista con ${brand} 👀 Confessa, guidavi tu o lo stuntman? 😂🏎️`,
+        de: `Haben den Rennstrecken-Clip mit ${brand} gesehen 👀 Ehrlich: Bist du selbst gefahren oder der Stuntfahrer? 😂🏎️`,
+      },
+    },
+    {
+      id: 'watches_atelier',
+      match: () => obKind === 'watchmaker_atelier' || spCat === 'watches' || spCat === 'fashion' || spCat === 'eyewear' || spCat === 'grooming',
+      headline: {
+        fr: `Édition prestige & séance privée avec ${brand}`,
+        en: `Private atelier & editorial showcase for ${brand}`,
+        pt: `Ensaio editorial e vitrine de luxo com ${brand}`,
+        es: `Sesión editorial de alta gama con ${brand}`,
+        it: `Shooting d'alta classe e atelier privato con ${brand}`,
+        de: `Exklusives Atelier-Shooting für ${brand}`,
+      },
+      narrative: {
+        fr: `Éclairage feutré, pièces d'exception et portrait noir et blanc : ${player} prête son image à la nouvelle collection prestige de ${brand}. Les clichés respirent l'élégance.`,
+        en: `Moody lighting, bespoke pieces, and crisp black-and-white portraits: ${player} fronts ${brand}'s new luxury showcase with effortless poise.`,
+        pt: `Iluminação dramática, peças exclusivas e retratos em preto e branco: ${player} estrela a nova campanha de prestígio da ${brand}.`,
+        es: `Iluminación cuidada, piezas exclusivas y retratos en blanco y negro: ${player} encabeza la nueva colección de prestigio de ${brand}.`,
+        it: `Luce soffusa, pezzi esclusivi e ritratti d'autore: ${player} è il volto della nuova collezione prestige di ${brand}.`,
+        de: `Gedämpftes Licht, exklusive Stücke und Schwarz-Weiß-Porträts: ${player} präsentiert die neue Prestige-Kollektion von ${brand}.`,
+      },
+      kop: {
+        fr: `Le sens du timing sur le terrain comme en dehors : les clichés de ${handleTag} pour ${brand} sont d'une classe folle ⌚✨`,
+        en: `Precision timing on and off the pitch — the new ${brand} portraits with ${handleTag} are pure class ⌚✨`,
+        pt: `Precisão dentro e fora de campo — as fotos da nova campanha da ${brand} com ${handleTag} são pura elegância ⌚✨`,
+        es: `Elegancia pura dentro y fuera del césped: las nuevas fotos de ${handleTag} para ${brand} son de otro nivel ⌚✨`,
+        it: `Stile impeccabile dentro e fuori dal campo: i nuovi scatti di ${handleTag} per ${brand} sono pura classe ⌚✨`,
+        de: `Perfektes Timing auf und neben dem Platz – die neuen ${brand}-Porträts mit ${handleTag} haben richtig Stil ⌚✨`,
+      },
+      huddle: {
+        fr: `Ce regard sérieux sur les affiches ${brand} 😂 On va accrocher la photo sur ton casier demain !`,
+        en: `That serious model stare in the ${brand} photos 😂 We're taping that poster right onto your locker tomorrow!`,
+        pt: `Essa cara de modelo sério nas fotos da ${brand} 😂 Amanhã essa foto vai estar colada no teu armário!`,
+        es: `Esa mirada de modelo serio en las fotos de ${brand} 😂 ¡Mañana la pegamos en tu taquilla!`,
+        it: `Quello sguardo serissimo negli scatti ${brand} 😂 Domani ti tappezziamo l'armadietto!`,
+        de: `Dieser ernste Model-Blick auf den ${brand}-Fotos 😂 Das Poster hängt morgen definitiv an deinem Spind!`,
+      },
+    },
+    {
+      id: 'gaming_tech_showmatch',
+      match: () => obKind === 'esports_showmatch' || obKind === 'stream_promo' || obKind === 'videogame_cover' || spCat === 'gaming' || spCat === 'phones' || spCat === 'telecom' || spCat === 'appliances' || spCat === 'media',
+      headline: {
+        fr: `Direct événement & studio high-tech avec ${brand}`,
+        en: `Live tech showcase & showmatch with ${brand}`,
+        pt: `Live especial e estúdio high-tech com ${brand}`,
+        es: `Directo especial y estudio tecnológico con ${brand}`,
+        it: `Live show e studio high-tech con ${brand}`,
+        de: `Live-Tech-Show & Creator-Event mit ${brand}`,
+      },
+      narrative: {
+        fr: `Plateau connecté, défis en direct et des dizaines de milliers de spectateurs en simultané : ${player} assure le show pour ${brand} avec un naturel qui régale la communauté.`,
+        en: `Rigged up in a high-tech studio with tens of thousands watching live, ${player} trades banter and challenges during ${brand}'s flagship digital showcase.`,
+        pt: `Estúdio conectado, desafios ao vivo e dezenas de milhares assistindo: ${player} comanda a transmissão especial da ${brand} com carisma de sobra.`,
+        es: `Estudio de última generación y decenas de miles de espectadores en directo: ${player} lidera el evento digital de ${brand}.`,
+        it: `Studio high-tech e decine di migliaia di spettatori connessi: ${player} è il protagonista dell'evento live di ${brand}.`,
+        de: `High-Tech-Studio und Zehntausende live im Stream: ${player} liefert beim digitalen Showcase von ${brand} beste Unterhaltung.`,
+      },
+      kop: {
+        fr: `Les extraits du live ${brand} avec ${handleTag} tournent partout 🎮⚡ Ultra détendu devant les caméras !`,
+        en: `Clips from ${handleTag}'s live session with ${brand} are going viral everywhere 🎮⚡ Natural in front of the cameras!`,
+        pt: `Os cortes da live da ${brand} com ${handleTag} já estão viralizando geral 🎮⚡ Muito resenha!`,
+        es: `Los clips del directo de ${handleTag} con ${brand} ya son virales en todas partes 🎮⚡`,
+        it: `Le clip della live di ${handleTag} con ${brand} stanno già facendo il giro del web 🎮⚡`,
+        de: `Die Clips aus dem ${brand}-Livestream mit ${handleTag} gehen gerade überall viral 🎮⚡`,
+      },
+      huddle: null,
+    },
+    {
+      id: 'flagship_crowd',
+      match: () => obKind === 'flagship_signing' || obKind === 'store_launch' || spCat === 'local',
+      headline: {
+        fr: `Foule immense devant l’espace ${brand}`,
+        en: `Block-long queues at ${brand}'s flagship event`,
+        pt: `Multidão na loja conceito da ${brand}`,
+        es: `Locura de aficionados en el espacio de ${brand}`,
+        it: `Bagno di folla al flagship store ${brand}`,
+        de: `Riesenandrang beim Flagship-Event von ${brand}`,
+      },
+      narrative: {
+        fr: `Des centaines de supporters patientent sur tout le trottoir pour apercevoir ${player} lors de l'événement organisé par ${brand}. Autographes, selfies et chants à la gloire de ${club} font vibrer tout le quartier.`,
+        en: `Supporters line the pavement around the block as ${player} arrives at ${brand}'s flagship venue. Shirts signed, selfies snapped, and ${club} chants echoing down the street.`,
+        pt: `Centenas de fãs formam fila dobrando o quarteirão para ver ${player} no evento da ${brand}. Autógrafos, selfies e cantos da torcida do ${club} tomam conta da rua.`,
+        es: `Cientos de seguidores llenan la calle frente al espacio de ${brand} para ver a ${player}. Firmas, fotos y cánticos de ${club} durante toda la tarde.`,
+        it: `Centinaia di tifosi in coda lungo tutto l'isolato per incontrare ${player} all'evento ${brand}, tra autografi, selfie e cori per il ${club}.`,
+        de: `Hunderte Fans stehen rund um den Block Schlange, als ${player} beim Flagship-Event von ${brand} Autogramme und Selfies verteilt.`,
+      },
+      kop: {
+        fr: `La file d'attente devant ${brand} pour voir ${handleTag} fait tout le tour du pâté de maisons 🤯👏 Quelle cote d'amour !`,
+        en: `The queue outside ${brand} just to catch a glimpse of ${handleTag} goes all the way down the block 🤯👏 Massive pull!`,
+        pt: `O tamanho da fila na porta da ${brand} hoje só pra ver ${handleTag} de perto 🤯👏 Moral absurda!`,
+        es: `La cola en la calle frente a ${brand} para ver a ${handleTag} da la vuelta a la manzana 🤯👏`,
+        it: `La coda fuori da ${brand} per vedere ${handleTag} fa il giro dell'isolato 🤯👏`,
+        de: `Die Schlange vor ${brand} für ${handleTag} reicht einfach die ganze Straße runter 🤯👏`,
+      },
+      huddle: null,
+    },
+    {
+      id: 'youth_masterclass',
+      match: () => obKind === 'community_clinic' || obKind === 'charity_match',
+      headline: {
+        fr: `Masterclass jeunes avec ${brand}`,
+        en: `Youth football masterclass with ${brand}`,
+        pt: `Clínica de futebol para jovens com ${brand}`,
+        es: `Masterclass con jóvenes talentos junto a ${brand}`,
+        it: `Masterclass per i giovani talenti con ${brand}`,
+        de: `Nachwuchs-Masterclass gemeinsam mit ${brand}`,
+      },
+      narrative: {
+        fr: `Sur un playground urbain privatisé par ${brand}, ${player} anime un atelier technique avec des dizaines de jeunes passionnés. Conseils de placement, petits ponts et sourires du début à la fin.`,
+        en: `On a city pitch hosted by ${brand}, ${player} runs finishing drills and 1v1 challenges with local youth players — handing out gear and advice they won't forget.`,
+        pt: `Em uma quadra urbana preparada pela ${brand}, ${player} comanda desafios de drible e finalização com dezenas de jovens da cidade.`,
+        es: `En una cancha urbana organizada por ${brand}, ${player} comparte trucos de definición y regate con decenas de jóvenes futbolistas.`,
+        it: `Su un campetto cittadino allestito da ${brand}, ${player} guida sfide tecniche e consigli con decine di giovani calciatori.`,
+        de: `Auf einem von ${brand} gestalteten City-Court zeigt ${player} Jugendlichen Tricks, Abschlüsse und Eins-gegen-Eins-Moves.`,
+      },
+      kop: {
+        fr: `Superbe initiative : ${handleTag} et ${brand} sur le terrain avec les jeunes de la ville aujourd'hui ⚽❤️`,
+        en: `Class activation — ${handleTag} and ${brand} out on the pitch coaching local kids today ⚽❤️ Proper role model!`,
+        pt: `Ação gigante: ${handleTag} e ${brand} batendo bola e ensinando a garotada hoje ⚽❤️ Exemplo demais!`,
+        es: `Qué gran iniciativa de ${handleTag} y ${brand} entrenando hoy con los chavales en la calle ⚽❤️`,
+        it: `Bellissima iniziativa: ${handleTag} e ${brand} in campo coi ragazzi della città oggi ⚽❤️`,
+        de: `Starke Aktion: ${handleTag} und ${brand} heute beim Training mit den Kids auf dem Bolzplatz ⚽❤️`,
+      },
+      huddle: null,
+    },
+    {
+      id: 'billboard_downtown',
+      match: () => obKind === 'billboard_campaign' || obKind === 'magazine_shoot' || true,
+      headline: {
+        fr: `Affichage géant en plein cœur de la ville avec ${brand}`,
+        en: `Giant downtown billboard reveal for ${brand}`,
+        pt: `Outdoor gigante no centro da cidade com ${brand}`,
+        es: `Lona gigante en el centro de la ciudad con ${brand}`,
+        it: `Maxi affissione in centro città con ${brand}`,
+        de: `Riesiges City-Billboard mit ${brand} enthüllt`,
+      },
+      narrative: {
+        fr: `Impossible de traverser le centre-ville sans lever les yeux : la nouvelle affiche monumentale de ${brand} met ${player} à l'honneur sur toute une façade.`,
+        en: `Towering over the main square downtown, ${brand}'s new monumental façade billboard puts ${player} front and center across the city skyline.`,
+        pt: `Quem passa pelo centro da cidade já dá de cara com a nova empena gigante da ${brand} estampando ${player} em tamanho monumental.`,
+        es: `Imposible pasar por el centro sin mirar arriba: la nueva lona gigante de ${brand} con ${player} domina toda la avenida principal.`,
+        it: `Impossibile non notarlo in centro: il nuovo maxi cartellone di ${brand} con ${player} domina la piazza principale.`,
+        de: `Mitten in der Innenstadt kaum zu übersehen: Das neue Riesenplakat von ${brand} zeigt ${player} über eine komplette Hausfassade.`,
+      },
+      kop: {
+        fr: `Je viens de passer devant l'affiche géante ${brand} de ${handleTag} en centre-ville 🏙️🔥 Impossible de la rater !`,
+        en: `Just walked past the massive new ${brand} billboard of ${handleTag} downtown 🏙️🔥 Taking over the whole city!`,
+        pt: `Acabei de passar em frente ao outdoor gigante da ${brand} com ${handleTag} no centro 🏙️🔥 Dono da cidade!`,
+        es: `Acabo de pasar frente a la lona gigante de ${brand} con ${handleTag} en pleno centro 🏙️🔥 ¡Imponente!`,
+        it: `Appena passato davanti al maxi cartellone ${brand} di ${handleTag} in centro 🏙️🔥 Spettacolo!`,
+        de: `Gerade am riesigen neuen ${brand}-Plakat von ${handleTag} in der City vorbeigelaufen 🏙️🔥 Nicht zu übersehen!`,
+      },
+      huddle: null,
+    },
+    {
+      id: 'primetime_commercial',
+      match: () => obKind === 'tv_commercial' || obKind === 'tournament_promo' || true,
+      headline: {
+        fr: `Spot télévisé en prime time pour ${brand}`,
+        en: `Primetime TV commercial premiere with ${brand}`,
+        pt: `Estreia de comercial em horário nobre com ${brand}`,
+        es: `Estreno de spot televisivo en prime time con ${brand}`,
+        it: `Debutto dello spot TV in prima serata con ${brand}`,
+        de: `Primetime-TV-Spot mit ${brand} feiert Premiere`,
+      },
+      narrative: {
+        fr: `Bande-son percutante et montage nerveux : le nouveau spot télévisé de ${brand} avec ${player} est diffusé en ouverture des grands rendez-vous sportifs de la semaine.`,
+        en: `Backed by a thumping soundtrack and razor-sharp cuts, ${brand}'s new broadcast spot starring ${player} airs nationwide during primetime coverage.`,
+        pt: `Com trilha sonora marcante e fotografia impecável, o novo comercial de TV da ${brand} estrelado por ${player} estreia em rede nacional.`,
+        es: `Con banda sonora potente y montaje cinematográfico, el nuevo anuncio televisivo de ${brand} con ${player} se estrena en horario estelar.`,
+        it: `Colonna sonora d'impatto e regia cinematografica: il nuovo spot TV di ${brand} con ${player} debutta in prima serata.`,
+        de: `Mit starkem Soundtrack und Kino-Look läuft der neue ${brand}-TV-Spot mit ${player} erstmals zur besten Sendezeit.`,
+      },
+      kop: {
+        fr: `Le nouveau spot TV de ${brand} avec ${handleTag} qui vient de passer à l'écran 🎬🔥 La réalisation est dingue !`,
+        en: `That new ${brand} commercial starring ${handleTag} just aired on TV — production value is through the roof 🎬🔥`,
+        pt: `O novo comercial da ${brand} com ${handleTag} que acabou de passar na TV 🎬🔥 Arrepiou!`,
+        es: `El nuevo anuncio de TV de ${brand} con ${handleTag} que acaba de salir en pantalla 🎬🔥 ¡Qué barbaridad!`,
+        it: `Il nuovo spot TV di ${brand} con ${handleTag} appena andato in onda 🎬🔥 Livello altissimo!`,
+        de: `Der neue ${brand}-Werbespot mit ${handleTag} lief gerade im TV – richtig stark produziert 🎬🔥`,
+      },
+      huddle: null,
+    },
+    {
+      id: 'behind_the_scenes_doc',
+      match: () => obKind === 'documentary_spot' || obKind === 'podcast_feature' || true,
+      headline: {
+        fr: `Format court « Coulisses & exigence » avec ${brand}`,
+        en: `Inside the grind: mini-doc feature with ${brand}`,
+        pt: `Bastidores da rotina: mini-doc com ${brand}`,
+        es: `Mini-documental de rutina y élite con ${brand}`,
+        it: `Mini-doc dietro le quinte con ${brand}`,
+        de: `Behind-the-Scenes-Kurzfilm mit ${brand}`,
+      },
+      narrative: {
+        fr: `Une équipe réduite de ${brand} suit ${player} sur sa préparation invisible, ses rituels d'avant-match et son exigence quotidienne. Un format sobre et authentique salué par les supporters.`,
+        en: `A small film unit from ${brand} captures ${player}'s unseen preparation, matchday focus, and daily craft in a raw short-form feature.`,
+        pt: `Uma equipe enxuta da ${brand} registra a preparação invisível e os rituais de foco de ${player} em um mini-documentário autêntico.`,
+        es: `Un equipo de rodaje de ${brand} retrata la preparación silenciosa y la disciplina diaria de ${player} en un formato breve muy auténtico.`,
+        it: `Una troupe di ${brand} racconta il lavoro invisibile e la concentrazione quotidiana di ${player} in un mini-documentario autentico.`,
+        de: `Ein kleines Filmteam von ${brand} begleitet ${player} bei der unsichtbaren Vorbereitung und dem täglichen Fokus in einer authentischen Kurzdoku.`,
+      },
+      kop: {
+        fr: `Très propre la vidéo coulisses de ${brand} sur la routine de ${handleTag} 🎥👏 On voit tout le travail invisible.`,
+        en: `Loved the new ${brand} mini-doc on ${handleTag}'s matchweek routine 🎥👏 Shows the real work behind the scenes.`,
+        pt: `Muito foda o mini-doc da ${brand} mostrando a rotina de preparação de ${handleTag} 🎥👏 Mentalidade de elite!`,
+        es: `Muy bueno el mini-documental de ${brand} sobre la rutina de trabajo de ${handleTag} 🎥👏`,
+        it: `Bellissimo il mini-doc di ${brand} sulla routine di preparazione di ${handleTag} 🎥👏`,
+        de: `Richtig starke Kurzdoku von ${brand} über die Spieltag-Routine von ${handleTag} 🎥👏`,
+      },
+      huddle: null,
+    },
+    {
+      id: 'gala_red_carpet',
+      match: () => obKind === 'brand_gala' || obKind === 'vip_event' || true,
+      headline: {
+        fr: `Soirée annuelle & tapis rouge pour ${brand}`,
+        en: `Annual partner gala & keynote night with ${brand}`,
+        pt: `Noite de gala e recepção oficial da ${brand}`,
+        es: `Gala anual de embajadores de ${brand}`,
+        it: `Serata di gala degli ambasciatori ${brand}`,
+        de: `Jährliche Botschafter-Gala von ${brand}`,
+      },
+      narrative: {
+        fr: `Invité d'honneur de la soirée annuelle de ${brand}, ${player} échange avec les dirigeants internationaux et les médias présents avant de regagner le calme de la maison à heure raisonnable.`,
+        en: `Guest of honour at ${brand}'s annual ambassadors evening, ${player} shares the stage with global executives and media before heading home early ahead of training.`,
+        pt: `Convidado de honra na noite anual da ${brand}, ${player} representa a marca diante da imprensa e executivos antes de voltar cedo para casa.`,
+        es: `Invitado de honor en la gala anual de ${brand}, ${player} comparte escenario con invitados internacionales antes de retirarse a buena hora.`,
+        it: `Ospite d'onore alla serata annuale di ${brand}, ${player} rappresenta il marchio davanti a media e dirigenti internazionali.`,
+        de: `Als Ehrengast beim Jahresabend von ${brand} vertritt ${player} die Marke souverän auf der Bühne, bevor es rechtzeitig nach Hause geht.`,
+      },
+      kop: {
+        fr: `${handleTag} invité d'honneur à la soirée internationale de ${brand} ce soir ✨🤝 Une vraie stature d'ambassadeur.`,
+        en: `${handleTag} headlining the ${brand} ambassadors evening tonight ✨🤝 Moving like a true global icon.`,
+        pt: `${handleTag} como convidado de honra na noite internacional da ${brand} ✨🤝 Postura de craque!`,
+        es: `${handleTag} como invitado de honor en la gala internacional de ${brand} esta noche ✨🤝`,
+        it: `${handleTag} ospite d'onore alla serata internazionale di ${brand} ✨🤝 Stile da vendere.`,
+        de: `${handleTag} heute als Ehrengast beim internationalen Abend von ${brand} ✨🤝 Starker Auftritt!`,
+      },
+      huddle: null,
+    },
+    {
+      id: 'capsule_drop_hype',
+      match: () => obKind === 'signature_drop' || obKind === 'limited_capsule' || obKind === 'kit_shoot' || true,
+      headline: {
+        fr: `Édition limitée ${brand} × ${player}`,
+        en: `Limited-edition ${brand} × ${player} drop`,
+        pt: `Edição limitada ${brand} × ${player}`,
+        es: `Edición limitada ${brand} × ${player}`,
+        it: `Edizione limitata ${brand} × ${player}`,
+        de: `Limitierter ${brand} × ${player} Drop`,
+      },
+      narrative: {
+        fr: `La série spéciale co-signée par ${player} et ${brand} est dévoilée en ligne à midi. En quelques heures, la collaboration génère un engouement massif chez les supporters de ${club}.`,
+        en: `The limited-run collaboration between ${player} and ${brand} goes live at noon — sparking instant demand across ${club}'s fanbase and commercial charts.`,
+        pt: `A edição especial assinada por ${player} e ${brand} entra no ar ao meio-dia e esgota em poucas horas entre os torcedores do ${club}.`,
+        es: `La edición especial firmada por ${player} y ${brand} se lanza al mediodía y desata la fiebre entre los seguidores de ${club}.`,
+        it: `L'edizione speciale firmata da ${player} e ${brand} va online a mezzogiorno e scatena subito l'entusiasmo dei tifosi del ${club}.`,
+        de: `Die limitierte Sonderedition von ${player} und ${brand} geht mittags online und sorgt sofort für riesige Nachfrage unter den ${club}-Fans.`,
+      },
+      kop: {
+        fr: `La collab limitée ${brand} × ${handleTag} vient de sortir et tout part déjà à une vitesse folle 🔥📦`,
+        en: `The limited ${brand} × ${handleTag} drop just went live and items are already selling out in minutes 🔥📦`,
+        pt: `O drop limitado ${brand} × ${handleTag} acabou de sair e já tá esgotando tudo em minutos 🔥📦`,
+        es: `La edición limitada de ${brand} × ${handleTag} acaba de salir y se está agotando en minutos 🔥📦`,
+        it: `Il drop limitato ${brand} × ${handleTag} è appena uscito e sta già andando sold out 🔥📦`,
+        de: `Der limitierte ${brand} × ${handleTag} Drop ist online und nach wenigen Minuten fast ausverkauft 🔥📦`,
+      },
+      huddle: null,
+    },
+    {
+      id: 'deal_signed_announcement',
+      match: () => obKind === 'deal_signed' || true,
+      headline: {
+        fr: `Partenariat officiel scellé avec ${brand}`,
+        en: `Official partnership sealed with ${brand}`,
+        pt: `Parceria oficial fechada com ${brand}`,
+        es: `Acuerdo oficial cerrado con ${brand}`,
+        it: `Partnership ufficiale siglata con ${brand}`,
+        de: `Offizielle Partnerschaft mit ${brand} besiegelt`,
+      },
+      narrative: {
+        fr: `Poignée de main officielle et communiqué commun : ${player} rejoint le cercle des ambassadeurs de ${brand}, confirmant son attractivité grandissante autour de ${club}.`,
+        en: `Contracts signed and press release live: ${player} officially joins ${brand}'s ambassador roster, underlining growing commercial pull at ${club}.`,
+        pt: `Contrato assinado e anúncio oficial no ar: ${player} passa a integrar o time de embaixadores da ${brand}.`,
+        es: `Contrato firmado y anuncio oficial publicado: ${player} se une al elenco de embajadores de ${brand}.`,
+        it: `Contratto firmato e comunicato ufficiale: ${player} entra nella squadra degli ambasciatori ${brand}.`,
+        de: `Vertrag unterschrieben und offiziell verkündet: ${player} gehört ab sofort zu den Markenbotschaftern von ${brand}.`,
+      },
+      kop: {
+        fr: `Officiel : ${handleTag} s'associe à ${brand} ✍️💼 Le rayonnement hors terrain continue de grimper !`,
+        en: `Official: ${handleTag} signs on as a new ambassador for ${brand} ✍️💼 Off-pitch stock keeps rising!`,
+        pt: `Oficial: ${handleTag} é o novo embaixador da ${brand} ✍️💼 O homem tá voando dentro e fora de campo!`,
+        es: `Oficial: ${handleTag} firma como nuevo embajador de ${brand} ✍️💼 ¡Sigue creciendo fuera del campo!`,
+        it: `Ufficiale: ${handleTag} è il nuovo ambasciatore di ${brand} ✍️💼 Sempre più protagonista!`,
+        de: `Offiziell: ${handleTag} wird neuer Markenbotschafter von ${brand} ✍️💼 Auch neben dem Platz auf Kurs!`,
+      },
+      huddle: null,
+    },
+    {
+      id: 'fan_giveaway_activation',
+      match: () => true,
+      headline: {
+        fr: `Opération spéciale supporters avec ${brand}`,
+        en: `Fan Q&A & giveaway activation with ${brand}`,
+        pt: `Ação especial com torcedores e ${brand}`,
+        es: `Acción especial para aficionados junto a ${brand}`,
+        it: `Attivazione speciale per i tifosi con ${brand}`,
+        de: `Fan-Q&A & Gewinnspiel-Aktion mit ${brand}`,
+      },
+      narrative: {
+        fr: `En marge de la séance du jour, ${player} participe à une session questions-réponses et fait gagner des lots exclusifs avec ${brand}. Un format direct qui ravit la communauté.`,
+        en: `After training wraps, ${player} hosts a quick fan Q&A and signed-prize giveaway alongside ${brand}, boosting goodwill across social feeds.`,
+        pt: `Após o treino, ${player} participa de um bate-papo rápido e sorteia prêmios autografados junto com a ${brand}.`,
+        es: `Tras el entrenamiento, ${player} participa en un encuentro rápido con preguntas y premios firmados junto a ${brand}.`,
+        it: `Dopo l'allenamento, ${player} partecipa a un Q&A con premi autografati in collaborazione con ${brand}.`,
+        de: `Nach dem Training nimmt sich ${player} Zeit für ein kurzes Fan-Q&A samt signierten Preisen mit ${brand}.`,
+      },
+      kop: {
+        fr: `Sympa l'opération de ${handleTag} avec ${brand} pour faire gagner des cadeaux aux supporters aujourd'hui 🎁🙌`,
+        en: `Class touch from ${handleTag} and ${brand} running a giveaway for the supporters today 🎁🙌`,
+        pt: `Mandou bem demais ${handleTag} junto com a ${brand} sorteando presentes pra torcida hoje 🎁🙌`,
+        es: `Gran detalle de ${handleTag} y ${brand} organizando hoy un sorteo para la afición 🎁🙌`,
+        it: `Bel gesto di ${handleTag} e ${brand} con i regali messi in palio oggi per i tifosi 🎁🙌`,
+        de: `Coole Aktion von ${handleTag} und ${brand} heute mit den Preisen für die Fans 🎁🙌`,
+      },
+      huddle: null,
+    },
+  ];
+
+  // Prioritize category/obligation-specific matches first, then general templates, and avoid any recently used templateId
+  const generalIds = new Set(['billboard_downtown', 'primetime_commercial', 'behind_the_scenes_doc', 'gala_red_carpet', 'capsule_drop_hype', 'deal_signed_announcement', 'fan_giveaway_activation']);
+  const specific = templates.filter((t) => !generalIds.has(t.id) && t.match());
+  const general = templates.filter((t) => generalIds.has(t.id));
+
+  const recentTplIds = new Set(
+    (state?.lifeHub?.scenes || [])
+      .slice(0, 8)
+      .map((s) => s?.templateId)
+      .filter(Boolean)
+  );
+
+  const freshSpecific = specific.filter((t) => !recentTplIds.has(t.id));
+  const freshGeneral = general.filter((t) => !recentTplIds.has(t.id));
+
+  let activePool;
+  if (obKind === 'deal_signed') {
+    const dealTpl = templates.find((t) => t.id === 'deal_signed_announcement');
+    activePool = (dealTpl && !recentTplIds.has(dealTpl.id))
+      ? [dealTpl]
+      : (freshSpecific.length ? freshSpecific : (freshGeneral.length ? freshGeneral : general));
+  } else if (freshSpecific.length) {
+    activePool = freshSpecific;
+  } else if (freshGeneral.length) {
+    activePool = freshGeneral;
+  } else {
+    activePool = [...specific, ...general];
+  }
+
+  const seedVal = hashStr(`${brand}|${obKind}|${spCat}|${event?.refId || ''}|${(state?.feed || []).length}|${(state?.lifeHub?.scenes || []).length}`);
+  const picked = activePool[seedVal % activePool.length] || templates[0];
+
+  const headline = trScene(l, picked.headline);
+  const narrative = trScene(l, picked.narrative);
+  const kop = trScene(l, picked.kop);
+  // Include teammate huddle banter ~50% of the time when the template has one
+  const huddle = (picked.huddle && (seedVal % 2 === 0)) ? trScene(l, picked.huddle) : null;
+  return { templateId: picked.id, headline, narrative, kop, huddle, hudEmoji: [['😂', 3], ['🔥', 3]] };
 }
 
 function buildSceneAndReactions(state, snapshot, event = {}, { language = 'en', newId = () => `sc_${Date.now()}` } = {}) {
@@ -911,7 +1390,7 @@ function buildSceneAndReactions(state, snapshot, event = {}, { language = 'en', 
   if (event.kind === 'purchase') built = renderPurchaseScene(ctx, event.asset, myHandle);
   else if (event.kind === 'action') built = renderActionScene(ctx, event.refId, event.customTitle, event.focus, myHandle);
   else if (event.kind === 'dilemma') built = renderDilemmaScene(ctx, event.dilemmaId, event.choiceId, myHandle);
-  else if (event.kind === 'obligation') built = renderObligationScene(ctx, event.brand || 'Partner', myHandle);
+  else if (event.kind === 'obligation') built = renderObligationScene(ctx, event.brand || 'Partner', myHandle, event, state);
   else return null;
 
   const reactions = [];
@@ -930,6 +1409,7 @@ function buildSceneAndReactions(state, snapshot, event = {}, { language = 'en', 
     kind: event.kind || 'life',
     refId: event.refId || '',
     category: event.category || 'life',
+    ...(built.templateId ? { templateId: built.templateId } : {}),
     title: event.kind === 'purchase' ? catalogDisplayName(event.asset, ctx.l) : '',
     headline: built.headline,
     narrative: built.narrative,

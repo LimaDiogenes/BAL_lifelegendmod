@@ -297,8 +297,22 @@ const removeLifeSponsor = ({ store, id, manual = false }) => withCareer(store, (
 });
 
 const answerLifeSponsorOffer = ({ store, offerId, choice, allowBuyout = false }) => withCareer(store, (state) => {
-  answerSponsorOffer(state, offerId, choice, state.snapshot?.gameDate || '', newId, { allowBuyout: Boolean(allowBuyout) });
+  const today = state.snapshot?.gameDate || '';
+  const res = answerSponsorOffer(state, offerId, choice, today, newId, { allowBuyout: Boolean(allowBuyout) });
   ensureBootDealMedia(state, store);
+  if (res?.status === 'signed' && res?.sponsor) {
+    try {
+      buildSceneAndReactions(state, state.snapshot, {
+        kind: 'obligation',
+        refId: res.sponsor.id,
+        obligationKind: 'deal_signed',
+        sponsorCategory: res.sponsor.categories?.[0] || res.sponsor.category || '',
+        category: 'sponsor',
+        brand: res.sponsor.brand,
+        deltas: { meters: { sponsors: 4 }, bonusCash: 0 },
+      }, { language: langOfStore(store), newId });
+    } catch { /* ignore */ }
+  }
 });
 
 const answerLifeBiddingWar = ({ store, warId, action = 'accept', bidId = null }) => withCareer(store, (state) => {
@@ -311,6 +325,8 @@ const answerLifeBiddingWar = ({ store, warId, action = 'accept', bidId = null })
       buildSceneAndReactions(state, state.snapshot, {
         kind: 'obligation',
         refId: res.sponsor.id,
+        obligationKind: 'deal_signed',
+        sponsorCategory: res.sponsor.categories?.[0] || res.sponsor.category || '',
         category: 'sponsor',
         brand: res.sponsor.brand,
         deltas: { meters: { sponsors: 6, media: 3 }, bonusCash: 0 },
@@ -347,9 +363,12 @@ const rescheduleLifeObligation = ({ store, obligationId, date }) => withCareer(s
 const completeLifeObligation = ({ store, obligationId, skip }) => withCareer(store, (state) => {
   const ob = completeObligation(state, obligationId, { skip: Boolean(skip) }, state.snapshot?.gameDate || '');
   if (!skip && ob) {
+    const sp = (state.lifeHub?.sponsors || []).find((s) => s.id === ob.sponsorId || s.brand === ob.brand);
     buildSceneAndReactions(state, state.snapshot, {
       kind: 'obligation',
       refId: ob.id,
+      obligationKind: ob.kind,
+      sponsorCategory: ob.category || sp?.categories?.[0] || sp?.category || '',
       category: 'sponsor',
       brand: ob.brand,
       deltas: { meters: { sponsors: 5, media: 2 }, bonusCash: ob.rewardCash || 0 },

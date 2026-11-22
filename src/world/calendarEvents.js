@@ -552,11 +552,14 @@ function resolveCalendarDecision(state, decisionId, choiceId, gameDate = '', { l
         });
       }
     }
-  } else if (dec.kind === 'onetime' && choice.id === 'complete_shoot') {
+  } else if (dec.kind === 'onetime' && (choice.id === 'complete_shoot' || choice.id === 'quick_cut')) {
     try {
+      const sp = (state.lifeHub?.sponsors || []).find((s) => String(s?.brand || '').toLowerCase() === String(dec.brand || dec.title || '').toLowerCase());
       buildSceneAndReactions(state, state.snapshot, {
         kind: 'obligation',
         refId: dec.dealKey || dec.id,
+        obligationKind: dec.dealKey || 'onetime_shoot',
+        sponsorCategory: sp?.categories?.[0] || sp?.category || '',
         category: 'sponsor',
         brand: dec.brand || dec.title,
         deltas: { meters: choice.effects || {}, bonusCash: choice.bonusCash || 0 },
