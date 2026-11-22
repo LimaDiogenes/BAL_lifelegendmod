@@ -2841,4 +2841,7 @@ window.LL_I18N.de = {
   "La modification a changé la taille des données de la sauvegarde : rien n’a été modifié.": "Die Änderung hat die Größe der Spielstanddaten verändert: Nichts wurde geändert.",
   "Le Mod Studio (blue41) écrit dans cette sauvegarde en ce moment : rien n’a été modifié. Réessaie quand il a fini.": "Das Mod Studio (blue41) schreibt gerade in diesen Spielstand: Nichts wurde geändert. Versuche es erneut, wenn es fertig ist.",
   "Une autre application écrit dans cette sauvegarde en ce moment : rien n’a été modifié. Réessaie dans un instant.": "Eine andere Anwendung schreibt gerade in diesen Spielstand: Nichts wurde geändert. Versuche es gleich noch einmal.",
+  "Réglages invalides.": "Ungültige Einstellungen.",
+  "Ce fichier n’est pas une sauvegarde Become a Legend (BL0000000x).": "Diese Datei ist kein Become-a-Legend-Spielstand (BL0000000x).",
+  "Ce dossier du jeu n’existe pas.": "Dieser Spielordner existiert nicht.",
 };

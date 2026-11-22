@@ -2841,4 +2841,7 @@ window.LL_I18N.en = {
   "La modification a changé la taille des données de la sauvegarde : rien n’a été modifié.": "The change altered the size of the save data: nothing was changed.",
   "Le Mod Studio (blue41) écrit dans cette sauvegarde en ce moment : rien n’a été modifié. Réessaie quand il a fini.": "The Mod Studio (blue41) is writing to this save right now: nothing was changed. Try again when it has finished.",
   "Une autre application écrit dans cette sauvegarde en ce moment : rien n’a été modifié. Réessaie dans un instant.": "Another application is writing to this save right now: nothing was changed. Try again in a moment.",
+  "Réglages invalides.": "Invalid settings.",
+  "Ce fichier n’est pas une sauvegarde Become a Legend (BL0000000x).": "This file is not a Become a Legend save (BL0000000x).",
+  "Ce dossier du jeu n’existe pas.": "This game folder does not exist.",
 };

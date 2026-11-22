@@ -19,6 +19,7 @@ const { defaultClipsDir } = require('./src/world/media');
 const world = require('./src/world/world');
 const { buildReport } = require('./src/report');
 const { externalUrl, samePage } = require('./src/links');
+const { checkSettingsUpdate, resolveSaveArg, validGameDir } = require('./src/settingsGuard');
 const { playerFaces } = require('./src/world/playerFaces');
 const { dominantColors } = require('./src/world/clubColors');
 
@@ -277,7 +278,7 @@ app.whenReady().then(() => {
 
   handle('settings:get', () => ({ settings: store.publicSettings(), providers: PROVIDERS, version: app.getVersion() }));
   handle('settings:save', (update) => {
-    const saved = store.saveSettings(update);
+    const saved = store.saveSettings(checkSettingsUpdate(update, store.getSettings(), { peek: peekSave }));
     setupAutoSync();
     return saved;
   });
