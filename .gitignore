@@ -24,3 +24,7 @@ data/keys/
 *.dll
 *.pak
 *.legendlife-tmp
+
+# Local AI handoff notes (never commit)
+CLAUDE_HANDOFF.md
+*_HANDOFF.md
