@@ -2858,4 +2858,7 @@ window.LL_I18N.de = {
   "Match aujourd’hui : {m}": "Spiel heute: {m}",
   "Prochain match dans {n} jour : {m}": "Nächstes Spiel in {n} Tag: {m}",
   "Prochain match dans {n} jours : {m}": "Nächstes Spiel in {n} Tagen: {m}",
+  "Les événements de vie (anniversaires, sorties, galas, décisions) n’apparaissent dans le calendrier qu’une fois ta vie hors terrain configurée dans Ma vie.": "Lebensereignisse (Geburtstage, Ausflüge, Galas, Entscheidungen) erscheinen erst im Kalender, wenn dein Leben abseits des Platzes in Mein Leben eingerichtet ist.",
+  "Configurer Ma vie": "Mein Leben einrichten",
+  "Cette étape débloque ta vie hors terrain : les événements, les décisions et les anniversaires du calendrier complet.": "Dieser Schritt schaltet dein Leben abseits des Platzes frei: Ereignisse, Entscheidungen und Geburtstage im vollständigen Kalender.",
 };

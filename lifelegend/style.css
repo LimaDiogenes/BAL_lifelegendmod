@@ -4725,3 +4725,8 @@ html, body { height: 100%; overflow: hidden; background: var(--sh-back); }
 .ml-scheduler > summary::before, .ml-cal-hist > summary::before { content: "▸ "; color: var(--ink-3); }
 .ml-scheduler[open] > summary::before, .ml-cal-hist[open] > summary::before { content: "▾ "; }
 @media (max-width: 760px) { .ml-today { grid-template-columns: minmax(0, 1fr); } }
+
+/* Ma vie pas encore configurée (2.0) : on dit ce que la calibration débloque. */
+.ml-calib-why { margin: 8px 0 0; padding: 8px 12px; border-left: 3px solid var(--gold); border-radius: var(--r-s); background: var(--surface-2); font-size: 14px; }
+.ll-pop-warn { margin: 8px 0; padding: 8px 10px; border-radius: var(--r-s); background: var(--surface-2); font-size: 13px; line-height: 1.5; }
+.ll-pop-warn .btn { margin-top: 6px; }

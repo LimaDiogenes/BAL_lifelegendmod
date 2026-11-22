@@ -2858,4 +2858,7 @@ window.LL_I18N.en = {
   "Match aujourd’hui : {m}": "Match today: {m}",
   "Prochain match dans {n} jour : {m}": "Next match in {n} day: {m}",
   "Prochain match dans {n} jours : {m}": "Next match in {n} days: {m}",
+  "Les événements de vie (anniversaires, sorties, galas, décisions) n’apparaissent dans le calendrier qu’une fois ta vie hors terrain configurée dans Ma vie.": "Life events (birthdays, outings, galas, decisions) only appear in the calendar once your off-pitch life is set up in My Life.",
+  "Configurer Ma vie": "Set up My Life",
+  "Cette étape débloque ta vie hors terrain : les événements, les décisions et les anniversaires du calendrier complet.": "This step unlocks your off-pitch life: the events, decisions and birthdays of the full calendar.",
 };

@@ -2858,4 +2858,7 @@ window.LL_I18N.it = {
   "Match aujourd’hui : {m}": "Partita oggi: {m}",
   "Prochain match dans {n} jour : {m}": "Prossima partita tra {n} giorno: {m}",
   "Prochain match dans {n} jours : {m}": "Prossima partita tra {n} giorni: {m}",
+  "Les événements de vie (anniversaires, sorties, galas, décisions) n’apparaissent dans le calendrier qu’une fois ta vie hors terrain configurée dans Ma vie.": "Gli eventi di vita (compleanni, uscite, gala, decisioni) compaiono nel calendario solo dopo aver configurato la tua vita fuori dal campo in La mia vita.",
+  "Configurer Ma vie": "Configura La mia vita",
+  "Cette étape débloque ta vie hors terrain : les événements, les décisions et les anniversaires du calendrier complet.": "Questo passaggio sblocca la tua vita fuori dal campo: gli eventi, le decisioni e i compleanni del calendario completo.",
 };

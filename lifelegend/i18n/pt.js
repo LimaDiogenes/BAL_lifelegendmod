@@ -2858,4 +2858,7 @@ window.LL_I18N.pt = {
   "Match aujourd’hui : {m}": "Jogo hoje: {m}",
   "Prochain match dans {n} jour : {m}": "Próximo jogo em {n} dia: {m}",
   "Prochain match dans {n} jours : {m}": "Próximo jogo em {n} dias: {m}",
+  "Les événements de vie (anniversaires, sorties, galas, décisions) n’apparaissent dans le calendrier qu’une fois ta vie hors terrain configurée dans Ma vie.": "Os eventos de vida (aniversários, saídas, galas, decisões) só aparecem no calendário depois que sua vida fora de campo for configurada em Minha vida.",
+  "Configurer Ma vie": "Configurar Minha vida",
+  "Cette étape débloque ta vie hors terrain : les événements, les décisions et les anniversaires du calendrier complet.": "Esta etapa libera sua vida fora de campo: os eventos, decisões e aniversários do calendário completo.",
 };

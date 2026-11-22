@@ -2000,6 +2000,7 @@ function paintShell() {
         ${shellCalOpen ? `<div class="ll-pop ll-pop--cal" role="dialog" aria-label="${esc(tr('Calendrier rapide'))}">
           <div class="ll-pop-head"><b>${esc(fmtDate(simDate, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))}</b><span class="ll-tag">${esc(rhythmText)}</span></div>
           <p class="fineprint">${esc(nextMatchLine)}</p>
+          ${!state.lifeHub?.calibrated && (settings?.eventMode || 'realistic') === 'realistic' ? `<p class="ll-pop-warn">${esc(tr('Les événements de vie (anniversaires, sorties, galas, décisions) n’apparaissent dans le calendrier qu’une fois ta vie hors terrain configurée dans Ma vie.'))} <button type="button" class="btn" id="ll-cal-setup-life">${tr('Configurer Ma vie')}</button></p>` : ''}
           ${popEntries.length ? `<ul class="ll-pop-list">${popEntries.slice(0, 4).map((it) => `<li><b>${esc(it.title)}</b>${it.hasDecision ? `<span class="ll-tag">${esc(tr('Décision attendue'))}</span>` : (it.detail ? `<small>${esc(it.detail)}</small>` : '')}</li>`).join('')}</ul>` : ''}
           <div class="ll-pop-acts">
             ${canAdvance ? `<button type="button" class="btn" data-shell-caladv="day">${tr('+1 jour')}</button><button type="button" class="btn primary" data-shell-caladv="next_event">${tr('Prochain événement')}</button>` : ''}
@@ -2010,6 +2011,8 @@ function paintShell() {
       const calBtn = calWrap.querySelector('#ll-cal-btn');
       if (calBtn) calBtn.onclick = (ev) => { ev.stopPropagation(); shellCalOpen = !shellCalOpen; shellMenu = false; shellNotifOpen = false; paintShell(); };
       const openFull = calWrap.querySelector('#ll-cal-open-full');
+      const setupLife = calWrap.querySelector('#ll-cal-setup-life');
+      if (setupLife) setupLife.onclick = () => { shellCalOpen = false; shellGo('mylife'); };
       if (openFull) openFull.onclick = () => shellGo('mylife', null, 'calendar');
       calWrap.querySelectorAll('[data-shell-caladv]').forEach((b) => {
         b.onclick = async () => {
@@ -10154,6 +10157,7 @@ function renderMyLife(page) {
         <div>
           <span class="ml-stage-pill">${esc(mlStageLabel(est.stage))}</span>
           <h1>${esc(s.player?.name || '')} · ${tr('Calibration de carrière')}</h1>
+          ${hub.calibrated ? '' : `<p class="ml-calib-why">${tr('Cette étape débloque ta vie hors terrain : les événements, les décisions et les anniversaires du calendrier complet.')}</p>`}
           <p class="fineprint">${esc(calSlotCap === null
             ? tr('Détecté dans ta sauvegarde : {stage} · {apps} matchs · {goals} buts · sponsors illimités', { stage: mlStageLabel(est.stage), apps: fmtNum(est.apps || 0), goals: fmtNum(est.goals || 0) })
             : tr('Détecté dans ta sauvegarde : {stage} · {apps} matchs · {goals} buts · jusqu’à {slots} sponsors', { stage: mlStageLabel(est.stage), apps: fmtNum(est.apps || 0), goals: fmtNum(est.goals || 0), slots: calSlotCap }))}</p>
