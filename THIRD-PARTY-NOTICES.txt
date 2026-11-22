@@ -73,6 +73,16 @@ and stay on the user's computer.
 LifeLegend ne contient aucun fichier du jeu : noms des joueurs, écussons et logos sont lus sur l'ordinateur du joueur,
 dans son propre jeu, et y restent.
 
+SPONSOR LOGOS / LOGOS DES SPONSORS
+Brand logos are not part of the application. They come as an optional, separate download (Settings > Sponsor logos)
+and are trademarks of their respective owners, shown only to illustrate the fictional sponsorships of a player's
+career. No logo of Konami, eFootball or PES is included. Les logos des marques ne font pas partie de l'application :
+un pack optionnel, téléchargé à part ; ce sont des marques de leurs propriétaires.
+
+MY LIFE IMAGES / IMAGES DE « MA VIE »
+The illustrations in lifelegend/media/mylife were generated with AI (Google Gemini) for LifeLegend.
+Les illustrations de lifelegend/media/mylife ont été générées par IA (Google Gemini) pour LifeLegend.
+
 eFootball PES 2021 is a trademark of Konami Digital Entertainment. LifeLegend is an unofficial fan-made mod,
 not affiliated with or endorsed by Konami, Football Life, any club, league, federation or player.
 

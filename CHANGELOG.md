@@ -1,5 +1,34 @@
 # Journal des changements
 
+## 2.0.0 — 2026-11-22
+
+LifeLegend 2.0 est livré avec blue41 PES2021 Mod Studio (il peut aussi être utilisé seul).
+
+### Sauvegarde : écritures plus sûres
+- Avant toute écriture, la sauvegarde d'origine doit se re-chiffrer à l'identique ; sinon rien n'est écrit.
+- La taille des données ne peut pas changer à l'écriture.
+- La toute première copie de secours de chaque sauvegarde est gardée pour toujours ; seules les suivantes sont limitées.
+- Verrou partagé avec le Mod Studio (`.blue41-save.lock` à côté de la sauvegarde, voir docs/save-lock.md) : les deux
+  applications n'écrivent jamais en même temps.
+
+### Lancement depuis le Mod Studio
+- Arguments `--save`, `--game`, `--lang`, `--theme` (voir README) ; un second lancement change de sauvegarde ou de langue.
+
+### Sécurité et vie privée
+- Seuls les liens https:// et mailto: s'ouvrent dans le navigateur ; tout le reste est bloqué.
+- Le dossier de sauvegarde et le dossier du jeu sont vérifiés avant d'être enregistrés.
+- Si Windows ne peut pas chiffrer la clé d'IA, elle reste en mémoire pour la session et n'est jamais écrite en clair.
+- Dictée : un avertissement unique rappelle que l'enregistrement de la voix part chez le fournisseur d'IA (les noms,
+  eux, sont masqués).
+
+### Logos des sponsors à part
+- Les logos des marques ne sont plus dans l'application : un pack séparé se télécharge depuis les Réglages (« Logos des
+  sponsors »), vérifié puis installé tout seul. Sans le pack, des monogrammes s'affichent. Aucun logo KONAMI.
+
+### Tests
+- Le test sur une vraie sauvegarde ne regarde plus les données de l'utilisateur sauf s'il est demandé
+  (`LL_REAL_SAVE_TESTS=1`).
+
 ## 1.1.0 — 2026-11-16
 
 ### Ta carrière racontée autrement
