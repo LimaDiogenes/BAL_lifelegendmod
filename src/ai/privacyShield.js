@@ -382,6 +382,19 @@ function buildPrivacyMap(privacy, { careerId = '', playerName = '', displayName 
     addPair(fh, decoyFh, 'formerHandle');
   }
 
+  // Hyphenated names and places (« Jean-Pierre », « Saint-Étienne ») : each part of 3+ letters is masked on its own
+  // too, with the matching part of the decoy when it has one (review 2026-11-22: « Jean » alone was sent as is).
+  for (const p of [...rawEntries]) {
+    if (!/[-‐–]/.test(p.real)) continue;
+    const parts = p.real.split(/[\s\-‐–]+/).filter((t) => t.length >= 3 && !PARTICLES.has(t.toLowerCase()));
+    const decoyParts = p.decoy.split(/[\s\-‐–]+/).filter(Boolean);
+    parts.forEach((part, i) => {
+      // the decoy's own parts only when it has as many (else each part gets a decoy of its own: unmasking stays exact)
+      const d = (decoyParts.length === parts.length && decoyParts[i]) || pickFrom(DECOYS.firstName, `${careerId}:hyphen:${part}`, usedDecoys, part.toLowerCase());
+      if (d && !realLowers.has(d.toLowerCase())) addPair(part, d, `${p.kind}_part`);
+    });
+  }
+
   // Deduplicate by accent-folded lowercase `real` (longest/most-specific kept first).
   const byReal = new Map();
   for (const p of rawEntries) {
@@ -439,22 +452,44 @@ function matchCase(matched, replacement) {
   return replacement;
 }
 
+// Glued words (« #DiordiLima », « DiordiFC », « Uberlandia2026 », « diordi_10 ») : split at CamelCase, letter/digit and
+// underscore joins, and each piece is masked when it is a protected word (review 2026-11-22). Plain substrings are not
+// matched (« Lima » inside « climate » stays).
+const GLUED_PIECES = /\p{Lu}+(?=\p{Lu}\p{Ll})|\p{Lu}?\p{Ll}+|\p{Lu}+|\p{N}+|[^\p{L}\p{N}]+/gu;
+function maskGlued(text, map, lookup = map.maskLookup) {
+  return text.replace(/[\p{L}\p{N}_]{4,}/gu, (word) => {
+    const pieces = word.match(GLUED_PIECES) || [word];
+    if (pieces.length < 2) return word;
+    let changed = false;
+    const out = pieces.map((piece) => {
+      if (piece.length < 3 || !/\p{L}/u.test(piece)) return piece;
+      const hit = lookup.get(piece.toLowerCase()) || lookup.get(stripAccents(piece).toLowerCase());
+      if (!hit) return piece;
+      changed = true;
+      return matchCase(piece, hit).replace(/\s+/g, '');
+    });
+    return changed ? out.join('') : word;
+  });
+}
+
 function maskText(text, map) {
   if (!map?.enabled || !map.maskRegex || typeof text !== 'string' || !text) return text;
   const nfc = text.normalize('NFC');
-  return nfc.replace(map.maskRegex, (m) => {
+  const once = nfc.replace(map.maskRegex, (m) => {
     const hit = map.maskLookup.get(m.toLowerCase()) || map.maskLookup.get(stripAccents(m).toLowerCase());
     return hit ? matchCase(m, hit) : m;
   });
+  return maskGlued(once, map);
 }
 
 function unmaskText(text, map) {
   if (!map?.enabled || !map.unmaskRegex || typeof text !== 'string' || !text) return text;
   const nfc = text.normalize('NFC');
-  return nfc.replace(map.unmaskRegex, (m) => {
+  const once = nfc.replace(map.unmaskRegex, (m) => {
     const hit = map.unmaskLookup.get(m.toLowerCase()) || map.unmaskLookup.get(stripAccents(m).toLowerCase());
     return hit ? matchCase(m, hit) : m;
   });
+  return maskGlued(once, map, map.unmaskLookup);
 }
 
 function addWordTokens(words, real, splitTokens = true) {

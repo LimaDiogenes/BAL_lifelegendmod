@@ -559,3 +559,14 @@ describe('End-to-end world.post & world.sendHuddle privacy masking', () => {
     assert.equal(audit[0].user.includes('Manaus'), false);
   });
 });
+
+require('node:test').test('mots collés et noms à trait d’union masqués (revue 2026-11-22), sans toucher aux mots qui les contiennent', () => {
+  const ps = require('../src/ai/privacyShield');
+  const map = ps.buildPrivacyMap({ enabled: true, fields: { hometown: 'Uberlândia' }, customWords: [{ real: 'Jean-Pierre' }] },
+    { careerId: 't1', playerName: 'Diordi Lima', handle: 'diordi10' });
+  const masked = ps.maskText('#DiordiLima DiordiFC #Uberlandia2026 diordi_10 Jean et Pierre. Climate.', map);
+  const pieces = masked.replace('Climate', '').match(/\p{Lu}?\p{Ll}+|\p{Lu}+|\p{N}+/gu).map((x) => x.toLowerCase());
+  for (const real of ['diordi', 'lima', 'uberlandia', 'jean', 'pierre']) assert.ok(!pieces.includes(real), `${real} leaked: ${masked}`);
+  assert.ok(masked.includes('Climate'));
+  assert.strictEqual(ps.unmaskText(masked, map).replace('Uberlândia', 'Uberlandia'), '#DiordiLima DiordiFC #Uberlandia2026 diordi_10 Jean et Pierre. Climate.');
+});
