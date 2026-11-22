@@ -27,6 +27,36 @@ const CLUB_TACTICS = [0x4B0, 0x550];
 const COACH_TABLE = 0x133A38;   // nom de l'entraîneur de l'équipe 0 ; la fiche commence 0x10 octets avant
 const COACH_STRIDE = 0x258;
 const COACH_TACTICS = [0x48, 0xE8, 0x188];
+// Même fiche (600 octets, celle du Mod Studio : BalTacticsTable, VÉRIFIÉ) : l'ordre des joueurs (40 places, 0xFF = fin),
+// les 6 tireurs de coups de pied arrêtés et le capitaine, en places de l'effectif ; décalages depuis le début de la fiche
+// (index de l'équipe à +0, nom de l'entraîneur à +8).
+const LINEUP = 544, SET_PIECES = 584, CAPTAIN = 593;
+// Début de la fiche du club, ou -1 si elle n'est pas là où on l'attend.
+function tacticsAt(d, clubRef) {
+  const slot = clubRef & 0x3FFF, rec = COACH_TABLE - 8 + COACH_STRIDE * slot;
+  return rec >= 0 && rec + COACH_STRIDE <= d.length && d.readUInt32LE(rec) === slot ? rec : -1;
+}
+// Une place a quitté l'effectif : comme le Mod Studio (BalTransfers.RemapTactics), elle sort de l'ordre des joueurs,
+// les tireurs et le capitaine qui l'utilisaient passent au premier joueur de champ de l'ordre, et les places suivantes
+// descendent d'un cran. Le jeu refait ces listes les jours suivants ; sans ça, elles visaient le mauvais joueur.
+function remapTactics(d, rec, removed) {
+  const order = [...d.subarray(rec + LINEUP, rec + LINEUP + MAX)];
+  const end = order.indexOf(0xFF);
+  const kept = (end < 0 ? order : order.slice(0, end)).filter((b) => b !== removed).map((b) => (b > removed ? b - 1 : b));
+  for (let i = 0; i < MAX; i++) d[rec + LINEUP + i] = i < kept.length ? kept[i] : 0xFF;
+  const fallback = kept.length > 1 ? kept[1] : kept.length ? kept[0] : 0;   // [0] est d'habitude le gardien
+  for (const at of [0, 1, 2, 3, 4, 5].map((i) => SET_PIECES + i).concat(CAPTAIN)) {
+    const v = d[rec + at];
+    if (v === 0xFF) continue;
+    d[rec + at] = v === removed ? fallback : v > removed ? v - 1 : v;
+  }
+}
+// Le nouveau venu entre à la fin de l'ordre des joueurs de son nouveau club.
+function appendToLineup(d, rec, newSlot) {
+  const order = d.subarray(rec + LINEUP, rec + LINEUP + MAX);
+  const end = order.indexOf(0xFF);
+  if (end >= 0) d[rec + LINEUP + end] = newSlot;
+}
 // Messages : 128 lignes de 0x50 octets rangées par date, au même endroit dans les sauvegardes vues (0xBE8B84) mais
 // cherchées par la forme d'une ligne vide. Ligne : type u32, date (u16 année, u8 mois, u8 jour), drapeau « non lu » à
 // +0x10, club à +0x18, numéro interne et id du joueur à +0x24 / +0x28.
@@ -154,6 +184,11 @@ function transferInData(source, { playerId, fromRef, toRef, news }) {
   writeRoster(d, from, a.filter((p) => p.id !== playerId));
   writeRoster(d, to, [...b, { ...player, shirt }]);
   const changes = ['effectifs', 'numéros de maillot', 'nombre de joueurs'];
+  // l'ordre des joueurs, les tireurs et le capitaine des deux clubs suivent (s'ils sont à la place attendue)
+  const fromTactics = tacticsAt(d, fromRef), toTactics = tacticsAt(d, toRef);
+  if (fromTactics >= 0) remapTactics(d, fromTactics, a.indexOf(player));
+  if (toTactics >= 0) appendToLineup(d, toTactics, b.length);
+  if (fromTactics >= 0 || toTactics >= 0) changes.push('ordre des joueurs, tireurs et capitaine');
   const type = news?.clubRef === toRef ? ARRIVAL : news?.clubRef === fromRef ? DEPARTURE : null;
   const message = type !== null && addMessage(d, { type, date: news.date, clubRef: news.clubRef, slot: player.slot, playerId }) ? type : null;
   if (message !== null) changes.push('message');
@@ -194,4 +229,4 @@ function applyTransfer({ savePath, backupDir, playerId, fromRef, toRef, news }) 
   });
 }
 
-module.exports = { formationInData, transferInData, applyFormation, applyTransfer, writeInSave, rosterAt, teamOffset, messagesAt, addMessage, ARRIVAL, DEPARTURE };
+module.exports = { remapTactics, tacticsAt, formationInData, transferInData, applyFormation, applyTransfer, writeInSave, rosterAt, teamOffset, messagesAt, addMessage, ARRIVAL, DEPARTURE };

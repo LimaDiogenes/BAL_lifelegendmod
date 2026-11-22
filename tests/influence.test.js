@@ -192,3 +192,18 @@ test('jeu ouvert : Football Life aussi, pour ne jamais écrire dans une sauvegar
   for (const exe of ['explorer.exe', 'FLauncher.exe', 'notFL_2027.exe', 'LifeLegend.exe']) assert.ok(!gameInTaskList(line(exe)), exe);
   assert.ok(!gameInTaskList(''));
 });
+
+test('transfert : ordre des joueurs, tireurs et capitaine du club de départ suivent (comme le Mod Studio)', () => {
+  const { remapTactics } = require(path.join(ROOT, 'src/save/influenceWrite.js'));
+  const d = Buffer.alloc(700, 0);
+  const LINEUP = 544, SET_PIECES = 584, CAPTAIN = 593;
+  // ordre : 0 (gardien), 3, 1, 2, 4 ; tireurs : 3, 2, 1, 4, 3, 0xFF ; capitaine : 3. La place 3 part.
+  [0, 3, 1, 2, 4].forEach((s, i) => { d[LINEUP + i] = s; });
+  for (let i = 5; i < 40; i++) d[LINEUP + i] = 0xFF;
+  [3, 2, 1, 4, 3, 0xFF].forEach((s, i) => { d[SET_PIECES + i] = s; });
+  d[CAPTAIN] = 3;
+  remapTactics(d, 0, 3);
+  assert.deepStrictEqual([...d.subarray(LINEUP, LINEUP + 5)], [0, 1, 2, 3, 0xFF]);
+  assert.deepStrictEqual([...d.subarray(SET_PIECES, SET_PIECES + 6)], [1, 2, 1, 3, 1, 0xFF]);
+  assert.strictEqual(d[CAPTAIN], 1);
+});
