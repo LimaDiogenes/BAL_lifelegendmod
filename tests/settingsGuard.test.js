@@ -28,7 +28,7 @@ test('savePath : une sauvegarde BL existante, ou vide ; le reste est refusé', (
   assert.strictEqual(checkSettingsUpdate({ savePath: bl }).savePath, bl);
   assert.strictEqual(checkSettingsUpdate({ savePath: '' }).savePath, '');
   assert.strictEqual(checkSettingsUpdate({ savePath: null }).savePath, '');
-  for (const bad of [path.join(save, 'notes.txt'), path.join(save, 'BL00000009'), save, 'BL00000001', '\\server\share\BL00000000', 42]) {
+  for (const bad of [path.join(save, 'notes.txt'), path.join(save, 'BL00000009'), save, 'BL00000001', '\\\\server\\share\\BL00000000', 42]) {
     assert.throws(() => checkSettingsUpdate({ savePath: bad }), /pas une sauvegarde Become a Legend/, String(bad));
   }
   // copie renommée : acceptée si son en-tête dit « BL »
@@ -47,7 +47,7 @@ test('gameDir : un dossier existant, ou vide', () => {
   assert.throws(() => checkSettingsUpdate({ gameDir: path.join(save, 'BL00000000') }), /dossier du jeu/);
   assert.throws(() => checkSettingsUpdate({ gameDir: path.join(dir, 'absent') }), /dossier du jeu/);
   assert.ok(validGameDir(dir));
-  assert.ok(!validGameDir('relative\dir'));
+  assert.ok(!validGameDir('relative\\dir'));
   assert.throws(() => checkSettingsUpdate(null), /Réglages invalides/);
   assert.deepStrictEqual(checkSettingsUpdate({ theme: 'light' }), { theme: 'light' });
 });

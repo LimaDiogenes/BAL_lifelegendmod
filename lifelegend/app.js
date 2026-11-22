@@ -1562,6 +1562,10 @@ function setupSaveHtml(su) {
     <div class="su-nav"><span></span><button class="btn primary big" id="su-next"${su.savePath ? '' : ' disabled'}>${tr('Suivant')}</button></div>`;
 }
 
+// Sans chiffrement Windows (safeStorage indisponible), la clé n'est gardée qu'en mémoire : on le dit au joueur.
+const keyStorageNote = () => (settings?.keyEncryption === false
+  ? `<p class="fineprint" role="note"><b>${tr('Windows ne peut pas chiffrer ta clé sur ce PC : elle est gardée en mémoire pour cette session seulement, jamais écrite en clair. Tu devras la coller à nouveau au prochain lancement.')}</b></p>`
+  : '');
 const aiKeyPlaceholder = (id, p) => (settings?.savedKeys?.includes(id)
   ? tr('Clé enregistrée — colle une nouvelle clé pour la remplacer')
   : p?.local ? tr('Optionnelle (aucune clé requise en local)') : (p?.keyHint || tr('Colle ta clé ici')));
@@ -1579,7 +1583,7 @@ function setupAiHtml(su) {
       <label>${tr('Modèle')}<input id="su-model" list="su-models" aria-label="${tr('Modèle')}" value="${esc(modelVal)}"><datalist id="su-models">${modelsList.map((m) => `<option value="${esc(m)}">`).join('')}</datalist></label>
       <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button type="button" class="btn" id="su-refresh-models">${tr('Actualiser la liste')}</button><span class="fineprint" id="su-models-status" role="status">${esc(su.modelsStatus || '')}</span></div>
       <label>${tr('Clé API')}<input id="su-apikey" type="password" autocomplete="off" placeholder="${esc(aiKeyPlaceholder(su.provider, p))}"></label>
-      <p class="fineprint">${tr('La clé est chiffrée avec ton compte Windows et n’est envoyée qu’au fournisseur choisi. Gratuits : Google AI Studio, Groq, Cerebras, Mistral, GitHub Models — ou 100 % local sans clé avec Ollama / LM Studio.')}</p>
+      <p class="fineprint">${tr('La clé est chiffrée avec ton compte Windows et n’est envoyée qu’au fournisseur choisi. Gratuits : Google AI Studio, Groq, Cerebras, Mistral, GitHub Models — ou 100 % local sans clé avec Ollama / LM Studio.')}</p>${keyStorageNote()}
     </section>
     <div class="su-nav"><button class="btn big" id="su-back">${tr('Retour')}</button><button class="btn primary big" id="su-next"${saved || p.optionalKey ? '' : ' disabled'}>${tr('Suivant')}</button></div>`;
 }
@@ -11953,7 +11957,7 @@ async function renderSettings(page) {
       <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button type="button" class="btn" id="refresh-models">${tr('Actualiser la liste')}</button><span class="fineprint" id="models-status" role="status"></span></div>
       <label id="baseurl-wrap" class="${prov.editableBaseUrl ? '' : 'hidden'}">${tr('Adresse (Base URL)')}<input id="baseurl" value="${esc(prov.editableBaseUrl ? (settings.baseUrl || prov.baseUrl || '') : '')}" placeholder="${esc(prov.baseUrl || 'https://…/v1')}"></label>`),
     rgRow('', tr('Clé API'), `<input id="apikey" type="password" aria-label="${tr('Clé API')}" placeholder="${esc(aiKeyPlaceholder(settings.provider, prov))}">
-      <p class="fineprint">${tr('La clé est chiffrée avec ton compte Windows et n’est envoyée qu’au fournisseur choisi. Gratuits : Google AI Studio, Groq, Cerebras, Mistral, GitHub Models — ou 100 % local sans clé avec Ollama / LM Studio.')}</p>`),
+      <p class="fineprint">${tr('La clé est chiffrée avec ton compte Windows et n’est envoyée qu’au fournisseur choisi. Gratuits : Google AI Studio, Groq, Cerebras, Mistral, GitHub Models — ou 100 % local sans clé avec Ollama / LM Studio.')}</p>${keyStorageNote()}`),
     rgRow('', tr('Vérification des faits'), rgSwitch('factcheck', settings.factCheck !== false, tr('Vérifier les faits avant de publier chaque édition'), tr('Une 2e requête relit l’édition face à ta sauvegarde (scores, points, classement, minutes, buteurs) et corrige les erreurs avant publication.'))),
     rgRow('', tr('Discussions sur Kop'), rgSwitch('tribunethreads', settings.tribuneThreads !== false, tr('Faire discuter les internautes entre eux sur Kop'), tr('Après chaque édition, une requête de plus écrit les échanges sous les posts : réponses entre supporters, désaccords, l’auteur qui réplique.'))),
   ])}

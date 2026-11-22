@@ -34,6 +34,10 @@ class Store {
   constructor(dir, safeStorage) {
     this.dir = dir;
     this.safeStorage = safeStorage;
+    // Réglages valables pour cette session seulement (--lang, --theme : src/launchArgs.js), jamais écrits sur le disque.
+    this.overrides = {};
+    // Clés d'IA gardées en mémoire quand Windows ne peut pas les chiffrer : jamais écrites en clair, perdues à la fermeture.
+    this.sessionKeys = {};
     fs.mkdirSync(path.join(dir, 'careers'), { recursive: true });
   }
 
@@ -48,34 +52,61 @@ class Store {
     fs.renameSync(tmp, file);
   }
 
-  getSettings() {
+  // Réglages enregistrés, sans ceux de la session.
+  storedSettings() {
     const s = this.readJson(path.join(this.dir, 'settings.json'), {});
     return { ...DEFAULT_SETTINGS, ...s, keys: s.keys || {} };
+  }
+
+  getSettings() {
+    return { ...this.storedSettings(), ...this.overrides };
+  }
+
+  setSessionOverrides(overrides = {}) {
+    this.overrides = { ...this.overrides, ...overrides };
+  }
+
+  // Le chiffrement des clés par Windows (safeStorage) est-il disponible ?
+  canEncrypt() {
+    try { return Boolean(this.safeStorage?.isEncryptionAvailable()); } catch { return false; }
   }
 
   // Version envoyée à l'interface : jamais les clés, seulement lesquelles existent.
   publicSettings() {
     const { keys, ...rest } = this.getSettings();
-    return { ...rest, savedKeys: Object.keys(keys) };
+    const session = Object.keys(this.sessionKeys).filter((k) => !(k in keys));
+    return { ...rest, savedKeys: [...Object.keys(keys), ...session], sessionKeys: Object.keys(this.sessionKeys), keyEncryption: this.canEncrypt() };
   }
 
   saveSettings(update) {
-    const cur = this.getSettings();
+    const cur = this.storedSettings();
     const next = { ...cur, ...update, keys: { ...cur.keys } };
     delete next.apiKey;
     delete next.savedKeys;
+    delete next.sessionKeys;
+    delete next.keyEncryption;
+    // Un réglage choisi par le joueur remplace celui de la session (et il est gardé).
+    for (const k of Object.keys(update)) delete this.overrides[k];
     if (update.apiKey) {
-      next.keys[next.provider] = this.safeStorage.isEncryptionAvailable()
-        ? this.safeStorage.encryptString(update.apiKey).toString('base64')
-        : `plain:${update.apiKey}`;
+      const provider = update.provider || this.getSettings().provider;
+      if (this.canEncrypt()) {
+        next.keys[provider] = this.safeStorage.encryptString(update.apiKey).toString('base64');
+        delete this.sessionKeys[provider];
+      } else {
+        // Pas de chiffrement Windows : la clé reste en mémoire pour cette session, jamais écrite en clair.
+        this.sessionKeys[provider] = update.apiKey;
+        delete next.keys[provider];
+      }
     }
     this.writeJson(path.join(this.dir, 'settings.json'), next);
     return this.publicSettings();
   }
 
   getKey(provider) {
+    if (this.sessionKeys[provider]) return this.sessionKeys[provider];
     const enc = this.getSettings().keys[provider];
     if (!enc) return '';
+    // Ancienne version : clé écrite en clair quand le chiffrement manquait. Encore lue, plus jamais écrite.
     if (enc.startsWith('plain:')) return enc.slice(6);
     return this.safeStorage.decryptString(Buffer.from(enc, 'base64'));
   }

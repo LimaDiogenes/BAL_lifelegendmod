@@ -2844,4 +2844,5 @@ window.LL_I18N.it = {
   "Réglages invalides.": "Impostazioni non valide.",
   "Ce fichier n’est pas une sauvegarde Become a Legend (BL0000000x).": "Questo file non è un salvataggio di Become a Legend (BL0000000x).",
   "Ce dossier du jeu n’existe pas.": "Questa cartella del gioco non esiste.",
+  "Windows ne peut pas chiffrer ta clé sur ce PC : elle est gardée en mémoire pour cette session seulement, jamais écrite en clair. Tu devras la coller à nouveau au prochain lancement.": "Windows non può cifrare la tua chiave su questo PC: viene tenuta in memoria solo per questa sessione, mai scritta in chiaro. Dovrai incollarla di nuovo al prossimo avvio.",
 };

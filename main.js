@@ -19,7 +19,8 @@ const { defaultClipsDir } = require('./src/world/media');
 const world = require('./src/world/world');
 const { buildReport } = require('./src/report');
 const { externalUrl, samePage } = require('./src/links');
-const { checkSettingsUpdate, resolveSaveArg, validGameDir } = require('./src/settingsGuard');
+const { checkSettingsUpdate } = require('./src/settingsGuard');
+const { parseLaunchArgs, applyLaunchArgs } = require('./src/launchArgs');
 const { playerFaces } = require('./src/world/playerFaces');
 const { dominantColors } = require('./src/world/clubColors');
 
@@ -263,11 +264,25 @@ function syncHint(err) {
 // que son message.
 const withHint = (err, message) => { const h = err && syncHint(err); return h ? `⟦${h}⟧ ${message}` : message; };
 
-// Une seule fenêtre à la fois : un second lancement ramène la première au premier plan.
+// Arguments de lancement (blue41 PES2021 Mod Studio, raccourcis) : --save= --game= --lang= --theme= (src/launchArgs.js).
+const launchArgs = parseLaunchArgs(process.argv);
+function useLaunchArgs(args, where) {
+  if (!store || !Object.keys(args).length) return false;
+  const { applied, rejected } = applyLaunchArgs(store, args, { peek: peekSave });
+  if (applied.length || rejected.length) logActivity(`arguments de lancement (${where}) : appliqués [${applied.join(', ')}], refusés [${rejected.join(', ')}]`);
+  return applied.length > 0;
+}
+
+// Une seule fenêtre à la fois : un second lancement ramène la première au premier plan, avec ses arguments (le Mod
+// Studio peut ainsi changer de sauvegarde, de jeu ou de langue dans la fenêtre déjà ouverte).
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
-app.on('second-instance', () => {
+app.on('second-instance', (_e, argv) => {
   if (!win) return;
+  if (useLaunchArgs(parseLaunchArgs(argv), 'second lancement')) {
+    setupAutoSync();
+    win.webContents.reload();
+  }
   if (win.isMinimized()) win.restore();
   win.focus();
 });
@@ -275,6 +290,7 @@ app.on('second-instance', () => {
 app.whenReady().then(() => {
   if (!gotLock) return;
   store = new Store(path.join(app.getPath('userData'), 'data'), safeStorage);
+  useLaunchArgs(launchArgs, 'démarrage');
 
   handle('settings:get', () => ({ settings: store.publicSettings(), providers: PROVIDERS, version: app.getVersion() }));
   handle('settings:save', (update) => {
