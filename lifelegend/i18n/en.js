@@ -2853,4 +2853,5 @@ window.LL_I18N.en = {
   "Téléchargement… {p} %": "Downloading… {p} %",
   "Téléchargement…": "Downloading…",
   "Logos des sponsors installés.": "Sponsor logos installed.",
+  "Événements du jour affichés.": "Today's events are shown.",
 };

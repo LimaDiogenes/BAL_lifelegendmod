@@ -3977,6 +3977,17 @@ function calendarAdvance({ store, mode = 'day', targetDate = null }) {
     try { seedSystemEvents(state, state.snapshot, state.calendar?.simDate || state.snapshot?.gameDate, { eventMode, newId }); } catch { /* ignore */ }
   }
 
+  // « Prochain événement » : ce qui est dû aujourd'hui et pas encore montré passe d'abord, sans changer de jour
+  // (demande 2026-11-22 : le bouton sautait les événements du jour même).
+  if (mode === 'next_event' && eventMode === 'realistic') {
+    const today = state.calendar?.simDate || state.snapshot?.gameDate;
+    const sameDay = today ? collectDueDecisions(state, state.snapshot, today, { eventMode, newId }) : [];
+    if (sameDay.length) {
+      store.saveCareer(state);
+      return { state, step: { prevDate: today, nextDate: today, days: 0, revealedFixtures: [], remainingQueued: state.calendar?.pendingMatches?.length || 0, reachedSaveDate: false, sameDay: true, needsPublish: false, dueBirthdays: [], dueDecisions: sameDay, dailyPulse: null, notablePulse: null } };
+    }
+  }
+
   const step = advanceCalendar(state, { mode, targetDate });
   if (step.revealedFixtures.length && state.snapshot) {
     try { archiveSeason(state, state.snapshot); } catch { /* ignore */ }
@@ -4056,6 +4067,11 @@ function getCalendarAgenda({ store, month = null }) {
   if (eventMode === 'realistic' && state.lifeHub?.calibrated) {
     const added = seedSystemEvents(state, state.snapshot, state.calendar?.simDate || state.snapshot?.gameDate, { eventMode, newId });
     if (added.length) store.saveCareer(state);
+  }
+  // Calendrier complet : ce qui est dû aujourd'hui apparaît tout de suite, même ajouté après l'arrivée sur ce jour.
+  if (eventMode === 'realistic' && stg.calendarMode === 'full') {
+    const today = state.calendar?.simDate || state.snapshot?.gameDate;
+    if (today && collectDueDecisions(state, state.snapshot, today, { eventMode, newId }).length) store.saveCareer(state);
   }
   const ag = calendarAgenda(state, month);
   return {

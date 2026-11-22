@@ -11353,6 +11353,8 @@ function renderMyLife(page) {
         render();
         if (step?.needsPublish) {
           await doSync();
+        } else if (step?.sameDay) {
+          toast(tr('Événements du jour affichés.'));
         } else if (step?.revealedFixtures?.length) {
           toast(tr('{n} match(s) révélé(s).', { n: step.revealedFixtures.length }));
         } else if (step?.days) {

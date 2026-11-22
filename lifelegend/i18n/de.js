@@ -2853,4 +2853,5 @@ window.LL_I18N.de = {
   "Téléchargement… {p} %": "Wird geladen… {p} %",
   "Téléchargement…": "Wird geladen…",
   "Logos des sponsors installés.": "Sponsorenlogos installiert.",
+  "Événements du jour affichés.": "Heutige Ereignisse angezeigt.",
 };
