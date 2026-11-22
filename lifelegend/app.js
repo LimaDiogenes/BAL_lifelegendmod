@@ -390,7 +390,8 @@ function resolveSponsorLogoUi(brand, logos = appPaths.sponsorLogos) {
 }
 const bundledSponsorLogoUrl = (brand) => {
   const f = resolveSponsorLogoUi(brand, appPaths.sponsorLogos);
-  return f ? `media/sponsors/${encodeURI(f)}` : null;
+  if (!f) return null;
+  return /^file:/i.test(f) ? f : `media/sponsors/${encodeURI(f)}`;
 };
 const brandMonogram = (brand) => {
   const s = String(brand || '?').trim();
@@ -12013,6 +12014,8 @@ async function renderSettings(page) {
     rgRow('rg-update', tr('Mises à jour'), rgSwitch('autoupdatecheck', settings.autoUpdateCheck !== false, tr('Vérifier automatiquement les mises à jour au démarrage'), tr('Interroge discrètement GitHub à l’ouverture et affiche une pastille si une nouvelle version est prête.'))
       + `<button class="btn" id="rg-update-btn" type="button">${tr('Vérifier les mises à jour')}</button><p class="fineprint" id="rg-update-out" role="status"></p>`, tr('LifeLegend regarde la dernière version publiée sur sa page GitHub. Rien d’autre n’est envoyé.')),
     ...(introAvailable ? [rgRow('rg-intro', tr('Animation d’ouverture'), `<button class="btn" id="rg-intro-btn" type="button">${tr('Revoir')}</button>`, tr('La courte vidéo qui ouvre LifeLegend au premier lancement. Animation réalisée avec Profounder (profounder.com), qui n’a pas de lien avec LifeLegend.'))] : []),
+    rgRow('rg-logos', tr('Logos des sponsors'), `<button class="btn" id="rg-logos-btn" type="button">${tr('Télécharger les logos des sponsors')}</button><p class="fineprint" id="rg-logos-out" role="status"></p>`,
+      tr('Les logos des marques sont un pack à part, téléchargé depuis la page GitHub de LifeLegend. Ce sont des marques de leurs propriétaires ; sans le pack, LifeLegend affiche des monogrammes.')),
     rgRow('rg-report', tr('Signaler un problème'), `<button class="btn" id="rg-report-btn" type="button">${tr('Préparer le rapport')}</button>`,
       tr('LifeLegend prépare un fichier texte avec sa version, tes réglages utiles et ses derniers messages d’erreur, sans ta clé d’IA, ton adresse e-mail ni tes textes. Relis-le, puis envoie-le toi-même : rien ne part tout seul.')),
   ])}
@@ -12037,6 +12040,24 @@ async function renderSettings(page) {
         out.innerHTML = r.newer ? `${esc(tr('La version {v} est disponible.', { v: r.latest }))} <a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(tr('La télécharger'))}</a>` : esc(tr('Tu as la dernière version ({v}).', { v: r.current }));
       } catch { out.textContent = tr('Impossible de vérifier pour l’instant. Réessaie plus tard.'); }
       upd.disabled = false;
+    };
+  }
+  // Logos des sponsors : état, puis téléchargement avec la progression ; les logos s'affichent tout de suite après.
+  const logosBtn = $('#rg-logos-btn');
+  if (logosBtn) {
+    const out = $('#rg-logos-out');
+    live.logoStatus().then((r) => { if (r.count) out.textContent = tr('{n} logos installés.', { n: r.count }); }).catch(() => {});
+    live.onLogoProgress((p) => { out.textContent = tr('Téléchargement… {p} %', { p: Math.round(p * 100) }); });
+    logosBtn.onclick = async () => {
+      logosBtn.disabled = true;
+      out.textContent = tr('Téléchargement…');
+      try {
+        const r = await live.downloadLogos();
+        appPaths = await live.paths();
+        out.textContent = tr('{n} logos installés.', { n: r.count });
+        toast(tr('Logos des sponsors installés.'));
+      } catch (err) { out.textContent = err.message; }
+      logosBtn.disabled = false;
     };
   }
   // Signaler un problème : il choisit où enregistrer le rapport, l'Explorateur le montre ; rien n'est envoyé.

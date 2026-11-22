@@ -20,6 +20,8 @@ const world = require('./src/world/world');
 const { buildReport } = require('./src/report');
 const { externalUrl, samePage } = require('./src/links');
 const { checkSettingsUpdate } = require('./src/settingsGuard');
+const logoPack = require('./src/logoPack');
+const { pathToFileURL } = require('url');
 const { parseLaunchArgs, applyLaunchArgs } = require('./src/launchArgs');
 const { playerFaces } = require('./src/world/playerFaces');
 const { dominantColors } = require('./src/world/clubColors');
@@ -231,6 +233,9 @@ function startMediaWatch() {
     }
   }, 10000);
 }
+
+// Dossier des logos téléchargés (pack séparé, 2.0).
+const logosDir = () => path.join(app.getPath('userData'), 'media', 'sponsors');
 
 // Langue choisie dans les réglages (interface et contenus).
 const lang0 = () => { try { return store?.getSettings().language || 'en'; } catch { return 'en'; } };
@@ -489,6 +494,13 @@ app.whenReady().then(() => {
     return state;
   });
   handle('profile:save', (update) => world.updateProfile({ store, update }));
+  // Logos des sponsors (2.0) : un pack téléchargé à part, installé dans les données de l'utilisateur.
+  handle('logos:status', () => ({ count: Object.keys(logoPack.listLogos(logosDir())).length }));
+  handle('logos:download', async () => {
+    const buf = await logoPack.downloadPack(logoPack.LOGO_PACK_URL, (p) => win?.webContents.send('logos:progress', p));
+    const count = logoPack.installPack(buf, logosDir(), { warn: (msg) => logError('logos', new Error(msg)) });
+    return { count };
+  });
   // Dossier des carrières : l'interface y lit la photo et la bannière du profil, ainsi que les images déposées dans lifelegend/media/mylife/ et les logos dans lifelegend/media/sponsors/.
   handle('app:paths', () => {
     const mylifeMedia = {};
@@ -499,14 +511,11 @@ app.whenReady().then(() => {
         if (m) mylifeMedia[m[1].toLowerCase()] = f;
       }
     } catch { /* dossier optionnel */ }
+    // logos : le pack téléchargé (Réglages) d'abord, puis ceux du dossier de l'app (mode développement) ; adresses file:
     const sponsorLogos = {};
-    const sponsorsDir = path.join(__dirname, 'lifelegend', 'media', 'sponsors');
-    try {
-      for (const f of fs.readdirSync(sponsorsDir)) {
-        const m = /^([a-z0-9_-]+)\.(svg|png|jpe?g|webp)$/i.exec(f);
-        if (m) sponsorLogos[m[1].toLowerCase()] = f;
-      }
-    } catch { /* dossier optionnel */ }
+    for (const dir of [path.join(__dirname, 'lifelegend', 'media', 'sponsors'), logosDir()]) {
+      for (const [key, file] of Object.entries(logoPack.listLogos(dir))) sponsorLogos[key] = pathToFileURL(file).href;
+    }
     return { careersDir: path.join(store.dir, 'careers'), mylifeMedia, sponsorLogos };
   });
   // « Signaler un problème » : le rapport (sans clé, e-mail ni textes personnels), enregistré là où il le choisit, puis

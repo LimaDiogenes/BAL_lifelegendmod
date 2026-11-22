@@ -2846,4 +2846,11 @@ window.LL_I18N.de = {
   "Ce dossier du jeu n’existe pas.": "Dieser Spielordner existiert nicht.",
   "Windows ne peut pas chiffrer ta clé sur ce PC : elle est gardée en mémoire pour cette session seulement, jamais écrite en clair. Tu devras la coller à nouveau au prochain lancement.": "Windows kann deinen Schlüssel auf diesem PC nicht verschlüsseln: Er bleibt nur für diese Sitzung im Speicher und wird nie im Klartext gespeichert. Beim nächsten Start musst du ihn erneut einfügen.",
   "La dictée envoie ton enregistrement audio au fournisseur d’IA choisi pour le transcrire. Ta voix ne peut pas être masquée par le bouclier de confidentialité (seuls les noms le sont). Continuer ?": "Das Diktat sendet deine Audioaufnahme zur Transkription an den gewählten KI-Anbieter. Deine Stimme kann der Datenschutzschild nicht maskieren (nur Namen). Fortfahren?",
+  "Logos des sponsors": "Sponsorenlogos",
+  "Télécharger les logos des sponsors": "Sponsorenlogos herunterladen",
+  "Les logos des marques sont un pack à part, téléchargé depuis la page GitHub de LifeLegend. Ce sont des marques de leurs propriétaires ; sans le pack, LifeLegend affiche des monogrammes.": "Die Markenlogos sind ein eigenes Paket, das von der GitHub-Seite von LifeLegend geladen wird. Sie sind Marken ihrer Inhaber; ohne das Paket zeigt LifeLegend Monogramme.",
+  "{n} logos installés.": "{n} Logos installiert.",
+  "Téléchargement… {p} %": "Wird geladen… {p} %",
+  "Téléchargement…": "Wird geladen…",
+  "Logos des sponsors installés.": "Sponsorenlogos installiert.",
 };

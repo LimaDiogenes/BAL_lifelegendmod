@@ -2846,4 +2846,11 @@ window.LL_I18N.pt = {
   "Ce dossier du jeu n’existe pas.": "Esta pasta do jogo não existe.",
   "Windows ne peut pas chiffrer ta clé sur ce PC : elle est gardée en mémoire pour cette session seulement, jamais écrite en clair. Tu devras la coller à nouveau au prochain lancement.": "O Windows não consegue cifrar sua chave neste PC: ela fica na memória só durante esta sessão, nunca é gravada em texto puro. Você vai precisar colá-la de novo na próxima vez que abrir o app.",
   "La dictée envoie ton enregistrement audio au fournisseur d’IA choisi pour le transcrire. Ta voix ne peut pas être masquée par le bouclier de confidentialité (seuls les noms le sont). Continuer ?": "O ditado envia sua gravação de áudio ao provedor de IA escolhido para transcrevê-la. Sua voz não pode ser mascarada pelo Escudo de Privacidade (só os nomes são). Continuar?",
+  "Logos des sponsors": "Logos dos patrocinadores",
+  "Télécharger les logos des sponsors": "Baixar os logos dos patrocinadores",
+  "Les logos des marques sont un pack à part, téléchargé depuis la page GitHub de LifeLegend. Ce sont des marques de leurs propriétaires ; sans le pack, LifeLegend affiche des monogrammes.": "Os logos das marcas são um pacote à parte, baixado da página do LifeLegend no GitHub. São marcas de seus donos; sem o pacote, o LifeLegend mostra monogramas.",
+  "{n} logos installés.": "{n} logos instalados.",
+  "Téléchargement… {p} %": "Baixando… {p} %",
+  "Téléchargement…": "Baixando…",
+  "Logos des sponsors installés.": "Logos dos patrocinadores instalados.",
 };

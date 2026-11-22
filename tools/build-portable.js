@@ -40,8 +40,10 @@ const exeIcons = readIco(path.join(ROOT, 'assets', 'icon.ico')).filter((i) => [1
 setExeIcon(path.join(OUT, 'LifeLegend.exe'), exeIcons);
 
 // 2. L'app : seulement ce qui sert à l'exécution (pas les tests ni les outils).
+// Les logos des sponsors n'y sont pas : ils forment un pack à part, téléchargé depuis les Réglages (2.0, voir l'étape 6).
+const SPONSORS = path.join(SRC, 'lifelegend', 'media', 'sponsors');
 for (const item of ['main.js', 'preload.js', 'lifelegend', 'src', 'assets', 'LICENSE', 'THIRD-PARTY-NOTICES.txt']) {
-  fs.cpSync(path.join(SRC, item), path.join(APP, item), { recursive: true });
+  fs.cpSync(path.join(SRC, item), path.join(APP, item), { recursive: true, filter: (from) => from !== SPONSORS && !from.startsWith(SPONSORS + path.sep) });
 }
 const runtimePkg = { name: pkg.name, productName: pkg.productName, version: pkg.version, description: pkg.description, main: pkg.main, license: pkg.license, dependencies: pkg.dependencies };
 fs.writeFileSync(path.join(APP, 'package.json'), `${JSON.stringify(runtimePkg, null, 2)}\n`);
@@ -69,4 +71,26 @@ if (process.argv.includes('--zip')) {
   fs.rmSync(zip, { force: true });
   execFileSync('powershell.exe', ['-NoProfile', '-Command', `Compress-Archive -Path '${OUT}' -DestinationPath '${zip}' -CompressionLevel Optimal`], { stdio: 'inherit' });
   console.log(`${zip} (${(fs.statSync(zip).size / 1048576).toFixed(0)} Mo)`);
+}
+
+// 6. Pack des logos des sponsors (téléchargé à part depuis les Réglages) : rien de KONAMI (logo eFootball / PES exclus).
+{
+  const NOT_SHIPPED = /^(konami|efootball|pes[-_]?\d*|winning[-_]?eleven)/i;
+  const stage = path.join(DIST, `logos-${pkg.version}`);
+  const zip = path.join(DIST, `LifeLegend-sponsor-logos-${pkg.version}.zip`);
+  if (!stage.startsWith(DIST + path.sep)) throw new Error(`dossier inattendu : ${stage}`);
+  fs.rmSync(stage, { recursive: true, force: true });
+  fs.mkdirSync(stage, { recursive: true });
+  let n = 0;
+  for (const f of fs.readdirSync(SPONSORS)) {
+    if (NOT_SHIPPED.test(f) || !/\.(svg|png|jpe?g|webp|json)$/i.test(f)) continue;
+    fs.copyFileSync(path.join(SPONSORS, f), path.join(stage, f));
+    if (!f.endsWith('.json')) n++;
+  }
+  fs.rmSync(zip, { force: true });
+  execFileSync('powershell.exe', ['-NoProfile', '-Command', `Compress-Archive -Path '${path.join(stage, '*')}' -DestinationPath '${zip}' -CompressionLevel Optimal`], { stdio: 'inherit' });
+  fs.rmSync(stage, { recursive: true, force: true });
+  const sha = require('crypto').createHash('sha256').update(fs.readFileSync(zip)).digest('hex');
+  console.log(`${zip} : ${n} logos
+SHA-256 ${sha}  (à mettre dans LOGO_PACK_SHA256, src/logoPack.js, puis téléverser le .zip dans la release)`);
 }
