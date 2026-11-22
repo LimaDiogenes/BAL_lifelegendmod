@@ -11549,8 +11549,10 @@ const RG_TABS = [
 ];
 // L'onglet de chaque section qu'ouvrent les autres pages (« Réglages de l'IA », « Ajouter ma clé… »).
 const RG_SECTION_TAB = { 'rg-save': 'save', 'rg-key': 'save', 'rg-names': 'save', 'rg-reset': 'save', 'rg-ai': 'ai', 'rg-lang': 'look', 'rg-theme': 'look', 'rg-tone': 'world', 'rg-sponsormode': 'world', 'rg-eventmode': 'world', 'rg-calmode': 'world', 'rg-replays': 'world', 'rg-about': 'about', 'rg-credits': 'about', 'rg-update': 'about' };
-const rgRow = (id, label, control, note = '') => `<div class="rg-row"${id ? ` id="${id}"` : ''}><div class="rg-label"><h3>${label}</h3>${note ? `<p>${note}</p>` : ''}</div><div class="rg-ctl">${control}</div></div>`;
-const rgSwitch = (id, on, label, note = '') => `<label class="rg-switch"><input type="checkbox" id="${id}"${on ? ' checked' : ''}><span class="rg-switch-text"><b>${label}</b>${note ? `<small>${note}</small>` : ''}</span></label>`;
+// Réglages compacts (2.0) : des cartes sur deux colonnes, les explications derrière un petit « i ».
+const rgInfo = (note) => (note ? `<details class="rg-info"><summary title="${tr('Plus d’infos')}" aria-label="${tr('Plus d’infos')}">i</summary><p>${note}</p></details>` : '');
+const rgRow = (id, label, control, note = '') => `<div class="rg-row"${id ? ` id="${id}"` : ''}><div class="rg-label"><h3>${label}</h3>${rgInfo(note)}</div><div class="rg-ctl">${control}</div></div>`;
+const rgSwitch = (id, on, label, note = '') => `<div class="rg-switch-wrap"><label class="rg-switch"><input type="checkbox" id="${id}"${on ? ' checked' : ''}><span class="rg-switch-text"><b>${label}</b></span></label>${rgInfo(note)}</div>`;
 // Miniature d'un thème : le cadre de LifeLegend (rail, barre, blocs), clair ou sombre ; Automatique est coupé en diagonale.
 // Les couleurs d'une miniature passent par data-ma (posées ensuite par rgPaintMinis : pas de style écrit dans le HTML).
 const rgApp = (tone, half = false, c = null) => `<span class="rg-app rg-app--${tone}${half ? ' rg-app--half' : ''}"${c ? ` data-ma="${c.frame},${c.page},${c.accent}"` : ''}><i></i><span><b></b><em></em><em></em></span></span>`;
@@ -11940,7 +11942,7 @@ async function renderSettings(page) {
   const npVal = npOv.mode === 'preset' && npOv.presetId ? `preset:${npOv.presetId}` : npOv.mode === 'custom' ? 'custom' : 'auto';
   const sponsorMode = settings.sponsorMode || 'realistic';
   const eventMode = settings.eventMode || 'realistic';
-  const panel = (id, rows) => { const [, label, note] = RG_TABS.find(([x]) => x === id); return `<section class="rg-panel" data-rgpanel="${id}"${id === tab ? '' : ' hidden'}><div class="rg-panel-head"><h2>${tr(label)}</h2>${note ? `<p>${tr(note)}</p>` : ''}</div>${rows.join('')}</section>`; };
+  const panel = (id, rows) => { const [, label, note] = RG_TABS.find(([x]) => x === id); return `<section class="rg-panel" data-rgpanel="${id}"${id === tab ? '' : ' hidden'}><div class="rg-panel-head"><h2>${tr(label)}</h2>${note ? `<p>${tr(note)}</p>` : ''}</div><div class="rg-grid">${rows.join('')}</div></section>`; };
   page.innerHTML = `
     <div class="rg">${state ? '' : welcomeHtml(true)}
     <header class="rg-head"><h1>${tr('Réglages')}</h1></header>

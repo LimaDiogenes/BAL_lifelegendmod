@@ -2854,4 +2854,5 @@ window.LL_I18N.it = {
   "Téléchargement…": "Download…",
   "Logos des sponsors installés.": "Loghi degli sponsor installati.",
   "Événements du jour affichés.": "Eventi del giorno mostrati.",
+  "Plus d’infos": "Più informazioni",
 };

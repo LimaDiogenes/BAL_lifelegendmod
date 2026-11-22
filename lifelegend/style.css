@@ -4683,4 +4683,19 @@ html, body { height: 100%; overflow: hidden; background: var(--sh-back); }
 .gz-brief-item h4 { margin: 0; font-size: 13px; font-weight: 700; color: var(--ink); }
 .gz-brief-item p { margin: 0; font-size: 12px; line-height: 1.4; color: var(--ink-2); }
 
-
+/* Réglages compacts (2.0) : cartes sur deux colonnes quand la place le permet, explications derrière « i ». */
+.rg-panel-head { padding: 16px 0 12px; }
+.rg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); gap: 12px; padding-top: 12px; align-items: start; }
+.rg-grid .rg-row { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; border-bottom: 1px solid var(--line); }
+.rg-grid #rg-save, .rg-grid #rg-colors, .rg-grid #rg-theme, .rg-grid #rg-ai { grid-column: 1 / -1; }
+.rg-grid .rg-ctl { max-width: none; }
+.rg-label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.rg-label h3 { flex: 0 1 auto; }
+.rg-info { display: contents; }
+.rg-info summary { display: inline-grid; place-items: center; width: 18px; height: 18px; border: 1px solid var(--line-2); border-radius: 50%; color: var(--ink-3); font-size: 11px; font-style: italic; font-weight: 700; line-height: 1; cursor: pointer; list-style: none; user-select: none; }
+.rg-info summary::-webkit-details-marker { display: none; }
+.rg-info summary:hover, .rg-info[open] summary { color: var(--ink); border-color: var(--gold); }
+.rg-info p { flex-basis: 100%; margin: 0; color: var(--ink-3); font-size: 13px; line-height: 1.5; }
+.rg-switch-wrap { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; margin: 0 0 10px; }
+.rg-switch-wrap:last-child { margin-bottom: 0; }
+.rg .settings .rg-switch-wrap .rg-switch { margin: 0; }
