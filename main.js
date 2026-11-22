@@ -18,6 +18,7 @@ const { detectGameFolders, isGameDir } = require('./src/save/gameDb');
 const { defaultClipsDir } = require('./src/world/media');
 const world = require('./src/world/world');
 const { buildReport } = require('./src/report');
+const { externalUrl, samePage } = require('./src/links');
 const { playerFaces } = require('./src/world/playerFaces');
 const { dominantColors } = require('./src/world/clubColors');
 
@@ -46,12 +47,17 @@ function createWindow() {
   });
   win.loadFile(path.join(__dirname, 'lifelegend', 'index.html'));
   // Les liens s'ouvrent dans le vrai navigateur, jamais dans l'appli.
+  // Seulement https:// et mailto: (src/links.js) ; tout le reste est bloqué.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:/.test(url)) shell.openExternal(url);
+    const ext = externalUrl(url);
+    if (ext) shell.openExternal(ext);
     return { action: 'deny' };
   });
   win.webContents.on('will-navigate', (e, url) => {
-    if (!url.startsWith('file:')) { e.preventDefault(); shell.openExternal(url); }
+    if (samePage(url, win.webContents.getURL())) return;
+    e.preventDefault();
+    const ext = externalUrl(url);
+    if (ext) shell.openExternal(ext);
   });
 }
 
