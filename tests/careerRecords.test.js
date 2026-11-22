@@ -16,11 +16,14 @@ const { tribunePlan } = require('../src/world/tribunePlan');
 const world = require('../src/world/world');
 
 const RESEARCH_SAVE = path.join(__dirname, 'fixtures', 'research_BL00000003');
-const FL_KEY = path.join(process.env.APPDATA || '', 'LiveTweet', 'data', 'keys', 'cle-c01c15e42400.bin');
+// Real-save test, opt-in only: a normal run never looks into the user's app data.
+// Set LL_REAL_SAVE_TESTS=1 and LL_FL_KEY=<path to the FL27 save key> to run it.
+const REAL = process.env.LL_REAL_SAVE_TESTS === '1';
+const FL_KEY = REAL ? (process.env.LL_FL_KEY || '') : '';
 
 describe('Full career records, club aliases, life events, and key memory', () => {
   it('reads Club Records + International Records + Combined Totals from research_BL00000003', {
-    skip: !(fs.existsSync(RESEARCH_SAVE) && fs.existsSync(FL_KEY)) && 'research_BL00000003 or key absent',
+    skip: !(REAL && FL_KEY && fs.existsSync(RESEARCH_SAVE) && fs.existsSync(FL_KEY)) && 'real-save test (set LL_REAL_SAVE_TESTS=1 and LL_FL_KEY)',
   }, () => {
     setSaveKeys([fs.readFileSync(FL_KEY)]);
     const career = readCareer(RESEARCH_SAVE);
