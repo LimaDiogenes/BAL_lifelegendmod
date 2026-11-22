@@ -2861,4 +2861,13 @@ window.LL_I18N.de = {
   "Les événements de vie (anniversaires, sorties, galas, décisions) n’apparaissent dans le calendrier qu’une fois ta vie hors terrain configurée dans Ma vie.": "Lebensereignisse (Geburtstage, Ausflüge, Galas, Entscheidungen) erscheinen erst im Kalender, wenn dein Leben abseits des Platzes in Mein Leben eingerichtet ist.",
   "Configurer Ma vie": "Mein Leben einrichten",
   "Cette étape débloque ta vie hors terrain : les événements, les décisions et les anniversaires du calendrier complet.": "Dieser Schritt schaltet dein Leben abseits des Platzes frei: Ereignisse, Entscheidungen und Geburtstage im vollständigen Kalender.",
+  "Ça s’est retourné contre toi : la presse et les supporters vont en parler.": "Das ging nach hinten los: Presse und Fans werden darüber reden.",
+  "Risqué": "Riskant",
+  "Présenter des excuses": "Sich entschuldigen",
+  "En rire sur les réseaux": "Online darüber lachen",
+  "Ne rien dire": "Nichts sagen",
+  "Préciser sa pensée": "Klarstellen, was gemeint war",
+  "Assumer et en remettre une couche": "Dazu stehen und nachlegen",
+  "Des photos de ta soirée circulent": "Fotos von deiner Party machen die Runde",
+  "Une de tes phrases fait le buzz": "Ein Satz von dir geht viral",
 };

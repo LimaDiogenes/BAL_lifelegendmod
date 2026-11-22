@@ -571,3 +571,32 @@ test('Agent two-way sync via world.updateAgent, global sponsors catalog (250+), 
   updateSponsor(updated, { id: lifeSp.id, brand: 'Mercedes-Benz', categories: ['automotive'] }, { gameDate: '2027-09-16', newId: () => 'merc_car_1' });
   assert.ok(hub.assets.some((a) => a.giftedBy === 'Mercedes-Benz' && a.price === 0));
 });
+
+test('décisions 2.0 : un choix risqué peut se retourner (tirage stable) et revenir en suite ; les choix « sages » jamais', () => {
+  const mk = () => ({
+    careerId: 'risk-test',
+    snapshot: { gameDate: '2026-09-10', player: { name: 'Test' } },
+    calendar: { simDate: '2026-09-10', systemEvents: [], resolvedDecisionIds: [], pendingDecisions: [] },
+  });
+  const decision = (choice) => ({ id: 'dec_sys_x1', kind: 'system_event', eventKey: 'club_media_day', date: '2026-09-10', title: 'club_media_day', choices: [choice] });
+  // risque certain : pénalité, souvenir « backfire » et une suite programmée 2 à 4 jours plus tard
+  const a = mk();
+  a.calendar.pendingDecisions.push(decision({ id: 'go_all_in', cost: 0, effects: { media: 5 }, memory: 'went big', risk: { chance: 1, effects: { media: -4 }, memory: 'went viral badly', followUp: 'fu_viral_quote' } }));
+  const ra = resolveCalendarDecision(a, 'dec_sys_x1', 'go_all_in', '2026-09-10', { language: 'en' });
+  assert.ok(ra.backfire);
+  assert.strictEqual(a.lastDecisionOutcome.backfire, true);
+  assert.ok(a.lifeHub.recentEvents.some((e) => e.kind === 'backfire'));
+  const fu = a.calendar.systemEvents.find((e) => e.eventKey === 'fu_viral_quote');
+  assert.ok(fu && fu.date >= '2026-09-12' && fu.date <= '2026-09-14');
+  const fuDecs = collectDueDecisions(a, a.snapshot, fu.date, { eventMode: 'realistic' });
+  assert.ok(fuDecs.some((d) => d.kind === 'follow_up' && d.choices.some((c) => c.id === 'fu_stay_silent' && !c.risk)));
+  // sans risque : jamais de retour de bâton
+  const b = mk();
+  b.calendar.pendingDecisions.push(decision({ id: 'skip_focus', cost: 0, effects: { manager: 3 }, memory: 'focused' }));
+  assert.strictEqual(resolveCalendarDecision(b, 'dec_sys_x1', 'skip_focus', '2026-09-10', { language: 'en' }).backfire, null);
+  // le tirage ne dépend que de la décision : même issue à chaque fois
+  const c1 = mk(); const c2 = mk();
+  const half = { id: 'go_all_in', cost: 0, effects: {}, memory: 'm', risk: { chance: 0.5, effects: {}, memory: 'r' } };
+  c1.calendar.pendingDecisions.push(decision({ ...half })); c2.calendar.pendingDecisions.push(decision({ ...half }));
+  assert.strictEqual(Boolean(resolveCalendarDecision(c1, 'dec_sys_x1', 'go_all_in').backfire), Boolean(resolveCalendarDecision(c2, 'dec_sys_x1', 'go_all_in').backfire));
+});

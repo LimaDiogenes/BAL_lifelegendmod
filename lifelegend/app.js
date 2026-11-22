@@ -9184,6 +9184,8 @@ const ML_ONETIME_DEAL_LABELS = {
 };
 
 const ML_SYSEV_LABELS = {
+  fu_party_photos: () => tr('Des photos de ta soirée circulent'),
+  fu_viral_quote: () => tr('Une de tes phrases fait le buzz'),
   club_media_day: () => tr('Journée médias officielle du club'),
   squad_team_dinner: () => tr('Dîner de cohésion du vestiaire'),
   youth_charity_clinic: () => tr('Stage caritatif avec les jeunes'),
@@ -9192,6 +9194,11 @@ const ML_SYSEV_LABELS = {
 };
 
 const ML_DECISION_CHOICE_LABELS = {
+  fu_apologise: () => tr('Présenter des excuses'),
+  fu_laugh_off: () => tr('En rire sur les réseaux'),
+  fu_stay_silent: () => tr('Ne rien dire'),
+  fu_clarify: () => tr('Préciser sa pensée'),
+  fu_double_down: () => tr('Assumer et en remettre une couche'),
   party_squad: () => tr('Fêter avec le groupe et les proches'),
   family_quiet: () => tr('Soirée calme en famille & récupération'),
   fans_charity: () => tr('Action caritative avec les jeunes'),
@@ -10096,6 +10103,7 @@ function mlDecisionChoiceTags(ch) {
   }
   if (ch?.saveEffects?.formArrowDelta) tags.push(tr('Forme {d}', { d: `${ch.saveEffects.formArrowDelta > 0 ? '+' : ''}${ch.saveEffects.formArrowDelta}` }));
   if (ch?.saveEffects?.affectionDelta) tags.push(tr('Affection {d}', { d: `${ch.saveEffects.affectionDelta > 0 ? '+' : ''}${ch.saveEffects.affectionDelta}` }));
+  if (ch?.risk) tags.push(tr('Risqué'));
   return tags;
 }
 
@@ -11397,6 +11405,7 @@ function renderMyLife(page) {
     b.onclick = async () => {
       try {
         await runAndOpenScene(() => live.resolveCalendarDecision(b.dataset.caldec, b.dataset.calchoice), tr('Décision enregistrée.'));
+        if (state?.lastDecisionOutcome?.decisionId === b.dataset.caldec && state.lastDecisionOutcome.backfire) toast(tr('Ça s’est retourné contre toi : la presse et les supporters vont en parler.'), true);
       } catch (err) { toast(err.message, true); }
     };
   });

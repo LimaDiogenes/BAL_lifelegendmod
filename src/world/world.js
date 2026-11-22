@@ -4085,6 +4085,7 @@ const resolveLifeCalendarDecision = ({ store, decisionId, choiceId }) => withCar
   const lang = langOfStore(store);
   const res = resolveCalendarDecision(state, decisionId, choiceId, state.snapshot?.gameDate || '', { language: lang, newId });
   if (res.memoryLine) noteKeyMemory(state, res.memoryLine, state.snapshot?.gameDate || '');
+  if (res.backfire?.text) noteKeyMemory(state, res.backfire.text, state.snapshot?.gameDate || '');
 });
 
 const flipCalendarBirthdayShift = ({ store, bdayKey }) => withCareer(store, (state) => {

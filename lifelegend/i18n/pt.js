@@ -2861,4 +2861,13 @@ window.LL_I18N.pt = {
   "Les événements de vie (anniversaires, sorties, galas, décisions) n’apparaissent dans le calendrier qu’une fois ta vie hors terrain configurée dans Ma vie.": "Os eventos de vida (aniversários, saídas, galas, decisões) só aparecem no calendário depois que sua vida fora de campo for configurada em Minha vida.",
   "Configurer Ma vie": "Configurar Minha vida",
   "Cette étape débloque ta vie hors terrain : les événements, les décisions et les anniversaires du calendrier complet.": "Esta etapa libera sua vida fora de campo: os eventos, decisões e aniversários do calendário completo.",
+  "Ça s’est retourné contre toi : la presse et les supporters vont en parler.": "Saiu pela culatra: a imprensa e os torcedores vão falar disso.",
+  "Risqué": "Arriscado",
+  "Présenter des excuses": "Pedir desculpas",
+  "En rire sur les réseaux": "Levar na brincadeira nas redes",
+  "Ne rien dire": "Não dizer nada",
+  "Préciser sa pensée": "Esclarecer o que quis dizer",
+  "Assumer et en remettre une couche": "Assumir e reforçar",
+  "Des photos de ta soirée circulent": "Fotos da sua festa estão circulando",
+  "Une de tes phrases fait le buzz": "Uma frase sua viralizou",
 };

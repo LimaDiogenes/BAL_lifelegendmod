@@ -2861,4 +2861,13 @@ window.LL_I18N.en = {
   "Les événements de vie (anniversaires, sorties, galas, décisions) n’apparaissent dans le calendrier qu’une fois ta vie hors terrain configurée dans Ma vie.": "Life events (birthdays, outings, galas, decisions) only appear in the calendar once your off-pitch life is set up in My Life.",
   "Configurer Ma vie": "Set up My Life",
   "Cette étape débloque ta vie hors terrain : les événements, les décisions et les anniversaires du calendrier complet.": "This step unlocks your off-pitch life: the events, decisions and birthdays of the full calendar.",
+  "Ça s’est retourné contre toi : la presse et les supporters vont en parler.": "It backfired: the press and the fans will talk about it.",
+  "Risqué": "Risky",
+  "Présenter des excuses": "Apologise",
+  "En rire sur les réseaux": "Laugh it off online",
+  "Ne rien dire": "Say nothing",
+  "Préciser sa pensée": "Clarify what you meant",
+  "Assumer et en remettre une couche": "Own it and double down",
+  "Des photos de ta soirée circulent": "Photos from your party are going around",
+  "Une de tes phrases fait le buzz": "Something you said has gone viral",
 };

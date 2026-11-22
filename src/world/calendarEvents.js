@@ -326,7 +326,8 @@ function decisionForBirthday(b, newId) {
     return {
       ...base,
       choices: [
-        { id: 'party_squad', cost: 4000, effects: { squad: 5, media: 3, manager: -1 }, followerDelta: 0.01, memory: `Hosted a squad & close-circle birthday dinner`, reqType: 'self_party' },
+        { id: 'party_squad', cost: 4000, effects: { squad: 5, media: 3, manager: -1 }, followerDelta: 0.01, memory: `Hosted a squad & close-circle birthday dinner`, reqType: 'self_party',
+          risk: { chance: 0.25, effects: { manager: -3, media: -3 }, memory: `Photos from his birthday party leaked online: a late night just before training`, followUp: 'fu_party_photos' } },
         { id: 'family_quiet', cost: 800, effects: { squad: 2, manager: 3, fans: 2 }, saveEffects: { formArrowDelta: 1 }, memory: `Celebrated his birthday quietly with family & focused on recovery`, reqType: 'self_quiet' },
         { id: 'fans_charity', cost: 5000, effects: { fans: 7, media: 5, sponsors: 3 }, followerDelta: 0.02, memory: `Celebrated his birthday by hosting a youth foundation initiative`, reqType: 'self_charity' },
       ],
@@ -337,7 +338,8 @@ function decisionForBirthday(b, newId) {
     return {
       ...base,
       choices: [
-        { id: 'attend_party', cost: 2000, effects: { squad: b.closeness === 'close_teammate' ? 6 : 3, fans: 2, media: 2, manager: -1 }, memory: `Attended ${b.name}'s birthday celebration`, reqType: 'close_party' },
+        { id: 'attend_party', cost: 2000, effects: { squad: b.closeness === 'close_teammate' ? 6 : 3, fans: 2, media: 2, manager: -1 }, memory: `Attended ${b.name}'s birthday celebration`, reqType: 'close_party',
+          risk: { chance: 0.15, effects: { manager: -2 }, memory: `Stayed out far too late at ${b.name}'s party and looked tired at training` } },
         { id: 'dinner_gift', cost: 1200, effects: { squad: 4, manager: 2 }, saveEffects: { affectionDelta: 1 }, memory: `Shared a quiet birthday dinner & thoughtful gift with ${b.name}`, reqType: 'close_dinner' },
         { id: 'call_deliver', cost: 400, effects: { squad: 2, manager: 2 }, memory: `Sent a heartfelt birthday gift & video call to ${b.name}`, reqType: 'close_call' },
       ],
@@ -381,7 +383,9 @@ function collectDueDecisions(state, snapshot, targetDate, { eventMode = 'realist
     const id = `dec_sys_${sys.id}`;
     if (resolved.has(id) || existing.has(id)) continue;
     let dec;
-    if (sys.eventKey === 'match_eve') {
+    if (FOLLOW_UPS[sys.eventKey]) {
+      dec = { id, kind: 'follow_up', eventKey: sys.eventKey, category: 'media', date: sys.date, title: sys.title, choices: FOLLOW_UPS[sys.eventKey](sys.title) };
+    } else if (sys.eventKey === 'match_eve') {
       dec = {
         id,
         kind: 'match_eve',
@@ -404,7 +408,8 @@ function collectDueDecisions(state, snapshot, targetDate, { eventMode = 'realist
         date: sys.date,
         title: sys.title,
         choices: [
-          { id: 'go_all_in', cost: sys.eventKey === 'vip_charity_gala' ? 6000 : sys.eventKey === 'squad_team_dinner' ? 2500 : 0, effects: { fans: 5, media: 5, squad: 2, manager: -1 }, followerDelta: 0.012, memory: `Made a strong impression at ${sys.eventKey.replace(/_/g, ' ')}` },
+          { id: 'go_all_in', cost: sys.eventKey === 'vip_charity_gala' ? 6000 : sys.eventKey === 'squad_team_dinner' ? 2500 : 0, effects: { fans: 5, media: 5, squad: 2, manager: -1 }, followerDelta: 0.012, memory: `Made a strong impression at ${sys.eventKey.replace(/_/g, ' ')}`,
+            risk: { chance: 0.22, effects: { media: -4, manager: -2 }, memory: `An offhand remark he made at ${sys.eventKey.replace(/_/g, ' ')} went viral for the wrong reasons`, followUp: 'fu_viral_quote' } },
           { id: 'keep_balanced', cost: 0, effects: { media: 2, sponsors: 2, manager: 1 }, memory: `Attended ${sys.eventKey.replace(/_/g, ' ')} briefly and stayed focused on training` },
           { id: 'skip_focus', cost: 0, effects: { manager: 3, media: -2 }, saveEffects: { affectionDelta: 1 }, memory: `Skipped ${sys.eventKey.replace(/_/g, ' ')} to focus exclusively on pitch preparation` },
         ],
@@ -464,6 +469,35 @@ function collectDueDecisions(state, snapshot, targetDate, { eventMode = 'realist
   return added;
 }
 
+// Conséquences qui reviennent quelques jours plus tard (2.0) : une nouvelle décision. Se taire n'est jamais puni.
+const FOLLOW_UPS = {
+  fu_party_photos: () => [
+    { id: 'fu_apologise', cost: 0, effects: { manager: 3, media: 1, fans: -1 }, memory: 'Apologised to the club and the fans for the late-night party photos' },
+    { id: 'fu_laugh_off', cost: 0, effects: { fans: 3, media: -1 }, memory: 'Laughed off the party photos on social media',
+      risk: { chance: 0.3, effects: { manager: -2 }, memory: 'The coach did not find the joke about the party photos funny' } },
+    { id: 'fu_stay_silent', cost: 0, effects: {}, memory: 'Said nothing and let the party-photo story die down' },
+  ],
+  fu_viral_quote: () => [
+    { id: 'fu_clarify', cost: 0, effects: { media: 3, manager: 1 }, memory: 'Clarified his viral remark in a short statement' },
+    { id: 'fu_double_down', cost: 0, effects: { fans: 4, media: 2 }, followerDelta: 0.01, memory: 'Doubled down on his viral remark',
+      risk: { chance: 0.35, effects: { media: -4, sponsors: -3 }, memory: 'Doubling down on the viral remark worried his sponsors' } },
+    { id: 'fu_stay_silent', cost: 0, effects: {}, memory: 'Ignored the viral remark until the next story came along' },
+  ],
+};
+
+// Tirage stable (même décision, même choix : même issue, même après un rechargement).
+function riskRoll(key) {
+  let h = 2166136261;
+  for (const c of String(key)) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
+  return (h % 10000) / 10000;
+}
+
+function applyMeters(hub, effects) {
+  for (const [k, delta] of Object.entries(effects || {})) {
+    if (hub.meters[k] !== undefined && delta) hub.meters[k] = Math.max(0, Math.min(100, Math.round((hub.meters[k] ?? 50) + delta)));
+  }
+}
+
 function resolveCalendarDecision(state, decisionId, choiceId, gameDate = '', { language = 'en', newId = () => `res_${Date.now()}` } = {}) {
   const cal = state?.calendar;
   if (!cal || !Array.isArray(cal.pendingDecisions)) throw new Error('Décision introuvable.');
@@ -494,6 +528,22 @@ function resolveCalendarDecision(state, decisionId, choiceId, gameDate = '', { l
   if (choice.followerDelta && state.profile) {
     state.profile.followers = Math.max(100, Math.round((state.profile.followers || 4200) * (1 + choice.followerDelta)));
   }
+  // choix risqué : parfois, ça se retourne contre lui (pénalité, souvenir que la presse et les supporters reprennent,
+  // et parfois une suite quelques jours plus tard)
+  let backfire = null;
+  if (choice.risk && riskRoll(`${decisionId}|${choiceId}|${state.careerId || ''}`) < (choice.risk.chance || 0)) {
+    applyMeters(hub, choice.risk.effects);
+    backfire = { text: choice.risk.memory, followUp: choice.risk.followUp || null };
+    hub.recentEvents ||= [];
+    hub.recentEvents.unshift({ date: today, kind: 'backfire', text: choice.risk.memory });
+    if (choice.risk.followUp && FOLLOW_UPS[choice.risk.followUp]) {
+      cal.systemEvents ||= [];
+      const d = new Date(`${(today || '2026-08-01').slice(0, 10)}T12:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + 2 + Math.floor(riskRoll(`${decisionId}|days`) * 3));
+      cal.systemEvents.push({ id: newId(), eventKey: choice.risk.followUp, date: d.toISOString().slice(0, 10), category: 'media', title: dec.title || dec.personName || '', systemGenerated: true, origin: decisionId });
+    }
+  }
+  state.lastDecisionOutcome = backfire ? { decisionId, backfire: true, text: backfire.text } : { decisionId, backfire: false };
   if (choice.saveEffects) {
     const p = (hub.pendingSaveEffects ||= { affectionDelta: 0, formArrowDelta: 0, reasons: [] });
     if (choice.saveEffects.affectionDelta) p.affectionDelta = Math.max(-8, Math.min(8, (p.affectionDelta || 0) + choice.saveEffects.affectionDelta));
@@ -567,7 +617,7 @@ function resolveCalendarDecision(state, decisionId, choiceId, gameDate = '', { l
     } catch { /* ignore */ }
   }
 
-  return { decision: dec, choice, memoryLine: choice.memory };
+  return { decision: dec, choice, memoryLine: choice.memory, backfire };
 }
 
 function scheduleOffPitchActivity(state, { date, activityId, title = '', companion = '' } = {}, newId = () => `ev_${Date.now()}`) {

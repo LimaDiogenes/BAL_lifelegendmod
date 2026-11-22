@@ -2861,4 +2861,13 @@ window.LL_I18N.it = {
   "Les événements de vie (anniversaires, sorties, galas, décisions) n’apparaissent dans le calendrier qu’une fois ta vie hors terrain configurée dans Ma vie.": "Gli eventi di vita (compleanni, uscite, gala, decisioni) compaiono nel calendario solo dopo aver configurato la tua vita fuori dal campo in La mia vita.",
   "Configurer Ma vie": "Configura La mia vita",
   "Cette étape débloque ta vie hors terrain : les événements, les décisions et les anniversaires du calendrier complet.": "Questo passaggio sblocca la tua vita fuori dal campo: gli eventi, le decisioni e i compleanni del calendario completo.",
+  "Ça s’est retourné contre toi : la presse et les supporters vont en parler.": "Si è ritorto contro di te: stampa e tifosi ne parleranno.",
+  "Risqué": "Rischioso",
+  "Présenter des excuses": "Chiedere scusa",
+  "En rire sur les réseaux": "Riderci su sui social",
+  "Ne rien dire": "Non dire nulla",
+  "Préciser sa pensée": "Chiarire cosa intendevi",
+  "Assumer et en remettre une couche": "Rivendicarlo e rilanciare",
+  "Des photos de ta soirée circulent": "Girano foto della tua festa",
+  "Une de tes phrases fait le buzz": "Una tua frase è diventata virale",
 };
