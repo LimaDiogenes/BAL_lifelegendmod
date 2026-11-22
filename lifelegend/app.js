@@ -3477,8 +3477,18 @@ function stopDictation(cancel = false) {
   dictation.stream.getTracks().forEach((t) => t.stop());
   paintMic();
 }
+// Une seule fois : la voix part chez le fournisseur d'IA et ne peut pas être masquée (revue 2026-11-22).
+const DICTATION_NOTICE_KEY = 'll.dictationNoticeAccepted';
+function dictationAccepted() {
+  try { if (localStorage.getItem(DICTATION_NOTICE_KEY) === '1') return true; } catch { /* stockage indisponible : on redemande */ }
+  if (!window.confirm(tr('La dictée envoie ton enregistrement audio au fournisseur d’IA choisi pour le transcrire. Ta voix ne peut pas être masquée par le bouclier de confidentialité (seuls les noms le sont). Continuer ?'))) return false;
+  try { localStorage.setItem(DICTATION_NOTICE_KEY, '1'); } catch { /* rien à mémoriser */ }
+  return true;
+}
+
 async function startDictation(index, onText, onDone) {
   if (dictation) return;
+  if (!dictationAccepted()) return;
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });

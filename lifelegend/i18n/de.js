@@ -2845,4 +2845,5 @@ window.LL_I18N.de = {
   "Ce fichier n’est pas une sauvegarde Become a Legend (BL0000000x).": "Diese Datei ist kein Become-a-Legend-Spielstand (BL0000000x).",
   "Ce dossier du jeu n’existe pas.": "Dieser Spielordner existiert nicht.",
   "Windows ne peut pas chiffrer ta clé sur ce PC : elle est gardée en mémoire pour cette session seulement, jamais écrite en clair. Tu devras la coller à nouveau au prochain lancement.": "Windows kann deinen Schlüssel auf diesem PC nicht verschlüsseln: Er bleibt nur für diese Sitzung im Speicher und wird nie im Klartext gespeichert. Beim nächsten Start musst du ihn erneut einfügen.",
+  "La dictée envoie ton enregistrement audio au fournisseur d’IA choisi pour le transcrire. Ta voix ne peut pas être masquée par le bouclier de confidentialité (seuls les noms le sont). Continuer ?": "Das Diktat sendet deine Audioaufnahme zur Transkription an den gewählten KI-Anbieter. Deine Stimme kann der Datenschutzschild nicht maskieren (nur Namen). Fortfahren?",
 };

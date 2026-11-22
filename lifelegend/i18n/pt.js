@@ -2845,4 +2845,5 @@ window.LL_I18N.pt = {
   "Ce fichier n’est pas une sauvegarde Become a Legend (BL0000000x).": "Este arquivo não é um save do Become a Legend (BL0000000x).",
   "Ce dossier du jeu n’existe pas.": "Esta pasta do jogo não existe.",
   "Windows ne peut pas chiffrer ta clé sur ce PC : elle est gardée en mémoire pour cette session seulement, jamais écrite en clair. Tu devras la coller à nouveau au prochain lancement.": "O Windows não consegue cifrar sua chave neste PC: ela fica na memória só durante esta sessão, nunca é gravada em texto puro. Você vai precisar colá-la de novo na próxima vez que abrir o app.",
+  "La dictée envoie ton enregistrement audio au fournisseur d’IA choisi pour le transcrire. Ta voix ne peut pas être masquée par le bouclier de confidentialité (seuls les noms le sont). Continuer ?": "O ditado envia sua gravação de áudio ao provedor de IA escolhido para transcrevê-la. Sua voz não pode ser mascarada pelo Escudo de Privacidade (só os nomes são). Continuar?",
 };
