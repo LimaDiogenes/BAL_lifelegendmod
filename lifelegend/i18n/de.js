@@ -2802,4 +2802,9 @@ window.LL_I18N.de = {
   "{n} protégés": "{n} geschützt",
   "Nettoyer anciens filtres ({n})": "Alte Filter bereinigen ({n})",
   "Anciens filtres supprimés.": "Alte Filter entfernt.",
+  "Masqué par le bouclier": "Geschützt",
+  "Tournage express et retour rapide à l’entraînement": "Express-Dreh und schnelle Rückkehr zum Training",
+  "Réaliser l’activité prévue": "Geplante Aktivität durchführen",
+  "Version courte et retour tôt": "Kurz halten und früh zurückkehren",
+  "Reporter pour privilégier l’entraînement": "Verschieben, um das Training zu priorisieren",
 };

@@ -2338,6 +2338,19 @@ async function syncInner({ store, settings, log, t }) {
   const settled = resolvePromises(state, snapshot, settings.language);
   // Humeur des supporters : recalculée quand il y a de nouveaux matchs ou une promesse jugée, sinon gardée.
   if (changes.newResults.length || settled.some((p) => p.status === 'broken')) state.fanMood = fanMood({ changes, snapshot, settled, previous: state.fanMood });
+  // Si la conférence d'après-match précédente ou un entretien mail est resté sans réponse : réactions (plaintes & soutiens).
+  if (changes.newResults.length && state.press && PRESS_ACTIVE.includes(state.press.status)) {
+    const prevPress = state.press;
+    prevPress.status = 'expired';
+    recordPressSkip(narrativeMem, { gameDate: prevPress.gameDate || snapshot.gameDate });
+    emitInterviewSilenceReactions(state, snapshot, narrativeMem, { language: settings.language, matchLabel: prevPress.match });
+  }
+  const staleInterviewMail = (state.mail || []).find((m) => m.interview?.status === 'open' && !m.interview.silenceReactedOn && daysBetween(m.interview.asked, snapshot.gameDate) >= 7);
+  if (staleInterviewMail) {
+    staleInterviewMail.interview.silenceReactedOn = snapshot.gameDate;
+    recordPressSkip(narrativeMem, { gameDate: snapshot.gameDate });
+    emitInterviewSilenceReactions(state, snapshot, narrativeMem, { language: settings.language, matchLabel: staleInterviewMail.from });
+  }
   // Arcs dramatiques et mise sous le projecteur (src/world/dramaEngine.js) + mémoire narrative locale.
   const drama = tickDramaArcs({ state, snapshot, changes, mem: narrativeMem });
   syncDramaSnapshot(state, narrativeMem, snapshot);
@@ -3341,16 +3354,28 @@ async function openPress({ store, settings, progress }) {
   return state;
 }
 
-// Qui pose les questions : ceux qui suivent la ligue, deux plumes de La Transversale et un confrère d'un autre média inventé
-// par l'IA. Une conférence sur quatre, le rédacteur du blog des supporters obtient la troisième question : lui seul tutoie.
+// Qui pose les questions : ceux qui suivent la ligue (5 à 7 questions par conférence d'après-match), plusieurs plumes du
+// quotidien national et des confrères d'autres médias inventés par l'IA. Une conférence sur quatre, le rédacteur du blog des
+// supporters obtient la troisième question (index 2) : lui seul tutoie.
 function pressPanel(state, press) {
   const paper = state.nationalPaper || paperForState(state);
   const desk = transversaleDesk(state, paper).slice(0, 6);
   const seed = parseInt(String(press.id).slice(0, 6), 16) || 0;
+  const count = 5 + (seed % 3); // 5, 6 ou 7 questions
   const league = (w) => ({ name: w.name, outlet: paper?.name || PAPER_NAME, role: w.role, address: 'formal' });
+  const guest = () => ({ name: null, outlet: null, address: 'formal' });
   const blogger = state.writers?.local_beat_writer, blog = state.localPaper?.name;
-  const third = blogger && blog && seed % 4 === 0 ? { name: blogger, outlet: blog, role: "supporters' blog writer", address: 'familiar' } : { name: null, outlet: null, address: 'formal' };
-  return [league(desk[seed % desk.length]), league(desk[(seed + 1) % desk.length]), third];
+  const third = blogger && blog && seed % 4 === 0 ? { name: blogger, outlet: blog, role: "supporters' blog writer", address: 'familiar' } : guest();
+  const seats = [
+    league(desk[seed % desk.length]),
+    league(desk[(seed + 1) % desk.length]),
+    third,
+    league(desk[(seed + 2) % desk.length]),
+    guest(),
+    league(desk[(seed + 3) % desk.length]),
+    guest(),
+  ];
+  return seats.slice(0, count);
 }
 // Un « tu » en français, pour rattraper une question de journaliste de la ligue qui tutoierait le joueur.
 const TUTOIE = /(^|[^\p{L}])((tu|te|toi|ton|ta|tes)($|[^\p{L}])|t['’]\p{L})/iu;
@@ -3361,13 +3386,13 @@ async function askQuestions({ store, settings, state, press, t }) {
   const privacyMap = privacyMapFor(state, settings);
   const narrativeMem = loadNarrativeMemory(store, state.careerId);
   const activeArcs = (narrativeMem.dramaArcs || []).filter((a) => a.status === 'active');
-  const beats = pickPressBeats({ state, snapshot: state.snapshot, mem: narrativeMem, activeArcs, match: pressMatch(state, press) });
+  const beats = pickPressBeats({ state, snapshot: state.snapshot, mem: narrativeMem, activeArcs, match: pressMatch(state, press), count: panel.length });
   const user = prompts.pressQuestionsUser({ facts: pressFacts(state, narrativeMem), memory: memoryFor(state, narrativeMem), conference: { match: pressMatch(state, press), panel, beats } });
   const ask = async (extra = '') => parseJson(await complete(settings, store.getKey(settings.provider), {
     privacyMap,
     system: prompts.pressQuestionsSystem(settings),
     user: `${user}${extra}`,
-    maxTokens: 3000,
+    maxTokens: 4500,
     onProgress: t.ai,
   }));
   let out = await ask();
@@ -3377,10 +3402,10 @@ async function askQuestions({ store, settings, state, press, t }) {
   if (frTutoie || repeats.length) {
     const reminders = [];
     if (frTutoie) reminders.push('your previous questions said "tu" to him. Every journalist with address "formal" must say "vous"');
-    if (repeats.length) reminders.push(`question(s) #${repeats.map((r) => r.index + 1).join(', #')} repeated earlier questions (${repeats.map((r) => `"${r.matchedQuestion}"`).join('; ')}). Rewrite ALL 3 questions to be 100% fresh, distinct, and faithful to CONFERENCE.beats`);
+    if (repeats.length) reminders.push(`question(s) #${repeats.map((r) => r.index + 1).join(', #')} repeated earlier questions (${repeats.map((r) => `"${r.matchedQuestion}"`).join('; ')}). Rewrite ALL ${panel.length} questions to be 100% fresh, distinct, and faithful to CONFERENCE.beats`);
     out = await ask(`\nREMINDER: ${reminders.join('. Also, ')}.`);
   }
-  press.questions = (out.questions || []).slice(0, 3).map((q, i) => {
+  press.questions = (out.questions || []).slice(0, panel.length).map((q, i) => {
     const seat = panel[i] || {};
     const b = beats[i] || {};
     // Le fauteuil libre va à un confrère : jamais au blog des supporters, sauf quand c'est son tour.
@@ -3406,12 +3431,139 @@ async function askQuestions({ store, settings, state, press, t }) {
   store.saveCareer(state);
 }
 
+function emitInterviewSilenceReactions(state, snapshot = state?.snapshot, narrativeMem = null, { language = 'en', matchLabel = '' } = {}) {
+  if (!state) return;
+  const s = snapshot || state.snapshot || {};
+  const gameDate = s.gameDate || state.press?.gameDate || '2026-08-01';
+  const playerName = s.player?.name || state.profile?.displayName || 'Player';
+  const clubName = s.club?.name || 'the club';
+  const skips = Math.max(1, narrativeMem?.pressBehavior?.skips || 1);
+  const paper = state.nationalPaper || paperForState(state, s);
+  const desk = transversaleDesk(state, paper);
+  const reporter = desk[0]?.name || 'Marc Lhermitte';
+  const reporterHandle = String(reporter).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_') || 'press_desk';
+
+  const texts = {
+    fr: {
+      complainPost: skips >= 2
+        ? `${playerName} boude encore les micros (${skips}e silence d’affilée)${matchLabel ? ` après ${matchLabel}` : ''}. Quand on porte le maillot de ${clubName}, répondre à la presse et au public fait partie du métier.`
+        : `Porte close en salle de presse : ${playerName} a esquivé les journalistes${matchLabel ? ` après ${matchLabel}` : ''}. Un silence qui fait déjà jaser.`,
+      supportReply: `Laissez-le tranquille ! On lui demande d’être décisif sur la pelouse avec ${clubName}, pas de nourrir vos polémiques à chaque match.`,
+      supportPost: `Soutien total à ${playerName} qui préfère parler avec les pieds sur le terrain plutôt que devant les micros. Les vrais supporters de ${clubName} savent ce qui compte 💪`,
+      complainReply: `Pas d’accord, même une star doit assumer devant les caméras après les matchs. Le silence passe pour de la froideur.`,
+      huddleMsg: `Haha t’as encore laissé les journalistes poireauter en salle de presse 😂 Garde la tête au terrain frérot, le vestiaire est avec toi !`,
+      hubEvent: `Silence médiatique (${skips}x) : débat entre journalistes agacés et supporters qui te défendent`,
+    },
+    pt: {
+      complainPost: skips >= 2
+        ? `${playerName} volta a ignorar os microfones (${skips}ª vez seguida)${matchLabel ? ` após ${matchLabel}` : ''}. Quem veste a camisa do ${clubName} precisa dar satisfação à imprensa e à torcida.`
+        : `Sala de imprensa vazia: ${playerName} passou direto pelos jornalistas${matchLabel ? ` após ${matchLabel}` : ''}. O silêncio já divide opiniões.`,
+      supportReply: `Deixem o cara em paz! A gente quer ver ele jogando bola pelo ${clubName}, não alimentando caça-cliques toda semana.`,
+      supportPost: `Todo apoio ao ${playerName} por focar 100% no gramado e ignorar o circo dos microfones. A resposta dele é com a bola no pé pelo ${clubName}! 💪`,
+      complainReply: `Discordo, jogador desse tamanho tem que dar a cara nos microfones também. Ficar calado passa imagem de arrogância.`,
+      huddleMsg: `Deixou os repórteres falando sozinhos na zona mista de novo 😂 Segue focado no campo irmão, o elenco tá fechado contigo!`,
+      hubEvent: `Silêncio na imprensa (${skips}x): jornalistas reclamam e torcedores saem em sua defesa`,
+    },
+    es: {
+      complainPost: skips >= 2
+        ? `${playerName} vuelve a esquivar los micrófonos (${skips}ª vez seguida)${matchLabel ? ` tras ${matchLabel}` : ''}. En un club como ${clubName}, dar la cara ante la prensa no debería ser opcional.`
+        : `Plantón en sala de prensa: ${playerName} se marchó sin responder preguntas${matchLabel ? ` tras ${matchLabel}` : ''}. Su silencio ya genera debate.`,
+      supportReply: `¡Déjenlo en paz! Lo queremos rindiendo en el césped con ${clubName}, no regalando titulares fáciles cada semana.`,
+      supportPost: `Respaldo total a ${playerName}: menos micrófonos y más fútbol. Mientras hable en el campo con ${clubName}, la grada está con él 💪`,
+      complainReply: `No cuesta nada responder cinco minutos. Ignorar siempre a la prensa acaba enfriando la relación con la gente.`,
+      huddleMsg: `Otra vez dejaste a los periodistas esperando con los micros encendidos 😂 Tú a lo tuyo en el césped, ¡el vestuario te banca!`,
+      hubEvent: `Silencio ante la prensa (${skips}x): quejas de periodistas y apoyo de la afición`,
+    },
+    it: {
+      complainPost: skips >= 2
+        ? `${playerName} diserta ancora i microfoni (${skips}° silenzio di fila)${matchLabel ? ` dopo ${matchLabel}` : ''}. Chi indossa la maglia del ${clubName} ha il dovere di parlare anche fuori dal campo.`
+        : `Sala stampa deserta: ${playerName} ha evitato le domande dei cronisti${matchLabel ? ` dopo ${matchLabel}` : ''}. Il suo silenzio divide la piazza.`,
+      supportReply: `Lasciatelo lavorare in pace! A noi tifosi del ${clubName} interessa quello che fa in campo, non le chiacchiere davanti alle telecamere.`,
+      supportPost: `Totale supporto a ${playerName}: fa bene a parlare solo coi fatti sul prato verde per il ${clubName} invece di alimentare polemiche 💪`,
+      complainReply: `Però due parole ai tifosi dopo la partita si possono anche dire, il silenzio continuo sembra spocchia.`,
+      huddleMsg: `Hai lasciato di nuovo i giornalisti a bocca asciutta in sala stampa 😂 Resta concentrato sul campo, lo spogliatoio è con te!`,
+      hubEvent: `Silenzio stampa (${skips}x): cronisti infastiditi e tifosi divisi tra critiche e sostegno`,
+    },
+    de: {
+      complainPost: skips >= 2
+        ? `${playerName} lässt die Mikrofone erneut links liegen (${skips}. Mal in Folge)${matchLabel ? ` nach ${matchLabel}` : ''}. Wer für ${clubName} spielt, sollte sich auch den Fragen stellen.`
+        : `Leerer Presseraum: ${playerName} hat die Journalisten${matchLabel ? ` nach ${matchLabel}` : ''} stehen lassen. Sein Schweigen sorgt für Diskussionen.`,
+      supportReply: `Lasst ihn in Ruhe! Er soll auf dem Platz für ${clubName} abliefern und nicht jede Woche Schlagzeilen für euch liefern.`,
+      supportPost: `Volle Rückendeckung für ${playerName}! Lieber auf dem Rasen für ${clubName} antworten als vor den Mikrofonen 💪`,
+      complainReply: `Ein paar Fragen nach dem Spiel gehören trotzdem dazu. Dauerhaftes Schweigen wirkt irgendwann abgehoben.`,
+      huddleMsg: `Haha, hast die Reporter in der Mixed Zone schon wieder stehen lassen 😂 Bleib fokussiert, die Kabine steht hinter dir!`,
+      hubEvent: `Medienboykott (${skips}x): Kritik von Reportern und Rückendeckung der Fans`,
+    },
+    en: {
+      complainPost: skips >= 2
+        ? `${playerName} snubs the microphones again (${skips} unanswered interviews in a row)${matchLabel ? ` after ${matchLabel}` : ''}. When you wear the ${clubName} shirt, facing the press and supporters isn't optional.`
+        : `Empty chair in the press room: ${playerName} walked straight past reporters${matchLabel ? ` after ${matchLabel}` : ''}. The media blackout is already sparking debate.`,
+      supportReply: `Leave him alone! We care about what he delivers on the pitch for ${clubName}, not feeding clickbait headlines every week.`,
+      supportPost: `Full backing for ${playerName} choosing to let his football do the talking on the pitch instead of playing media games. Real ${clubName} fans are right behind him 💪`,
+      complainReply: `Still, fans want to hear from him after games. Dodging every interview comes across cold after a while.`,
+      huddleMsg: `Haha you left the reporters hanging with their mics out again 😂 Keep doing your talking on the pitch bro, the dressing room has your back!`,
+      hubEvent: `Media silence (${skips}x): journalists complain while supporters rally to defend you`,
+    },
+  };
+  const L = texts[language] || texts.en;
+  const now = Date.now();
+  state.feed ||= [];
+
+  const criticAuthor = { handle: reporterHandle, name: reporter, type: 'journalist' };
+  const defenderAuthor = { handle: `${String(clubName).toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10) || 'club'}_ultra`, name: `${clubName} Stand`, type: 'fan' };
+  const scepticAuthor = { handle: 'matchday_voice', name: 'Matchday Voice', type: 'fan' };
+  const baseLikes = Math.max(40, Math.round((state.profile?.followers || 4000) * 0.015));
+
+  state.feed.push({
+    id: newId(),
+    author: criticAuthor,
+    text: L.complainPost,
+    gameDate,
+    createdAt: now,
+    likes: baseLikes,
+    reposts: Math.max(5, Math.round(baseLikes * 0.18)),
+    replies: [
+      { id: newId(), author: defenderAuthor, text: L.supportReply, likes: Math.round(baseLikes * 1.25), gameDate },
+    ],
+  });
+
+  state.feed.push({
+    id: newId(),
+    author: defenderAuthor,
+    text: L.supportPost,
+    gameDate,
+    createdAt: now + 1,
+    likes: Math.round(baseLikes * 1.35),
+    reposts: Math.max(6, Math.round(baseLikes * 0.22)),
+    replies: [
+      { id: newId(), author: scepticAuthor, text: L.complainReply, likes: Math.round(baseLikes * 0.45), gameDate },
+    ],
+  });
+
+  const group = activeHuddle(state);
+  const mate = group?.players?.find((n) => n && n !== playerName);
+  if (group && mate) {
+    group.staff ||= [];
+    addGroupMessages(group, [{ from: mate, text: L.huddleMsg }], gameDate);
+  }
+
+  if (state.lifeHub?.calibrated && state.lifeHub.meters) {
+    state.lifeHub.meters.media = Math.max(0, Math.min(100, (state.lifeHub.meters.media ?? 50) - 2));
+    state.lifeHub.meters.squad = Math.max(0, Math.min(100, (state.lifeHub.meters.squad ?? 50) + 1));
+    state.lifeHub.recentEvents ||= [];
+    state.lifeHub.recentEvents.unshift({ date: gameDate, kind: 'media', text: L.hubEvent });
+    if (state.lifeHub.recentEvents.length > 25) state.lifeHub.recentEvents.length = 25;
+  }
+}
+
 function skipPress({ store }) {
   const state = store.activeCareer();
   const press = activePress(state);
   press.status = 'skipped';
+  const stg = store.getSettings?.() || {};
   const narrativeMem = loadNarrativeMemory(store, state.careerId);
   recordPressSkip(narrativeMem, { gameDate: state.snapshot?.gameDate || press.gameDate || '' });
+  emitInterviewSilenceReactions(state, state.snapshot, narrativeMem, { language: stg.language || 'en', matchLabel: press.match });
   tickDramaArcs({ state, snapshot: state.snapshot, changes: { newResults: [] }, mem: narrativeMem });
   syncDramaSnapshot(state, narrativeMem, state.snapshot);
   saveNarrativeMemory(store, state.careerId, narrativeMem);
@@ -4183,4 +4335,4 @@ Rules:
   };
 }
 
-module.exports = { getNarrativeMemory, dismissNarrativeArc, clearNarrativeQuestions, savePrivacy, savePersona, updateAgent, generateBackstory, saveSquadBirthdays, resetCareer, saveNationalPaper, saveClubAlias, saveLifeEvents, calibrateCareerLifeHub, buyLifeAsset, sellLifeAsset, getSponsorCatalog, addLifeSponsor, updateLifeSponsor, removeLifeSponsor, answerLifeSponsorOffer, answerLifeBiddingWar, answerLifeOneTimeDeal, completeLifeObligation, rescheduleLifeObligation, doLifeAction, answerLifeDilemma, setLifeMedia, ensureLifeHub, calendarAdvance, getCalendarAgenda, resolveLifeCalendarDecision, flipCalendarBirthdayShift, scheduleCalendarActivity, runDailyAiPulse, calendarSetMode, calendarAddEvent, calendarRemoveEvent, applyLifeSaveEffects, dismissLifeSaveEffects, noteKeyMemory, privacyMapFor, previewMasked, getAiAuditLog, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };
+module.exports = { getNarrativeMemory, dismissNarrativeArc, clearNarrativeQuestions, savePrivacy, savePersona, updateAgent, generateBackstory, saveSquadBirthdays, resetCareer, saveNationalPaper, saveClubAlias, saveLifeEvents, calibrateCareerLifeHub, buyLifeAsset, sellLifeAsset, getSponsorCatalog, addLifeSponsor, updateLifeSponsor, removeLifeSponsor, answerLifeSponsorOffer, answerLifeBiddingWar, answerLifeOneTimeDeal, completeLifeObligation, rescheduleLifeObligation, doLifeAction, answerLifeDilemma, setLifeMedia, ensureLifeHub, calendarAdvance, getCalendarAgenda, resolveLifeCalendarDecision, flipCalendarBirthdayShift, scheduleCalendarActivity, runDailyAiPulse, calendarSetMode, calendarAddEvent, calendarRemoveEvent, applyLifeSaveEffects, dismissLifeSaveEffects, noteKeyMemory, privacyMapFor, previewMasked, getAiAuditLog, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, emitInterviewSilenceReactions, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };

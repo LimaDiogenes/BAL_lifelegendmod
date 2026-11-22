@@ -2802,4 +2802,9 @@ window.LL_I18N.en = {
   "{n} protégés": "{n} protected",
   "Nettoyer anciens filtres ({n})": "Clean legacy filters ({n})",
   "Anciens filtres supprimés.": "Legacy filters removed.",
+  "Masqué par le bouclier": "Protected",
+  "Tournage express et retour rapide à l’entraînement": "Express shoot and quick return to training",
+  "Réaliser l’activité prévue": "Complete the scheduled activity",
+  "Version courte et retour tôt": "Keep it brief and return early",
+  "Reporter pour privilégier l’entraînement": "Postpone to prioritize training",
 };

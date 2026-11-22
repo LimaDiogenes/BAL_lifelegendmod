@@ -32,7 +32,7 @@ test('les journalistes de la ligue posent les questions, le blog une conférence
   const { state } = career(LEAGUE_ONLY);
   const desk = world.transversaleDesk(state).map((w) => w.name);
   const panel = world.pressPanel(state, state.press);
-  assert.strictEqual(panel.length, 3);
+  assert.ok(panel.length >= 5 && panel.length <= 7, '5 à 7 questions par conférence');
   assert.ok(panel.every((p) => p.address === 'formal'), 'tous vouvoient');
   assert.ok(panel.every((p) => p.name !== state.writers.local_beat_writer), 'pas le blog');
   assert.ok(desk.includes(panel[0].name) && desk.includes(panel[1].name) && panel[0].name !== panel[1].name, 'deux plumes différentes de La Transversale');

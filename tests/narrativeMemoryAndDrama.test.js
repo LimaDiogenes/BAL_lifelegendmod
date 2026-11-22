@@ -201,7 +201,7 @@ describe('Mémoire narrative locale et anti-répétition', () => {
     const drama = tickDramaArcs({ state, snapshot, changes: { newResults: [snapshot.last] }, mem });
 
     const b1 = pickPressBeats({ state, snapshot, mem, activeArcs: drama.active, match: snapshot.last });
-    assert.equal(b1.length, 3);
+    assert.ok(b1.length >= 5 && b1.length <= 7, `expected 5..7 beats, got ${b1.length}`);
     assert.notEqual(b1[0].beat, b1[1].beat);
     assert.notEqual(b1[1].beat, b1[2].beat);
     assert.ok(b1[1].beat.startsWith('drama:'), 'la question piquante exploite un arc actif');
@@ -297,21 +297,25 @@ describe('Moteur de drame et phase faste (Spotlight Drama Engine)', () => {
     const calls = [];
     mockComplete = async (_settings, _key, req) => {
       calls.push(req);
-      if (calls.length === 1 && /Three journalists/.test(req.system)) {
+      if (calls.length === 1 && /Five to seven journalists/.test(req.system)) {
         return JSON.stringify({
           questions: [
             { journalist: 'Marc Lhermitte', outlet: 'La Transversale', question: 'How are you maintaining this level of consistency ahead of Brentford?' },
             { journalist: 'Hélène Marchetti', outlet: 'La Transversale', question: 'Do ten commercials clash with Anfield?' },
             { journalist: 'Sam Doyle', outlet: 'Premier Wire', question: 'Does your quiet style frustrate fans?' },
+            { journalist: 'Claire Vasseur', outlet: 'La Transversale', question: 'How did your link-up with Salah open up the Brighton back line?' },
+            { journalist: 'Tom Reeves', outlet: 'Football Daily', question: 'Where does your rivalry in the Golden Boot race stand right now?' },
           ],
         });
       }
-      if (calls.length === 2 && /Three journalists/.test(req.system)) {
+      if (calls.length === 2 && /Five to seven journalists/.test(req.system)) {
         return JSON.stringify({
           questions: [
             { journalist: 'Marc Lhermitte', outlet: 'La Transversale', question: 'Your 18th-minute goal came after switching inside—was that Slot’s tweak?' },
             { journalist: 'Hélène Marchetti', outlet: 'La Transversale', question: 'Do eleven commercial sponsors risk overshadowing football at Liverpool?' },
             { journalist: 'Sam Doyle', outlet: 'Premier Wire', question: 'Does keeping things guarded with the press shield the dressing room or widen the gap?' },
+            { journalist: 'Claire Vasseur', outlet: 'La Transversale', question: 'How did your second-half combination with Salah break Brighton’s low block?' },
+            { journalist: 'Tom Reeves', outlet: 'Football Daily', question: 'With the title gap widening, what did Slot demand inside the dressing room?' },
           ],
         });
       }
@@ -348,6 +352,18 @@ describe('Moteur de drame et phase faste (Spotlight Drama Engine)', () => {
       assert.ok(dismissed.memory);
       const cleared = world.clearNarrativeQuestions({ store });
       assert.equal(cleared.memory.pressHistory.length, 0);
+
+      // Skipping or ignoring interviews generates both complaining and supporting reactions on Kop, Vestiaire & My Life
+      state.press = { id: '000006abcdef', matchId: 'm21', match: 'Liverpool FC 3-1 Brentford', gameDate: '2029-01-14', status: 'pending', questions: null, answers: null };
+      state.feed = [];
+      state.huddles = [{ id: 'h1', clubRef: '10', club: 'Liverpool FC', coach: 'A. Slot', players: ['M. Salah', 'V. van Dijk'], messages: [] }];
+      store.saveCareer(state);
+      const afterSkip = world.skipPress({ store });
+      assert.equal(afterSkip.press.status, 'skipped');
+      assert.ok(afterSkip.feed.length >= 2, 'Kop receives both complaining journalist post and supporting fan post');
+      assert.ok(afterSkip.feed.some((p) => p.author.type === 'journalist' && p.replies?.length > 0));
+      assert.ok(afterSkip.feed.some((p) => p.author.type === 'fan' && p.replies?.length > 0));
+      assert.ok(afterSkip.huddles[0].messages.length >= 1, 'Vestiaire teammate reacts to press silence');
     } finally {
       mockComplete = null;
     }

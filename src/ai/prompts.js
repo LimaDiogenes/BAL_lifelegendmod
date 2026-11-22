@@ -593,21 +593,21 @@ function pressAddress(language) {
 }
 function pressQuestionsSystem(settings) {
   const lang = LANGUAGES[settings.language] || 'French';
-  return `You run the post-match press conference in LifeLegend, a fictional world reacting to a player's career in SP Football Life 2027 (Become a Legend). Three journalists who follow the league each ask the user's player ONE question.
+  return `You run the post-match press conference in LifeLegend, a fictional world reacting to a player's career in SP Football Life 2027 (Become a Legend). Five to seven journalists who follow the league (listed in CONFERENCE.panel) each ask the user's player ONE question.
 
 ${CORE_RULES}
 
-CONFERENCE.beats (when present) assigns each journalist's specific beat in order (0, 1, 2): follow those 3 distinct beats strictly so every press conference explores different facets (e.g. a tactical detail in CONFERENCE.match, active spotlight drama in FACTS.media_spotlight or a past quote callback from MEMORY.media_memory.quote_vault, and a human/personal question drawn from FACTS.persona, FACTS.biography, or FACTS.off_pitch_hub). Use exact details from goalTimeline, ratings, table context, FACTS.persona, FACTS.biography, or FACTS.off_pitch_hub. CONFERENCE.panel lists who asks, in order: one question per entry, in that order, with the name and outlet given. An entry whose name is null is a fictional journalist you invent, from another fictional outlet covering this league (never a real media brand, never a supporters' blog).
+CONFERENCE.beats (when present) assigns each journalist's specific beat in order (0..N-1): follow those distinct beats strictly so every press conference explores different facets (tactical details in CONFERENCE.match, dressing-room & competition stakes, active spotlight drama in FACTS.media_spotlight or a past quote callback from MEMORY.media_memory.quote_vault, and human/personal/off-pitch questions drawn from FACTS.persona, FACTS.biography, or FACTS.off_pitch_hub). Use exact details from goalTimeline, ratings, table context, FACTS.persona, FACTS.biography, or FACTS.off_pitch_hub. CONFERENCE.panel lists who asks, in order: one question per entry, in that exact order, with the name and outlet given. An entry whose name is null is a fictional journalist you invent, from another fictional outlet covering this league (never a real media brand, never a supporters' blog).
 
 ANTI-REPETITION: MEMORY.media_memory.recent_questions_do_not_repeat lists questions recently asked. NEVER repeat their topic, framing, or cliché phrasing (for example, NEVER ask generic filler like "how are you maintaining this level of consistency before facing X?" or "what are your thoughts on today's win?"). Every question must feel fresh, specific, and hard to brush off with a cliché.
 
 ${pressAddress(settings.language)}
 
-Exactly one question is sharper (criticism, a spotlight narrative, a contradiction from MEMORY.media_memory.quote_vault, pressure, a bold claim he made in MEMORY.user_posts). One sentence each, natural spoken tone. Every question is written in ${lang}, even when FACTS, MEMORY, the journalists' names or the outlet's name are French.
+At least one or two questions are sharper (criticism, a spotlight narrative, a contradiction from MEMORY.media_memory.quote_vault, pressure, a bold claim he made in MEMORY.user_posts, or his media silence in MEMORY.media_memory.press_reputation). One sentence each, natural spoken tone. Every question is written in ${lang}, even when FACTS, MEMORY, the journalists' names or the outlet's name are French.
 
-FAN MOOD: if FACTS.fan_mood.level is 2 or 3, one of the three questions is about the fans' anger on Kop (their criticism, the hashtag if any); at level 3 with the anger aimed at him (target "player" or "both"), that question asks him straight about his future and the calls to sell him. If FACTS.fan_mood.rebound is true, one question is about having silenced his critics.
+FAN MOOD: if FACTS.fan_mood.level is 2 or 3, one of the questions is about the fans' anger on Kop (their criticism, the hashtag if any); at level 3 with the anger aimed at him (target "player" or "both"), that question asks him straight about his future and the calls to sell him. If FACTS.fan_mood.rebound is true, one question is about having silenced his critics.
 
-OUTPUT: ONE JSON object: {"questions": [ {"journalist": string, "outlet": string, "question": string} ]}  // exactly 3`;
+OUTPUT: ONE JSON object: {"questions": [ {"journalist": string, "outlet": string, "question": string} ]}  // exactly one question per CONFERENCE.panel entry (5 to 7 questions)`;
 }
 
 function pressQuestionsUser({ facts, memory, conference }) {

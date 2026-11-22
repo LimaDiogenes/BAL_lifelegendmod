@@ -1110,7 +1110,7 @@ function personaFormHtml(prefix, rawPersona, rawPriv = null) {
   const rootsHtml = PERSONA_ROOTS_UI.map((r) => {
     const checked = d.rootProtect?.[r.key] !== false;
     return `<label class="per-field">
-      <span class="per-field-head"><span>${esc(r.label())}</span>${r.shield ? `<label class="per-root-shield" title="${esc(tr('Masquer dans le bouclier de confidentialité'))}"><input type="checkbox" id="${prefix}-per-rprot-${r.key}"${checked ? ' checked' : ''}><span>${hi('shieldCheck')} ${esc(tr('Protégé'))}</span></label>` : ''}</span>
+      <span class="per-field-head"><span>${esc(r.label())}</span>${r.shield ? `<label class="per-root-shield" title="${esc(tr('Masquer dans le bouclier de confidentialité'))}"><input type="checkbox" id="${prefix}-per-rprot-${r.key}"${checked ? ' checked' : ''}><span>${hi('shieldCheck')} ${esc(tr('Masqué par le bouclier'))}</span></label>` : ''}</span>
       <input id="${prefix}-per-root-${r.key}" value="${esc(d.roots[r.key] || '')}" placeholder="${esc(r.hint())}" maxlength="120">
     </label>`;
   }).join('');
@@ -3144,12 +3144,34 @@ function openPressModal() {
   ['#page', '.ll-rail', '.ll-top'].forEach((q) => { const el = document.querySelector(q); if (el) el.inert = true; });
   paintPressModal();
 }
-// Elle s'ouvre une fois d'elle-même en arrivant sur La Transversale ; ensuite, depuis son menu.
+function startPressQuestions() {
+  const p = pressNow();
+  if (!p) return;
+  if (view.pressFor !== p.id) Object.assign(view, { pressFor: p.id, pressStep: 0, pressIn: true });
+  else view.pressIn = true;
+  paintPressModal();
+  if (p.questions?.length || pressLoading) return;
+  pressLoading = true;
+  live.openPress()
+    .then((st) => {
+      state = st;
+      if (pressNow()?.questions?.length) {
+        Object.assign(view, { pressFor: state.press.id, pressStep: 0, pressIn: true });
+        if (current !== 'national') { current = 'national'; render(); }
+        if (!pressBox) openPressModal();
+      }
+    })
+    .catch((err) => { toast(err.message, true); view.pressIn = false; })
+    .finally(() => { pressLoading = false; paintPressModal(); });
+}
+
+// Elle s'ouvre d'elle-même après un match synchronisé et lance tout de suite la préparation des questions.
 function autoPressModal() {
   const p = pressNow();
   if (!p || pressBox || view.pressSeen === p.id || setupActive()) return;
   view.pressSeen = p.id;
   openPressModal();
+  if (!p.questions?.length) startPressQuestions();
 }
 
 function paintPressModal() {
@@ -3157,7 +3179,7 @@ function paintPressModal() {
   const p = pressNow();
   if (!p) { closePressModal(); return; }
   const s = state.snapshot;
-  if (view.pressFor !== p.id) Object.assign(view, { pressFor: p.id, pressStep: 0, pressIn: false });
+  if (view.pressFor !== p.id) Object.assign(view, { pressFor: p.id, pressStep: 0, pressIn: Boolean(p.questions?.length) });
   const total = p.questions?.length || 0;
   const at = Math.min(view.pressStep || 0, Math.max(0, total - 1));
   const q = view.pressIn ? p.questions?.[at] : null;
@@ -3203,16 +3225,7 @@ function paintPressModal() {
   root.querySelectorAll('[data-press-close]').forEach((b) => { b.onclick = closePressModal; });
   const go = root.querySelector('#press-go'), skip = root.querySelector('#press-skip');
   if (go) {
-    go.onclick = () => {
-      view.pressIn = true;
-      paintPressModal();
-      if (p.questions || pressLoading) return;
-      pressLoading = true;
-      live.openPress()
-        .then((st) => { state = st; })
-        .catch((err) => { toast(err.message, true); view.pressIn = false; })
-        .finally(() => { pressLoading = false; paintPressModal(); });
-    };
+    go.onclick = startPressQuestions;
     go.focus();
   }
   if (skip) {
@@ -8952,7 +8965,11 @@ const ML_DECISION_CHOICE_LABELS = {
   keep_balanced: () => tr('Passage rapide et sérieux'),
   skip_focus: () => tr('Décliner et rester focalisé sur le terrain'),
   complete_shoot: () => tr('Honorer le tournage / shooting prévu'),
+  quick_cut: () => tr('Tournage express et retour rapide à l’entraînement'),
   reschedule_cancel: () => tr('Annuler / reporter'),
+  do_planned: () => tr('Réaliser l’activité prévue'),
+  keep_light: () => tr('Version courte et retour tôt'),
+  reschedule_skip: () => tr('Reporter pour privilégier l’entraînement'),
 };
 
 function mlSponsorCatLabel(cat) {
@@ -9444,7 +9461,23 @@ function mlFormatRecentEvent(text) {
   if (m) return tr('Échéance sponsor manquée ({brand})', { brand: m[1] });
   m = /^Received sponsor vehicle from (.+)$/i.exec(s);
   if (m) return tr('Véhicule offert par le sponsor : {brand}', { brand: m[1] });
+  m = /^Completed scheduled plan: (.+)$/i.exec(s);
+  if (m) return `${tr('Activité planifiée')} · ${mlResolveScheduledActivityTitle(m[1])}`;
+  m = /^Kept scheduled (.+) short and returned early$/i.exec(s);
+  if (m) return `${tr('Version courte et retour tôt')} · ${mlResolveScheduledActivityTitle(m[1])}`;
+  m = /^Postponed (.+) to prioritize training$/i.exec(s);
+  if (m) return `${tr('Reporter pour privilégier l’entraînement')} · ${mlResolveScheduledActivityTitle(m[1])}`;
   return s;
+}
+
+function mlResolveScheduledActivityTitle(rawTitle, activityId = null) {
+  const clean = String(rawTitle || '').trim();
+  const low = clean.toLowerCase().replace(/\s+/g, '_');
+  const act = ML_ACTIONS_UI.find((a) => a.id === activityId || a.id === low || a.id.replace(/_/g, ' ') === clean.toLowerCase());
+  if (act && (!clean || low === act.id || clean.toLowerCase() === act.id.replace(/_/g, ' '))) return act.label();
+  const sysFn = ML_SYSEV_LABELS[low] || ML_SYSEV_LABELS[activityId];
+  if (sysFn) return sysFn();
+  return clean || act?.label() || tr('Activité planifiée');
 }
 
 function mlAgendaItems(s, hub, cal, monthIso) {
@@ -9732,8 +9765,11 @@ function mlDecisionHeader(dec) {
     const kFn = ML_ONETIME_DEAL_LABELS[dec.dealKey];
     return { title: `${dec.brand || ''} · ${kFn ? kFn() : (dec.title || '')}`, sub: fmtDate(dec.date) };
   }
-  const sFn = ML_SYSEV_LABELS[dec.eventKey];
-  return { title: sFn ? sFn() : (dec.title || tr('Événement')), sub: fmtDate(dec.date) };
+  if (dec.kind === 'scheduled' || dec.activityId) {
+    return { title: mlResolveScheduledActivityTitle(dec.title, dec.activityId), sub: `${tr('Activité planifiée')} · ${fmtDate(dec.date)}` };
+  }
+  const sFn = ML_SYSEV_LABELS[dec.eventKey] || ML_SYSEV_LABELS[String(dec.title || '').toLowerCase().replace(/\s+/g, '_')];
+  return { title: sFn ? sFn() : mlResolveScheduledActivityTitle(dec.title, dec.eventKey), sub: fmtDate(dec.date) };
 }
 
 function mlDecisionChoiceTags(ch) {
@@ -10617,6 +10653,7 @@ function renderMyLife(page) {
     </section>
 
     <section class="ml-panel"${tab === 'calendar' ? '' : ' hidden'}>
+      ${decisionsCardHtml}
       <div class="card ml-cal-banner">
         <div class="ml-cal-banner-info">
           <div class="ml-cal-dates">
@@ -10693,7 +10730,6 @@ function renderMyLife(page) {
           ${calHistHtml ? `<div class="ml-cal-hist"><h4>${tr('Journal du calendrier')}</h4><ul class="ml-feed">${calHistHtml}</ul></div>` : ''}
         </div>
       </div>
-      ${decisionsCardHtml}
       ${squadBdaysHtml}
     </section>
   </div>`;
@@ -11966,6 +12002,23 @@ function showDeferredCalendarToast(ls) {
   });
 }
 
+function routeToNewInterviewIfReady() {
+  if (!state?.lastSync?.published) return false;
+  const p = pressNow();
+  if (p && view.pressSeen !== p.id) {
+    current = 'national';
+    return true;
+  }
+  const today = state.snapshot?.gameDate;
+  const mailInterview = today && [...(state.mail || [])].reverse().find((m) => m.interview?.status === 'open' && m.interview.asked === today);
+  if (mailInterview) {
+    current = 'mail';
+    Object.assign(view, { mailFolder: 'press', thread: mailInterview.id, smDossier: false, smInfluence: false, smReading: true });
+    return true;
+  }
+  return false;
+}
+
 // Synchro lancée par LifeLegend quand le jeu a réécrit la sauvegarde.
 function onAutoSync(ev) {
   if (ev.phase === 'detected') {
@@ -12009,6 +12062,7 @@ function onAutoSync(ev) {
   state = ev.state;
   skCache = { key: null, data: undefined, loading: null };
   view.edition = null;
+  if (!isTyping() && current !== 'settings') routeToNewInterviewIfReady();
   softRender();
   const published = state.lastSync?.published;
   if (published) toast(tr('Nouvelle édition publiée (synchro automatique).'));
@@ -12039,7 +12093,7 @@ async function doSync({ bioAsked = false } = {}) {
     state = await live.sync();
     skCache = { key: null, data: undefined, loading: null };
     view.edition = null;
-    if (current === 'settings') current = 'mylife';
+    if (!routeToNewInterviewIfReady() && current === 'settings') current = 'mylife';
     render();
     if (state.lastSync?.backup) {
       toast(tr('Quota de l’IA épuisé pour aujourd’hui : synchro de secours. Scores, Scoreline, posts officiels et mails sont à jour ; les articles sortiront à la prochaine synchro.'), true);

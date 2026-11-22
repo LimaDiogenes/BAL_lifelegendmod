@@ -399,13 +399,14 @@ function findRepeatedQuestions(candidates = [], mem = {}, { threshold = 0.52 } =
   return flagged;
 }
 
-// ---------- Sélection des 3 angles de conférence de presse ----------
+// ---------- Sélection des 5 à 7 angles de conférence de presse ----------
 
-function pickPressBeats({ state = {}, snapshot = {}, mem = {}, activeArcs = [], match = null } = {}) {
+function pickPressBeats({ state = {}, snapshot = {}, mem = {}, activeArcs = [], match = null, count = null } = {}) {
   const gameDate = snapshot?.gameDate || state?.snapshot?.gameDate || '';
   const matchObj = match && typeof match === 'object' ? match : snapshot?.last;
   const matchId = matchObj?.id || state?.press?.matchId || '';
   const seed = hashOf(`${state?.careerId || ''}|${matchId}|${mem?.pressHistory?.length || 0}`);
+  const targetCount = Number.isInteger(count) && count >= 3 && count <= 7 ? count : (5 + (seed % 3));
   const recentBeats = new Set((mem?.pressHistory || []).slice(-6).map((x) => x.beat).filter(Boolean));
   const recentPersonaKeys = new Set((mem?.personaBeatsUsed || []).slice(-6).map((x) => x.key).filter(Boolean));
 
@@ -608,11 +609,54 @@ function pickPressBeats({ state = {}, snapshot = {}, mem = {}, activeArcs = [], 
   const hookPool = unusedPersonaHooks.length ? unusedPersonaHooks : personaHooks;
   const seat2 = hookPool[(seed + 3) % hookPool.length];
 
-  return [
-    { seat: 0, ...seat0 },
-    { seat: 1, ...seat1 },
-    { seat: 2, ...seat2 },
+  const chosen = [seat0, seat1, seat2];
+  const usedBeats = new Set(chosen.map((b) => b.beat));
+  const usedPKeys = new Set(chosen.map((b) => b.personaKey).filter(Boolean));
+
+  const extraCandidates = [
+    ...matchBeatPool.filter((b) => !usedBeats.has(b.beat)),
+    ...hookPool.filter((h) => !usedPKeys.has(h.personaKey) && !usedBeats.has(h.beat)),
+    ...(activeArcs.slice(1).map((arc) => ({
+      beat: `drama:${arc.kind}`,
+      focusLabel: 'drama',
+      angle: `Spotlight & media drama (${arc.headline}): ${arc.angle}. Ask a direct follow-up without inventing unlisted facts.`,
+    }))),
+    ...(snapshot?.next ? [{
+      beat: 'next_fixture_challenge',
+      focusLabel: 'tactics',
+      angle: `Ask a specific tactical question looking ahead to the upcoming fixture (${snapshot.next.home} vs ${snapshot.next.away} in ${snapshot.next.competition || 'competition'}) and what adjustment it requires.`,
+    }] : []),
+    {
+      beat: 'locker_room_standards',
+      focusLabel: 'match',
+      angle: `Ask about dressing-room standards under ${snapshot?.club?.coach || 'the coach'} after ${mText} and how senior voices reacted at full-time.`,
+    },
+    {
+      beat: 'media_scrutiny_response',
+      focusLabel: 'drama',
+      angle: `Ask how he filters outside noise on Kop and in national columns while fighting for ${snapshot?.club?.name || 'the club'}'s targets.`,
+    },
   ];
+
+  for (let i = 0; i < extraCandidates.length && chosen.length < targetCount; i++) {
+    const cand = extraCandidates[(seed + i) % extraCandidates.length];
+    if (!cand) continue;
+    if (usedBeats.has(cand.beat) && (!cand.personaKey || usedPKeys.has(cand.personaKey))) continue;
+    usedBeats.add(cand.beat);
+    if (cand.personaKey) usedPKeys.add(cand.personaKey);
+    chosen.push(cand);
+  }
+
+  while (chosen.length < targetCount) {
+    const idx = chosen.length;
+    chosen.push({
+      beat: `match_followup_${idx}`,
+      focusLabel: 'match',
+      angle: `Ask a distinct follow-up question on ${mText} and his personal standards at ${snapshot?.club?.name || 'the club'}.`,
+    });
+  }
+
+  return chosen.slice(0, targetCount).map((b, i) => ({ seat: i, ...b }));
 }
 
 // Projection compacte envoyée dans MEMORY.media_memory aux requêtes IA.
