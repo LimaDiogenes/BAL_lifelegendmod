@@ -9339,6 +9339,15 @@ const ML_DRAMA_KIND_LABELS = {
   betting_ban_fallout: () => tr('Règlement paris sportifs'),
 };
 
+function mlCleanDramaText(raw) {
+  return String(raw || '')
+    .replace(/details from his backstory in FACTS\.biography\s*\(and real roots\/inner circle in FACTS\.persona(?:,\s*without inventing unlisted names)?\)/gi, 'his humble beginnings, roots and close circle')
+    .replace(/\s*\(?(?:from|in)\s+FACTS\.[a-zA-Z0-9_.]+\)?/g, '')
+    .replace(/\bFACTS\.[a-zA-Z0-9_.]+/g, 'his background')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 function mlAddDays(iso, n) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return '2026-08-01';
   const d = new Date(`${iso}T12:00:00Z`);
@@ -10198,8 +10207,8 @@ function renderMyLife(page) {
               <span class="ml-drama-heat">${esc(tr('Intensité {h}/3', { h: arc.heat || 1 }))}</span>
               <button type="button" class="per-p-del" data-dismiss-arc="${esc(arc.id)}" title="${esc(tr('Classer ce sujet'))}" aria-label="${esc(tr('Classer ce sujet'))}">×</button>
             </div>
-            <b>${esc(arc.headline || '')}</b>
-            <p class="fineprint">${esc(arc.angle || '')}</p>
+            <b>${esc(mlCleanDramaText(arc.headline))}</b>
+            <p class="fineprint">${esc(mlCleanDramaText(arc.angle))}</p>
           </div>`;
         }).join('')}</div>`
       : `<p class="fineprint">${tr('Aucun arc médiatique actif pour le moment : synchronise après un match ou une conférence pour alimenter le projecteur.')}</p>`}

@@ -3,7 +3,7 @@
 // génère des récits médiatiques et de supporters réalistes même quand tout va bien sur le terrain,
 // à partir uniquement des faits réels de la sauvegarde, de la personnalité (persona), de la bio et de Ma vie.
 
-const { normalizePersona, TRAIT_KEYS, ROOT_KEYS, FLAVOR_KEYS } = require('./persona');
+const { normalizePersona, TRAIT_AI_LABELS, TRAIT_KEYS, ROOT_KEYS, FLAVOR_KEYS } = require('./persona');
 
 const DRAMA_KINDS = [
   'tall_poppy_skeptics',
@@ -141,7 +141,8 @@ function detectDramaCandidates({ state = {}, snapshot = {}, changes = {}, mem = 
   }
 
   // 5. Ambition internationale / loyautés divisées
-  const ambition = normPersona?.traits?.ambition || '';
+  const rawAmbition = normPersona?.traits?.ambition || '';
+  const ambition = TRAIT_AI_LABELS.ambition?.[rawAmbition] || rawAmbition;
   const ambitionNt = /world\s*cup|mondial|copa|sele[cç]|national|champion|brazil|brasil|france|england|spain|argentin|portugal|ital|german/i.test(ambition);
   const ntName = snapshot?.nationalTeam?.name || player?.nationality || '';
   if (ambitionNt || (snapshot?.nationalTeam?.inSquad && apps >= 6)) {
@@ -180,7 +181,7 @@ function detectDramaCandidates({ state = {}, snapshot = {}, changes = {}, mem = 
       kind: 'roots_backstory_echo',
       heat: isBig ? 2 : 1,
       headline: `Long way from home: has stardom changed ${player.name || 'him'}?`,
-      angle: 'Feature writers and Kop voices contrast details from his backstory in FACTS.biography (and real roots/inner circle in FACTS.persona, without inventing unlisted names) against his current status — debating whether fame has changed his edge',
+      angle: 'Feature writers and Kop voices contrast his humble beginnings, roots and close circle against his current status — debating whether fame has changed his edge',
       targetFacet: 'biography_roots',
     });
   }
@@ -219,11 +220,12 @@ function detectDramaCandidates({ state = {}, snapshot = {}, changes = {}, mem = 
     const recentSwitch = hub.lastSponsorSwitch && daysBetween(hub.lastSponsorSwitch.on, gameDate) <= 21 ? hub.lastSponsorSwitch : null;
     if (activeWar) {
       const rivals = (activeWar.bids || []).filter((b) => !b.walkedAway).map((b) => b.brand).join(' vs ');
+      const catLabel = String(activeWar.category || '').replace(/_/g, ' ');
       candidates.push({
         kind: 'sponsor_war',
         heat: 3,
-        headline: `Bidding war off the pitch: ${rivals || activeWar.category} fight over ${player.name || 'him'}`,
-        angle: `Rival brands (${rivals}) are fighting over ${player.name || 'his'} signature in ${activeWar.category}${activeWar.existingBrand ? ` while trying to poach him from ${activeWar.existingBrand}` : ''}, fueling debate over money vs focus`,
+        headline: `Bidding war off the pitch: ${rivals || catLabel} fight over ${player.name || 'him'}`,
+        angle: `Rival brands (${rivals}) are fighting over ${player.name || 'his'} signature in ${catLabel}${activeWar.existingBrand ? ` while trying to poach him from ${activeWar.existingBrand}` : ''}, fueling debate over money vs focus`,
         targetFacet: `war:${activeWar.category}`,
       });
     } else if (recentSwitch) {
@@ -244,7 +246,7 @@ function detectDramaCandidates({ state = {}, snapshot = {}, changes = {}, mem = 
     const localDeals = (hub.sponsors || []).filter((s) => s.category === 'local' || (Array.isArray(s.categories) && s.categories.includes('local')));
     const isBig = hub.stage === 'established' || hub.stage === 'superstar' || (state?.profile?.followers || 0) >= 400000;
     const lastLoss = (row?.form || []).slice(-1).some((c) => /^[dl]/i.test(String(c || '')));
-    const luxuryOwned = (hub.assets || []).filter((a) => ['exotic_supercar', 'luxury_villa'].includes(a.catalogId)).map((a) => a.name || a.catalogId);
+    const luxuryOwned = (hub.assets || []).filter((a) => ['exotic_supercar', 'car_supercar', 'luxury_villa'].includes(a.catalogId)).map((a) => a.name || String(a.catalogId || '').replace(/_/g, ' '));
     if (isBig && localDeals.length) {
       candidates.push({
         kind: 'sponsor_roots',

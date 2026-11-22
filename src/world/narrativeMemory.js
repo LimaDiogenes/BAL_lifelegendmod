@@ -54,6 +54,15 @@ function trimMemory(mem) {
   return mem;
 }
 
+function cleanDramaAngle(raw) {
+  return cleanStr(raw, 320)
+    .replace(/details from his backstory in FACTS\.biography\s*\(and real roots\/inner circle in FACTS\.persona(?:,\s*without inventing unlisted names)?\)/gi, 'his humble beginnings, roots and close circle')
+    .replace(/\s*\(?(?:from|in)\s+FACTS\.[a-zA-Z0-9_.]+\)?/g, '')
+    .replace(/\bFACTS\.[a-zA-Z0-9_.]+/g, 'his background')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 function normalizeNarrativeMemory(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};
   const pb = src.pressBehavior && typeof src.pressBehavior === 'object' ? src.pressBehavior : {};
@@ -100,7 +109,7 @@ function normalizeNarrativeMemory(raw) {
         status: x.status === 'resolved' ? 'resolved' : 'active',
         heat: Math.max(1, Math.min(3, Math.round(Number(x.heat) || 1))),
         headline: cleanStr(x.headline, 140),
-        angle: cleanStr(x.angle, 320),
+        angle: cleanDramaAngle(x.angle),
         targetFacet: x.targetFacet ? cleanStr(x.targetFacet, 80) : null,
         startedOn: cleanStr(x.startedOn, 20),
         lastSeenOn: cleanStr(x.lastSeenOn, 20),
