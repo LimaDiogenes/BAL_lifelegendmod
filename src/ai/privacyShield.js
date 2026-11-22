@@ -162,7 +162,7 @@ function collectTokens(real, realLowers) {
   }
 }
 
-function buildPrivacyMap(privacy, { careerId = '', playerName = '', handle = '', persona = null } = {}) {
+function buildPrivacyMap(privacy, { careerId = '', playerName = '', displayName = '', handle = '', formerHandles = [], persona = null } = {}) {
   const norm = normalizePrivacy(privacy);
   if (!norm.enabled) return { enabled: false, pairs: [], maskRegex: null, unmaskRegex: null };
 
@@ -173,6 +173,10 @@ function buildPrivacyMap(privacy, { careerId = '', playerName = '', handle = '',
   const effectiveFields = { ...norm.fields };
   if (!effectiveFields.playerName && playerName) effectiveFields.playerName = cleanVal(playerName);
   if (!effectiveFields.handle && handle) effectiveFields.handle = cleanVal(handle).replace(/^@/, '');
+  const cleanDisplayName = cleanVal(displayName);
+  const cleanFormerHandles = Array.isArray(formerHandles)
+    ? formerHandles.map((h) => cleanVal(h).replace(/^@/, '').replace(/[^\w]/g, '')).filter((h) => h.length >= 2)
+    : [];
 
   const pInfo = persona ? personaPrivacyEntries(persona) : { roots: {}, people: [] };
   const extraRoots = [];
@@ -199,6 +203,8 @@ function buildPrivacyMap(privacy, { careerId = '', playerName = '', handle = '',
   for (const person of norm.customPeople) collectTokens(person.real, realLowers);
   for (const cw of norm.customWords) collectTokens(cw.real, realLowers);
   for (const person of pInfo.people) collectTokens(person.real, realLowers);
+  if (cleanDisplayName) collectTokens(cleanDisplayName, realLowers);
+  for (const fh of cleanFormerHandles) collectTokens(fh, realLowers);
 
   const addPair = (real, decoy, kind) => {
     const r = cleanVal(real).normalize('NFC');
@@ -353,6 +359,27 @@ function buildPrivacyMap(privacy, { careerId = '', playerName = '', handle = '',
     const decoy = cw.decoy || pickFrom(DECOYS.generic, `${careerId}:customWord:${idx}:${cw.real}`, usedDecoys, cw.real.toLowerCase());
     usedDecoys.add(decoy.toLowerCase());
     addPair(cw.real, decoy, 'customWord');
+  }
+
+  if (cleanDisplayName && cleanDisplayName.length >= 2) {
+    const pNameFolded = stripAccents((effectiveFields.playerName || '').normalize('NFC')).toLowerCase();
+    const dispFolded = stripAccents(cleanDisplayName.normalize('NFC')).toLowerCase();
+    if (dispFolded !== pNameFolded) {
+      addNamedEntity({
+        real: cleanDisplayName,
+        decoy: '',
+        kindTag: 'displayName',
+        seedPrefix: `${careerId}:displayName`,
+        poolKey: 'firstName',
+        splitPersonTokens: true,
+      });
+    }
+  }
+
+  for (const [idx, fh] of cleanFormerHandles.entries()) {
+    const decoyFh = `${pickFrom(DECOYS.firstName, `${careerId}:formerHandle:${idx}:${fh}`, usedDecoys, fh.toLowerCase()).toLowerCase()}_${(idx + 10)}`;
+    usedDecoys.add(decoyFh.toLowerCase());
+    addPair(fh, decoyFh, 'formerHandle');
   }
 
   // Deduplicate by accent-folded lowercase `real` (longest/most-specific kept first).

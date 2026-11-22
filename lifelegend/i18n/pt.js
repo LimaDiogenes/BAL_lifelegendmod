@@ -2817,4 +2817,10 @@ window.LL_I18N.pt = {
   "Visite privée de la manufacture & shooting": "Visita privada à relojoaria & ensaio",
   "Mini-documentaire coulisses partenaire": "Mini-documentário de bastidores com parceiro",
   "Masterclass jeunes avec le sponsor": "Clínica de futebol para jovens com patrocinador",
+  "Jour": "Dia",
+  "Année (opt.)": "Ano (opc.)",
+  "Année optionnelle": "Ano opcional",
+  "Année optionnelle — la sauvegarde indique {age} ans (~{year}).": "Ano opcional — o save indica {age} anos (~{year}).",
+  "Utiliser {year}": "Usar {year}",
+  "Année optionnelle (jour et mois suffisent pour le calendrier).": "Ano opcional (dia e mês bastam para o calendário).",
 };

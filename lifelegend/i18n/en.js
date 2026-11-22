@@ -2817,4 +2817,10 @@ window.LL_I18N.en = {
   "Visite privée de la manufacture & shooting": "Private watchmaker atelier visit & shoot",
   "Mini-documentaire coulisses partenaire": "Behind-the-scenes partner mini-doc",
   "Masterclass jeunes avec le sponsor": "Youth football masterclass with partner",
+  "Jour": "Day",
+  "Année (opt.)": "Year (opt.)",
+  "Année optionnelle": "Optional year",
+  "Année optionnelle — la sauvegarde indique {age} ans (~{year}).": "Year is optional — your save file shows age {age} (~{year}).",
+  "Utiliser {year}": "Use {year}",
+  "Année optionnelle (jour et mois suffisent pour le calendrier).": "Year is optional (day and month are enough for the calendar).",
 };

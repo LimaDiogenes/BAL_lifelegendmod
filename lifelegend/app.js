@@ -63,7 +63,14 @@ const pct = (n) => (lang() === 'fr' || lang() === 'de' || lang() === 'es' ? `${n
 
 function fmtDate(iso, opts = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) {
   if (!iso) return '—';
-  const [y, m, d] = iso.split('-').map(Number);
+  const sRaw = String(iso).trim();
+  const mYearless = sRaw.match(/^--(\d{1,2})-(\d{1,2})$/);
+  if (mYearless) {
+    const mm = Number(mYearless[1]), dd = Number(mYearless[2]);
+    const s = new Date(2025, mm - 1, dd).toLocaleDateString(locale(), { day: opts.day || 'numeric', month: opts.month || 'long' });
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+  const [y, m, d] = sRaw.split('-').map(Number);
   const s = new Date(y, m - 1, d).toLocaleDateString(locale(), opts);
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
@@ -1072,13 +1079,65 @@ function personaBadgeLabel(presetId) {
   return found ? found.label() : tr('Optionnel');
 }
 
+function parseUiDob(raw) {
+  const s = String(raw || '').trim();
+  const mFull = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (mFull) return { y: mFull[1], m: String(Number(mFull[2])).padStart(2, '0'), d: String(Number(mFull[3])).padStart(2, '0') };
+  const mYearless = s.match(/^--(\d{1,2})-(\d{1,2})$/) || s.match(/^(\d{1,2})-(\d{1,2})$/);
+  if (mYearless) return { y: '', m: String(Number(mYearless[1])).padStart(2, '0'), d: String(Number(mYearless[2])).padStart(2, '0') };
+  return { y: '', m: '', d: '' };
+}
+
+function dobPickerHtml(rawVal, { id = '', inputClass = '' } = {}) {
+  const { y, m, d } = parseUiDob(rawVal);
+  const normVal = (m && d) ? (y ? `${y}-${m}-${d}` : `--${m}-${d}`) : '';
+  const dayOpts = [`<option value="">${esc(tr('Jour'))}</option>`];
+  for (let i = 1; i <= 31; i += 1) {
+    const dd = String(i).padStart(2, '0');
+    dayOpts.push(`<option value="${dd}"${d === dd ? ' selected' : ''}>${i}</option>`);
+  }
+  const monthOpts = [`<option value="">${esc(tr('Mois'))}</option>`];
+  for (let i = 1; i <= 12; i += 1) {
+    const mm = String(i).padStart(2, '0');
+    const mName = new Date(2025, i - 1, 15).toLocaleDateString(locale(), { month: 'short' });
+    monthOpts.push(`<option value="${mm}"${m === mm ? ' selected' : ''}>${esc(mName)}</option>`);
+  }
+  return `<div class="per-dob-wrap" title="${esc(tr('Date de naissance'))}">
+    <input type="hidden"${id ? ` id="${id}"` : ''} class="per-dob-val${inputClass ? ` ${inputClass}` : ''}" value="${esc(normVal)}">
+    <select class="per-dob-d" aria-label="${esc(tr('Jour'))}">${dayOpts.join('')}</select>
+    <select class="per-dob-m" aria-label="${esc(tr('Mois'))}">${monthOpts.join('')}</select>
+    <input type="number" class="per-dob-y" min="1920" max="2040" placeholder="${esc(tr('Année (opt.)'))}" value="${esc(y)}" title="${esc(tr('Année optionnelle'))}" aria-label="${esc(tr('Année (opt.)'))}">
+  </div>`;
+}
+
+function bindDobPicker(wrap, onChange) {
+  if (!wrap) return;
+  const valIn = wrap.querySelector('.per-dob-val');
+  const dSel = wrap.querySelector('.per-dob-d');
+  const mSel = wrap.querySelector('.per-dob-m');
+  const yIn = wrap.querySelector('.per-dob-y');
+  if (!valIn || !dSel || !mSel || !yIn) return;
+  const syncVal = () => {
+    const d = dSel.value;
+    const m = mSel.value;
+    const yRaw = yIn.value.trim();
+    const yOk = /^\d{4}$/.test(yRaw) ? yRaw : '';
+    valIn.value = (d && m) ? (yOk ? `${yOk}-${m}-${d}` : `--${m}-${d}`) : '';
+    onChange?.();
+  };
+  dSel.onchange = syncVal;
+  mSel.onchange = syncVal;
+  yIn.oninput = syncVal;
+  yIn.onchange = syncVal;
+}
+
 function personaPersonRowHtml(person = {}, groupKey = '') {
   const isClose = person.close !== undefined ? Boolean(person.close) : (groupKey === 'family' || groupKey === 'friends');
   const isAgentRow = groupKey === 'business' && AGENT_ROLE_UI_RE.test(person.role || '') && Boolean(person.name);
   return `<div class="per-person-row">
     <div class="per-p-role-wrap"><input class="per-p-role" value="${esc(person.role || '')}" placeholder="${esc(tr('Rôle (ex. Tante, Kiné)'))}" maxlength="60">${isAgentRow ? `<span class="per-sync-pill" title="${esc(tr('Synchronisé avec l’agent dans Mails'))}">${esc(tr('Synchronisé Mails'))}</span>` : ''}</div>
     <input class="per-p-name" value="${esc(person.name || '')}" placeholder="${esc(tr('Nom réel'))}" maxlength="120">
-    <input type="date" class="per-p-dob" value="${esc(person.dob || '')}" title="${esc(tr('Date de naissance'))}" aria-label="${esc(tr('Date de naissance'))}">
+    ${dobPickerHtml(person.dob || '', { inputClass: 'per-p-dob' })}
     <input class="per-p-decoy" value="${esc(person.decoy || '')}" placeholder="${esc(tr('Pseudo (auto)'))}" maxlength="120">
     <label class="per-p-shield per-p-close" title="${esc(tr('Proche (fête ou dîner d’anniversaire)'))}"><input type="checkbox" class="per-p-close-in"${isClose ? ' checked' : ''} aria-label="${esc(tr('Proche (fête ou dîner d’anniversaire)'))}"><span>${hi('heart')}</span></label>
     <label class="per-p-shield" title="${esc(tr('Masquer dans le bouclier de confidentialité'))}"><input type="checkbox" class="per-p-protect"${person.protect !== false ? ' checked' : ''} aria-label="${esc(tr('Masquer dans le bouclier de confidentialité'))}"><span>${hi('shieldCheck')}</span></label>
@@ -1148,11 +1207,18 @@ function personaFormHtml(prefix, rawPersona, rawPriv = null) {
     <button type="button" class="btn per-cw-add" id="${prefix}-priv-cw-add"${customWords.length >= 30 ? ' disabled' : ''}>+ ${esc(tr('Ajouter un mot'))}</button>
   </div>`;
 
+  const saveAge = Number(state?.snapshot?.player?.profile?.age) || null;
+  const saveYear = Number(String(state?.snapshot?.gameDate || '').slice(0, 4)) || null;
+  const saveBirthYear = (saveAge && saveYear) ? (saveYear - saveAge) : null;
+  const saveAgeHint = saveAge
+    ? `<small class="fineprint">${esc(tr('Année optionnelle — la sauvegarde indique {age} ans (~{year}).', { age: saveAge, year: saveBirthYear || '—' }))}${saveBirthYear ? ` <button type="button" class="btn-link per-use-saveyear" id="${prefix}-per-saveyear" data-year="${saveBirthYear}">${esc(tr('Utiliser {year}', { year: saveBirthYear }))}</button>` : ''}</small>`
+    : `<small class="fineprint">${esc(tr('Année optionnelle (jour et mois suffisent pour le calendrier).'))}</small>`;
+
   return `<details class="per-box" id="${prefix}-per-box" open>
     <summary><span>${tr('Personnalité, anniversaire & cercle intime')}</span><span class="priv-badge${activePreset ? ' on' : ''}" id="${prefix}-per-badge">${esc(personaBadgeLabel(activePreset))}</span></summary>
     <div class="per-body">
       <div class="per-shield-tip">${hi('shieldCheck')}<span>${esc(tr('Protégé automatiquement : les racines et les proches cochés sont masqués par le Bouclier de confidentialité avant tout envoi à l’IA. L’agent renseigné dans Contacts pro synchronise son nom avec Mails.'))}</span></div>
-      <div class="per-sec"><h4>${esc(tr('Date de naissance du joueur'))}</h4><div class="per-grid per-grid-2"><label class="per-field"><span>${esc(tr('Anniversaire (ajouté au calendrier)'))}</span><input type="date" id="${prefix}-per-playerdob" value="${esc(d.playerDob || '')}"></label></div></div>
+      <div class="per-sec"><h4>${esc(tr('Date de naissance du joueur'))}</h4><div class="per-grid per-grid-2"><div class="per-field"><span>${esc(tr('Anniversaire (ajouté au calendrier)'))}</span>${dobPickerHtml(d.playerDob || '', { id: `${prefix}-per-playerdob` })}${saveAgeHint}</div></div></div>
       <div class="per-sec"><h4>${esc(tr('Archétype de personnalité'))}</h4><div class="per-presets" id="${prefix}-per-presets">${presetCards}${customPill}</div></div>
       <div class="per-sec"><h4>${esc(tr('Traits de caractère'))}</h4><div class="per-grid">${traitSelects}</div></div>
       <div class="per-sec"><h4>${esc(tr('Origines & racines'))}</h4><div class="per-grid per-grid-2">${rootsHtml}</div></div>
@@ -1211,7 +1277,18 @@ function bindPersonaForm(prefix, { onChange } = {}) {
   if (!box) return;
   const notify = () => onChange?.(readPersonaForm(prefix));
   const dobEl = $(`#${prefix}-per-playerdob`);
-  if (dobEl) dobEl.onchange = notify;
+  const playerDobWrap = dobEl?.closest('.per-dob-wrap');
+  if (playerDobWrap) bindDobPicker(playerDobWrap, notify);
+  const useSaveYrBtn = $(`#${prefix}-per-saveyear`);
+  if (useSaveYrBtn && playerDobWrap) {
+    useSaveYrBtn.onclick = () => {
+      const yIn = playerDobWrap.querySelector('.per-dob-y');
+      if (yIn) {
+        yIn.value = useSaveYrBtn.dataset.year || '';
+        yIn.dispatchEvent(new Event('change'));
+      }
+    };
+  }
   const syncPresetUi = (presetId) => {
     box.querySelectorAll('.per-preset').forEach((b) => b.classList.toggle('on', b.dataset.preset === presetId));
     const badge = $(`#${prefix}-per-badge`);
@@ -1287,7 +1364,10 @@ function bindPersonaForm(prefix, { onChange } = {}) {
       if (addBtn) addBtn.disabled = rows.length >= PERSONA_GROUP_MAX;
     };
     const bindRow = (row) => {
+      const dobWrap = row.querySelector('.per-dob-wrap');
+      if (dobWrap) bindDobPicker(dobWrap, notify);
       row.querySelectorAll('input').forEach((inp) => {
+        if (inp.classList.contains('per-dob-y') || inp.classList.contains('per-dob-val')) return;
         if (inp.type === 'checkbox' || inp.type === 'date') inp.onchange = notify;
         else inp.oninput = () => { syncGroupUi(); notify(); };
       });
@@ -11568,7 +11648,7 @@ function renderPlayerProfile(page) {
         <div>
           <span class="k-eyebrow">${tr('Profil du joueur')}</span>
           <h1>${esc(s.player?.name || '')}</h1>
-          <p class="fineprint">${esc([s.club?.name, state.persona?.playerDob ? tr('Né(e) le {d}', { d: fmtDate(state.persona.playerDob) }) : '', agentInfo ? tr('Agent : {agent}', { agent: agentInfo }) : ''].filter(Boolean).join(' · '))}</p>
+          <p class="fineprint">${esc([s.club?.name, s.player?.profile?.age ? tr('{n} ans', { n: s.player.profile.age }) : '', state.persona?.playerDob ? tr('Né(e) le {d}', { d: fmtDate(state.persona.playerDob) }) : '', agentInfo ? tr('Agent : {agent}', { agent: agentInfo }) : ''].filter(Boolean).join(' · '))}</p>
         </div>
       </div>
       <div class="pp-head-acts">

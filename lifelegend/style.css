@@ -4276,8 +4276,14 @@ html, body { height: 100%; overflow: hidden; background: var(--sh-back); }
 .per-group > summary b { font-size: 13px; font-weight: 600; color: var(--ink); }
 .per-group-body { margin-top: 9px; display: grid; gap: 8px; container-type: inline-size; }
 .per-group-list { display: grid; gap: 6px; }
-.per-person-row { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(100px, 1fr) minmax(120px, 134px) minmax(90px, 1fr) 44px 48px 34px; gap: 6px; align-items: center; min-width: 0; }
+.per-person-row { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(100px, 1fr) minmax(156px, 184px) minmax(90px, 1fr) 44px 48px 34px; gap: 6px; align-items: center; min-width: 0; }
 .per-person-row > * { min-width: 0; }
+.per-dob-wrap { display: grid; grid-template-columns: 52px minmax(58px, 1fr) 62px; gap: 4px; align-items: center; min-width: 0; }
+.per-dob-wrap select, .per-dob-wrap input.per-dob-y { width: 100%; min-width: 0; padding: 7px 5px; border: 1px solid var(--line-2); border-radius: var(--r-s); background: var(--surface-2); color: var(--ink); font-size: 12px; font-weight: 400; }
+.per-field .per-dob-wrap { grid-template-columns: 74px minmax(92px, 1fr) 96px; gap: 6px; }
+.per-field .per-dob-wrap select, .per-field .per-dob-wrap input.per-dob-y { padding: 8px 8px; background: var(--surface); font-size: 13px; }
+.per-use-saveyear { margin-left: 6px; padding: 1px 7px; border: 1px solid var(--line-2); border-radius: var(--r-pill); background: var(--surface); color: var(--gold-ink); font-size: 11px; font-weight: 600; cursor: pointer; }
+.per-use-saveyear:hover { border-color: var(--gold); background: var(--gold-soft); }
 @container (max-width: 680px) {
   .per-col-head { display: none; }
   .per-person-row { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 8px; border: 1px solid var(--line); border-radius: var(--r-s); background: var(--surface-2); }

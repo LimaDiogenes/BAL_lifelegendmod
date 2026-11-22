@@ -2817,4 +2817,10 @@ window.LL_I18N.it = {
   "Visite privée de la manufacture & shooting": "Visita privata in manifattura e shooting",
   "Mini-documentaire coulisses partenaire": "Mini-doc dietro le quinte con lo sponsor",
   "Masterclass jeunes avec le sponsor": "Masterclass per i giovani con lo sponsor",
+  "Jour": "Giorno",
+  "Année (opt.)": "Anno (opz.)",
+  "Année optionnelle": "Anno opzionale",
+  "Année optionnelle — la sauvegarde indique {age} ans (~{year}).": "Anno opzionale — il salvataggio indica {age} anni (~{year}).",
+  "Utiliser {year}": "Usa {year}",
+  "Année optionnelle (jour et mois suffisent pour le calendrier).": "Anno opzionale (giorno e mese bastano per il calendario).",
 };

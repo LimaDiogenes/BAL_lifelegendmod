@@ -42,7 +42,9 @@ function privacyMapFor(state, settings) {
   return buildPrivacyMap(privacy, {
     careerId: state?.careerId || '',
     playerName: state?.snapshot?.player?.name || '',
+    displayName: state?.profile?.displayName || '',
     handle: state?.profile?.handle || '',
+    formerHandles: state?.profile?.formerHandles || [],
     persona,
   });
 }

@@ -318,7 +318,7 @@ function upsertPersonaAgent(persona, agentName = '') {
   return norm;
 }
 
-function personaFacts(persona) {
+function personaFacts(persona, { includeDob = false } = {}) {
   const norm = normalizePersona(persona);
   const presetObj = PERSONA_PRESETS[norm.preset] || null;
 
@@ -352,14 +352,14 @@ function personaFacts(persona) {
         group: g,
         ...(person.role ? { role: person.role } : {}),
         name: person.name,
-        ...(person.dob ? { dob: person.dob } : {}),
+        ...(includeDob && person.dob ? { dob: person.dob } : {}),
       });
     }
   }
 
   const hasContent = Boolean(
     presetObj
-    || norm.playerDob
+    || (includeDob && norm.playerDob)
     || Object.keys(traitsOut).length
     || Object.keys(rootsOut).length
     || Object.keys(flavorOut).length
@@ -369,7 +369,7 @@ function personaFacts(persona) {
 
   return {
     ...(presetObj ? { archetype: presetObj.aiDesc } : {}),
-    ...(norm.playerDob ? { player_dob: norm.playerDob } : {}),
+    ...(includeDob && norm.playerDob ? { player_dob: norm.playerDob } : {}),
     ...(Object.keys(traitsOut).length ? { traits: traitsOut } : {}),
     ...(Object.keys(rootsOut).length ? { roots: rootsOut } : {}),
     ...(Object.keys(flavorOut).length ? { flavor: flavorOut } : {}),

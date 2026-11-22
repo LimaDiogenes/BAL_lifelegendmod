@@ -6,6 +6,7 @@ const { dayRhythm } = require('./calendar');
 const { activeHuddle, addMessage: addHuddleMessage } = require('./huddle');
 const { parseJson } = require('../ai/providers');
 const { notePersonaBeat } = require('./narrativeMemory');
+const { personaFacts } = require('./persona');
 
 const MAX_DAILY_BRIEFS = 20;
 
@@ -360,8 +361,7 @@ async function runHybridAiDailyPulse({ state, snapshot, settings, apiKey, notabl
     active_sponsors: (state.lifeHub?.sponsors || []).slice(0, 6).map((s) => `${s.brand} (${s.category}${s.isGlobalPartner ? ', Global' : ''})`),
     active_bidding_wars: (state.lifeHub?.biddingWars || []).map((w) => ({ category: w.category, brands: w.bids.filter((b) => !b.walkedAway).map((b) => b.brand) })),
     active_drama: (mem?.dramaArcs || state?.dramaSnapshot?.activeArcs || []).filter((a) => !a.status || a.status === 'active').slice(0, 2).map((a) => ({ kind: a.kind, headline: a.headline, angle: a.angle })),
-    persona_flavor: state.persona?.flavor || undefined,
-    persona_traits: state.persona?.traits || undefined,
+    persona: state.persona ? personaFacts(state.persona) : undefined,
     huddle_members: (activeHuddle(state)?.players || []).slice(0, 8),
   };
 
