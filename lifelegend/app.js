@@ -220,7 +220,7 @@ const coachFaceIn = (name, fallback = '') => faceIn(name, fallback, `coach|${nam
 // Un compte de Kop : son visage s'il est joueur ou entraîneur. Jamais pour un supporter, même s'il porte le même nom.
 const authorFace = (a, fallback) => (a?.type === 'player' || a?.type === 'me' ? faceIn(a.name, fallback) : a?.type === 'coach' ? coachFaceIn(a.name, fallback) : fallback);
 function playerSilhouetteHtml() {
-  return '<svg class="face-silhouette" viewBox="0 0 120 120" role="img" aria-hidden="true"><circle cx="60" cy="39" r="21" fill="currentColor" fill-opacity=".86"/><path d="M51 58h18v12c0 4-4 7-9 7s-9-3-9-7V58Z" fill="currentColor" fill-opacity=".76"/><path d="M18 118c3-27 19-41 42-41s39 14 42 41H18Z" fill="currentColor" fill-opacity=".68"/><path d="M47 77l13 11 13-11-13 18-13-18Z" fill="currentColor" fill-opacity=".28"/></svg>';
+  return '<img class="face-img face-silhouette" src="media/player_silhouette.png" alt="">';
 }
 // Le joueur lui-même : une photo choisie dans Kop passe avant son visage du jeu.
 function myFaceIn(fallback = '') {
