@@ -12011,8 +12011,8 @@ async function renderSettings(page) {
       <p class="fineprint">${tr(REAL_PEOPLE_NOTE)}</p>
       <p class="fineprint">${tr('LifeLegend est publié sous licence MIT. Polices, icônes et mises en page reprises ont leurs propres licences : voir LICENSE et THIRD-PARTY-NOTICES.txt dans le dossier de LifeLegend.')}</p>`),
     rgRow('rg-credits', tr('Crédits & auteur original'), `<p class="fineprint">${tr('Remerciements particuliers à {author}, créateur et auteur original de LifeLegend, dont le travail et l’architecture sous licence MIT ont rendu cette édition possible, ainsi qu’aux auteurs des outils communautaires PES ({tools}).', { author: '<b>Saamz09</b>', tools: 'pesXdecrypter (the4chancup), PES21 BAL Ultimate Editor (AlexDelPiero23), TyNet' })}</p>`),
-    rgRow('rg-update', tr('Mises à jour'), rgSwitch('autoupdatecheck', settings.autoUpdateCheck !== false, tr('Vérifier automatiquement les mises à jour au démarrage'), tr('Interroge discrètement GitHub à l’ouverture et affiche une pastille si une nouvelle version est prête.'))
-      + `<button class="btn" id="rg-update-btn" type="button">${tr('Vérifier les mises à jour')}</button><p class="fineprint" id="rg-update-out" role="status"></p>`, tr('LifeLegend regarde la dernière version publiée sur sa page GitHub. Rien d’autre n’est envoyé.')),
+    ...(settings.launchedByStudio ? [] : [rgRow('rg-update', tr('Mises à jour'), rgSwitch('autoupdatecheck', settings.autoUpdateCheck !== false, tr('Vérifier automatiquement les mises à jour au démarrage'), tr('Interroge discrètement GitHub à l’ouverture et affiche une pastille si une nouvelle version est prête.'))
+      + `<button class="btn" id="rg-update-btn" type="button">${tr('Vérifier les mises à jour')}</button><p class="fineprint" id="rg-update-out" role="status"></p>`, tr('LifeLegend regarde la dernière version publiée sur sa page GitHub. Rien d’autre n’est envoyé.'))]),
     ...(introAvailable ? [rgRow('rg-intro', tr('Animation d’ouverture'), `<button class="btn" id="rg-intro-btn" type="button">${tr('Revoir')}</button>`, tr('La courte vidéo qui ouvre LifeLegend au premier lancement. Animation réalisée avec Profounder (profounder.com), qui n’a pas de lien avec LifeLegend.'))] : []),
     rgRow('rg-logos', tr('Logos des sponsors'), `<button class="btn" id="rg-logos-btn" type="button">${tr('Télécharger les logos des sponsors')}</button><p class="fineprint" id="rg-logos-out" role="status"></p>`,
       tr('Les logos des marques sont un pack à part, téléchargé depuis la page GitHub de LifeLegend. Ce sont des marques de leurs propriétaires ; sans le pack, LifeLegend affiche des monogrammes.')),
@@ -12525,7 +12525,8 @@ async function init() {
   introAvailable = await probeIntro();
   if (introAvailable && !settings.introSeen && setupActive()) playIntro();
   if (introAvailable && current === 'settings') render();
-  if (settings.autoUpdateCheck !== false && live.checkUpdate) {
+  // Lancé par le Mod Studio : c'est lui qui gère les mises à jour.
+  if (!settings.launchedByStudio && settings.autoUpdateCheck !== false && live.checkUpdate) {
     live.checkUpdate().then((r) => {
       if (r?.newer) {
         availableUpdate = r;

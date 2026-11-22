@@ -550,14 +550,16 @@ app.whenReady().then(() => {
   });
   // « Vérifier les mises à jour » : la dernière version publiée sur la page GitHub de LifeLegend, seulement quand il
   // clique. Rien d'autre n'est envoyé (ni identifiant, ni réglage, ni donnée de carrière).
+  // Seules les versions de l'application comptent (étiquettes v1.2.3) : la release des logos (logos-v1) est ignorée.
   handle('update:check', async () => {
-    const res = await net.fetch('https://api.github.com/repos/LimaDiogenes/BAL_lifelegendmod/releases/latest', { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'LifeLegend' } });
+    const res = await net.fetch('https://api.github.com/repos/LimaDiogenes/BAL_lifelegendmod/releases?per_page=30', { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'LifeLegend' } });
     if (!res.ok) throw new Error(`GitHub ${res.status}`);
-    const r = await res.json();
-    const latest = String(r.tag_name || '').replace(/^v/, '');
     const parts = (v) => String(v).split('-')[0].split('.').map((x) => parseInt(x, 10) || 0);
-    const [a, b] = [parts(latest), parts(app.getVersion())];
-    const diff = [0, 1, 2].map((i) => (a[i] || 0) - (b[i] || 0)).find((d) => d !== 0) || 0;
+    const cmp = (x, y) => { const [a, b] = [parts(x), parts(y)]; return [0, 1, 2].map((i) => (a[i] || 0) - (b[i] || 0)).find((d) => d !== 0) || 0; };
+    const releases = (await res.json()).filter((x) => !x.draft && !x.prerelease && /^v?\d+\.\d+\.\d+$/.test(String(x.tag_name || '')));
+    const r = releases.sort((x, y) => cmp(String(y.tag_name).replace(/^v/, ''), String(x.tag_name).replace(/^v/, '')))[0] || {};
+    const latest = String(r.tag_name || '').replace(/^v/, '');
+    const diff = latest ? cmp(latest, app.getVersion()) : 0;
     const url = /^https:\/\/github\.com\/LimaDiogenes\/BAL_lifelegendmod\//.test(r.html_url || '') ? r.html_url : 'https://github.com/LimaDiogenes/BAL_lifelegendmod/releases/latest';
     return { current: app.getVersion(), latest, newer: Boolean(latest) && diff > 0, url };
   });

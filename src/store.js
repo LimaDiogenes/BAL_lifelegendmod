@@ -75,7 +75,7 @@ class Store {
   publicSettings() {
     const { keys, ...rest } = this.getSettings();
     const session = Object.keys(this.sessionKeys).filter((k) => !(k in keys));
-    return { ...rest, savedKeys: [...Object.keys(keys), ...session], sessionKeys: Object.keys(this.sessionKeys), keyEncryption: this.canEncrypt() };
+    return { ...rest, savedKeys: [...Object.keys(keys), ...session], sessionKeys: Object.keys(this.sessionKeys), keyEncryption: this.canEncrypt(), launchedByStudio: Boolean(this.overrides.launchedByStudio) };
   }
 
   saveSettings(update) {

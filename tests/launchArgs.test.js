@@ -74,3 +74,12 @@ test('clé d’IA sans chiffrement Windows : en mémoire seulement, jamais en cl
   assert.ok(!fs.readFileSync(path.join(enc.dir, 'settings.json'), 'utf8').includes('gsk_test_secret'));
   assert.strictEqual(enc.publicSettings().keyEncryption, true);
 });
+
+test('--from-studio : la vérification des mises à jour est masquée pour cette session seulement', () => {
+  assert.deepStrictEqual(parseLaunchArgs(['LifeLegend.exe', '--from-studio']), { fromStudio: true });
+  const store = new Store(path.join(tmp(), 'data'), noCrypto);
+  assert.strictEqual(store.publicSettings().launchedByStudio, false);
+  applyLaunchArgs(store, { fromStudio: true });
+  assert.strictEqual(store.publicSettings().launchedByStudio, true);
+  assert.ok(!('launchedByStudio' in store.storedSettings()));
+});
