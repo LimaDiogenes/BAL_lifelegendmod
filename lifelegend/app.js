@@ -152,9 +152,189 @@ const brandSlugUi = (brand) => String(brand || '')
   .toLowerCase()
   .replace(/[^a-z0-9]+/g, '_')
   .replace(/^_|_$/g, '');
-const bundledSponsorLogoUrl = (brand) => {
+const SPONSOR_LOGO_ALIASES_UI = {
+  all_nippon_airways: 'ana_all_nippon_airways',
+  ana: 'ana_all_nippon_airways',
+  ana_airlines: 'ana_all_nippon_airways',
+  ana_airways: 'ana_all_nippon_airways',
+  konami: 'konami_efootball',
+  efootball: 'konami_efootball',
+  konami_digital: 'konami_efootball',
+  konami_digital_entertainment: 'konami_efootball',
+  pes: 'konami_efootball',
+  samsung: 'samsung_galaxy',
+  samsung_electronics: 'samsung_galaxy',
+  ito_en: 'oi_ocha_ito_en',
+  oi_ocha: 'oi_ocha_ito_en',
+  ito_en_oi_ocha: 'oi_ocha_ito_en',
+  oiocha: 'oi_ocha_ito_en',
+  itoen: 'oi_ocha_ito_en',
+  nishikawa: 'nishikawa_air',
+  air_nishikawa: 'nishikawa_air',
+  redbull: 'red_bull',
+  apple: 'apple_iphone',
+  iphone: 'apple_iphone',
+  google: 'google_pixel',
+  pixel: 'google_pixel',
+  sony: 'sony_xperia',
+  xperia: 'sony_xperia',
+  ps5: 'playstation',
+  sony_playstation: 'playstation',
+  ea: 'ea_sports',
+  electronic_arts: 'ea_sports',
+  ea_fc: 'ea_sports',
+  fc25: 'ea_sports',
+  logitech: 'logitech_g',
+  asus: 'asus_rog',
+  rog: 'asus_rog',
+  tencent: 'tencent_games',
+  skechers: 'skechers_football',
+  armani: 'giorgio_armani',
+  emporio_armani: 'giorgio_armani',
+  ermenegildo_zegna: 'zegna',
+  lv: 'louis_vuitton',
+  vuitton: 'louis_vuitton',
+  boss: 'hugo_boss',
+  polo: 'ralph_lauren',
+  polo_ralph_lauren: 'ralph_lauren',
+  ap: 'audemars_piguet',
+  casio: 'casio_g_shock',
+  g_shock: 'casio_g_shock',
+  gshock: 'casio_g_shock',
+  jacob: 'jacob_co',
+  jacob_and_co: 'jacob_co',
+  mercedes: 'mercedes_benz',
+  benz: 'mercedes_benz',
+  land_rover: 'range_rover',
+  mg: 'mg_motor',
+  tata: 'tata_motors',
+  monster: 'monster_energy',
+  prime: 'prime_hydration',
+  guarana: 'guarana_antarctica',
+  wanglaoji: 'walovi_wanglaoji',
+  walovi: 'walovi_wanglaoji',
+  wong_lo_kat: 'walovi_wanglaoji',
+  s_pellegrino: 'san_pellegrino',
+  pellegrino: 'san_pellegrino',
+  athletic_greens: 'ag1',
+  pocari: 'pocari_sweat',
+  fiji: 'fiji_water',
+  liquid_iv: 'liquid_i_v',
+  liquidiv: 'liquid_i_v',
+  nongfu: 'nongfu_spring',
+  herbalife: 'herbalife_nutrition',
+  sis: 'science_in_sport_sis',
+  science_in_sport: 'science_in_sport_sis',
+  theragun: 'therabody',
+  optimum: 'optimum_nutrition',
+  oura_ring: 'oura',
+  bt: 'bt_ee',
+  ee: 'bt_ee',
+  docomo: 'ntt_docomo',
+  ntt: 'ntt_docomo',
+  qatar: 'qatar_airways',
+  turkish: 'turkish_airlines',
+  jal: 'japan_airlines',
+  air_france: 'air_france_klm',
+  klm: 'air_france_klm',
+  asiana: 'asiana_airlines',
+  singapore: 'singapore_airlines',
+  ba: 'british_airways',
+  etihad: 'etihad_airways',
+  korean: 'korean_air',
+  cathay: 'cathay_pacific',
+  swiss: 'swiss_international_air_lines',
+  swiss_air: 'swiss_international_air_lines',
+  swiss_airlines: 'swiss_international_air_lines',
+  delta: 'delta_air_lines',
+  delta_airlines: 'delta_air_lines',
+  united: 'united_airlines',
+  american: 'american_airlines',
+  latam: 'latam_airlines',
+  azul: 'azul_linhas_aereas',
+  azul_airlines: 'azul_linhas_aereas',
+  tap: 'tap_air_portugal',
+  tap_portugal: 'tap_air_portugal',
+  virgin: 'virgin_atlantic',
+  gol: 'gol_linhas_aereas',
+  gol_airlines: 'gol_linhas_aereas',
+  marriott: 'marriott_bonvoy',
+  bonvoy: 'marriott_bonvoy',
+  accor: 'accor_fairmont',
+  fairmont: 'accor_fairmont',
+  mandarin: 'mandarin_oriental',
+  ritz: 'ritz_carlton',
+  booking: 'booking_com',
+  taj: 'taj_hotels',
+  nivea: 'nivea_men',
+  rabanne: 'paco_rabanne',
+  chanel: 'chanel_bleu',
+  bleu_de_chanel: 'chanel_bleu',
+  dove: 'dove_men_care',
+  dove_men: 'dove_men_care',
+  boticario: 'o_boticario',
+  amex: 'american_express',
+  mercado_libre: 'mercado_livre',
+  mercadolivre: 'mercado_livre',
+  mercadolibre: 'mercado_livre',
+  hdfc: 'hdfc_bank',
+  beats: 'beats_by_dre',
+  amazon: 'amazon_prime_video',
+  prime_video: 'amazon_prime_video',
+  primevideo: 'amazon_prime_video',
+  bang_and_olufsen: 'bang_olufsen',
+  b_o: 'bang_olufsen',
+};
+const CORP_STOP_UI = new Set(['inc', 'corp', 'corporation', 'ltd', 'gmbh', 'sa', 'ag', 'plc', 'co', 'company', 'group', 'holdings', 'international', 'official', 'brand', 'global']);
+function resolveSponsorLogoUi(brand, logos = appPaths.sponsorLogos) {
+  if (!brand || !logos || typeof logos !== 'object') return null;
   const slug = brandSlugUi(brand);
-  const f = slug && appPaths.sponsorLogos?.[slug];
+  if (!slug) return null;
+  if (logos[slug]) return logos[slug];
+  const alias = SPONSOR_LOGO_ALIASES_UI[slug] || SPONSOR_LOGO_ALIASES_UI[slug.replace(/_/g, '')];
+  if (alias && logos[alias]) return logos[alias];
+  const keys = Object.keys(logos);
+  if (!keys.length) return null;
+  const compact = slug.replace(/_/g, '');
+  for (const k of keys) {
+    if (k.replace(/_/g, '') === compact) return logos[k];
+  }
+  const bag = (s) => s.split('_').filter(Boolean).sort().join('_');
+  const slugBag = bag(slug);
+  for (const k of keys) {
+    if (bag(k) === slugBag) return logos[k];
+  }
+  const stripped = slug.split('_').filter((t) => t && !CORP_STOP_UI.has(t)).join('_');
+  if (stripped && stripped !== slug) {
+    if (logos[stripped]) return logos[stripped];
+    const sAlias = SPONSOR_LOGO_ALIASES_UI[stripped] || SPONSOR_LOGO_ALIASES_UI[stripped.replace(/_/g, '')];
+    if (sAlias && logos[sAlias]) return logos[sAlias];
+    const sCompact = stripped.replace(/_/g, '');
+    for (const k of keys) {
+      if (k.replace(/_/g, '') === sCompact) return logos[k];
+    }
+  }
+  const parts = String(brand).split(/[()/,-]+/).map((p) => brandSlugUi(p)).filter(Boolean);
+  if (parts.length > 1) {
+    for (const p of parts) {
+      if (logos[p]) return logos[p];
+      const pAlias = SPONSOR_LOGO_ALIASES_UI[p] || SPONSOR_LOGO_ALIASES_UI[p.replace(/_/g, '')];
+      if (pAlias && logos[pAlias]) return logos[pAlias];
+    }
+  }
+  const check = stripped || slug;
+  if (check.length >= 3) {
+    for (const k of keys) {
+      if (k.startsWith(`${check}_`) || k.endsWith(`_${check}`)) return logos[k];
+    }
+    for (const k of keys) {
+      if (check.startsWith(`${k}_`) && k.length >= 3) return logos[k];
+    }
+  }
+  return null;
+}
+const bundledSponsorLogoUrl = (brand) => {
+  const f = resolveSponsorLogoUi(brand, appPaths.sponsorLogos);
   return f ? `media/sponsors/${encodeURI(f)}` : null;
 };
 const brandMonogram = (brand) => {
@@ -492,20 +672,46 @@ const SETUP_STEPS = ['Ta sauvegarde', 'Ta clé d’IA', 'Sa biographie'];
 const BIO_MAX = 3000;
 
 function parseLegacyCustomMaskWords(priv) {
-  if (Array.isArray(priv?.customWords) && priv.customWords.length) {
-    return priv.customWords.slice(0, 30).map((e) => ({
-      word: String(e?.word || e?.real || '').trim(),
-      decoy: String(e?.decoy || '').trim(),
-    })).filter((e) => e.word);
+  const out = [];
+  const seen = new Set();
+  const push = (word, decoy) => {
+    const w = String(word || '').trim();
+    const d = String(decoy || '').trim();
+    if (!w || out.length >= 30) return;
+    const k = w.toLowerCase();
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push({ word: w, decoy: d });
+  };
+  if (Array.isArray(priv?.customWords)) {
+    for (const e of priv.customWords) push(e?.word || e?.real, e?.decoy);
   }
   const raw = String(priv?.fields?.custom || '').trim();
-  if (!raw) return [];
-  return raw.split(/[,;\n]+/).map((part) => {
-    const eq = part.indexOf('=');
-    return eq >= 0
-      ? { word: part.slice(0, eq).trim(), decoy: part.slice(eq + 1).trim() }
-      : { word: part.trim(), decoy: '' };
-  }).filter((e) => e.word).slice(0, 30);
+  if (raw) {
+    for (const part of raw.split(/[,;\n]+/)) {
+      const eq = part.indexOf('=');
+      if (eq >= 0) push(part.slice(0, eq), part.slice(eq + 1));
+      else push(part, '');
+    }
+  }
+  return out;
+}
+
+function countLegacyHiddenPrivacyFilters(priv) {
+  if (!priv || typeof priv !== 'object') return 0;
+  let n = 0;
+  if (priv.fields && typeof priv.fields === 'object') {
+    for (const [k, v] of Object.entries(priv.fields)) {
+      if (k === 'custom') continue;
+      if (String(v || '').trim()) n++;
+    }
+  }
+  if (Array.isArray(priv.customPeople)) {
+    for (const p of priv.customPeople) {
+      if (String(p?.real || '').trim()) n++;
+    }
+  }
+  return n;
 }
 
 function countAutoProtectedItems(persona, playerName = '', handle = '', priv = null) {
@@ -538,6 +744,7 @@ function privacyCustomWordRowHtml(entry = {}) {
 function privacyBarHtml(prefix, priv, { playerName = '', handle = '', persona = null } = {}) {
   const on = priv?.enabled !== false;
   const autoCount = countAutoProtectedItems(persona || state?.persona, playerName, handle, priv);
+  const legacyCount = countLegacyHiddenPrivacyFilters(priv);
   return `<section class="priv-bar-wrap" id="${prefix}-priv-box">
     <div class="priv-bar">
       <div class="priv-bar-left">
@@ -549,6 +756,7 @@ function privacyBarHtml(prefix, priv, { playerName = '', handle = '', persona = 
         <span class="per-shield-pill" id="${prefix}-priv-autocnt">${hi('shieldCheck')} ${esc(trn(autoCount, '{n} protégé', '{n} protégés'))}</span>
       </div>
       <div class="priv-bar-acts">
+        ${legacyCount > 0 ? `<button type="button" class="btn" id="${prefix}-priv-clean-btn">${esc(tr('Nettoyer anciens filtres ({n})', { n: legacyCount }))}</button>` : ''}
         <button type="button" class="btn" id="${prefix}-priv-preview-btn">${tr('Aperçu IA')}</button>
         <button type="button" class="btn" id="${prefix}-priv-audit-btn">${tr('Journal IA')}</button>
       </div>
@@ -560,9 +768,6 @@ function privacyBarHtml(prefix, priv, { playerName = '', handle = '', persona = 
 function readPrivacyForm(prefix) {
   const toggle = $(`#${prefix}-priv-on`);
   if (!toggle) return null;
-  const prev = (state?.privacy || view.setup?.privacy || settings?.privacy || {});
-  const fields = { ...(prev.fields || {}), custom: '' };
-  const customPeople = Array.isArray(prev.customPeople) ? prev.customPeople : [];
   const customWords = [];
   const list = $(`#${prefix}-priv-cw-list`);
   if (list) {
@@ -573,7 +778,7 @@ function readPrivacyForm(prefix) {
       if (word) customWords.push({ real: word, decoy });
     });
   }
-  return { enabled: toggle.checked, fields, customPeople, customWords };
+  return { enabled: toggle.checked, fields: {}, customPeople: [], overrides: {}, customWords };
 }
 
 function bindPrivacyForm(prefix, { getBio, getPlayer, getHandle, getPersona, onChange } = {}) {
@@ -624,6 +829,22 @@ function bindPrivacyForm(prefix, { getBio, getPlayer, getHandle, getPersona, onC
       };
     }
     syncCwAdd();
+  }
+
+  const cleanBtn = $(`#${prefix}-priv-clean-btn`);
+  if (cleanBtn) {
+    cleanBtn.onclick = async () => {
+      try {
+        const cleaned = readPrivacyForm(prefix);
+        if (state && live.savePrivacy) {
+          state = await live.savePrivacy(cleaned);
+        }
+        if (view.setup) view.setup.privacy = cleaned;
+        cleanBtn.remove();
+        notify();
+        toast(tr('Anciens filtres supprimés.'));
+      } catch (err) { toast(err.message, true); }
+    };
   }
 
   const btn = $(`#${prefix}-priv-preview-btn`);

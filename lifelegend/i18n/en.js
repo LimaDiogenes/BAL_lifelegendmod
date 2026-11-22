@@ -2800,4 +2800,6 @@ window.LL_I18N.en = {
   "LifeLegend regarde la dernière version publiée sur sa page GitHub. Rien d’autre n’est envoyé.": "LifeLegend checks the latest release published on its GitHub page. Nothing else is sent.",
   "{n} protégé": "{n} protected",
   "{n} protégés": "{n} protected",
+  "Nettoyer anciens filtres ({n})": "Clean legacy filters ({n})",
+  "Anciens filtres supprimés.": "Legacy filters removed.",
 };

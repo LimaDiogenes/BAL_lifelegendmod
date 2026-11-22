@@ -374,4 +374,36 @@ describe('Phase C My Life Hub, Mid-Career Calibration & Sim Engine', () => {
     addSponsor(state, { brand: 'Mizuno Pro', category: 'boots', fee: 450000, bonus: 2000, until: '2032-06-30' }, laterSnap.gameDate, () => 'sp_miz');
     assert.equal(state.sponsor.deal?.brand, 'Mizuno Pro');
   });
+
+  it('resolves custom brand names and variations to bundled sponsor logo files', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const { resolveSponsorLogoFile } = require('../src/world/sponsorCatalog');
+    const sponsorsDir = path.join(__dirname, '..', 'lifelegend', 'media', 'sponsors');
+    const sponsorLogos = {};
+    for (const f of fs.readdirSync(sponsorsDir)) {
+      const m = /^([a-z0-9_-]+)\.(svg|png|jpe?g|webp)$/i.exec(f);
+      if (m) sponsorLogos[m[1].toLowerCase()] = f;
+    }
+
+    const customInputs = [
+      'All Nippon Airways',
+      'ANA',
+      'Konami',
+      'SAMSUNG',
+      'Ito En (Oi Ocha)',
+      'Ito En',
+      'Oi Ocha',
+      'Canon',
+      'Nishikawa AiR',
+      'Nishikawa',
+      'Embraer',
+      'RedBull',
+      'Keyence',
+    ];
+    for (const name of customInputs) {
+      const resolved = resolveSponsorLogoFile(name, sponsorLogos);
+      assert.ok(resolved, `Expected "${name}" to resolve to a bundled logo file`);
+    }
+  });
 });

@@ -28,6 +28,207 @@ function brandSlug(brand) {
     .replace(/^_|_$/g, '');
 }
 
+const SPONSOR_LOGO_ALIASES = {
+  all_nippon_airways: 'ana_all_nippon_airways',
+  ana: 'ana_all_nippon_airways',
+  ana_airlines: 'ana_all_nippon_airways',
+  ana_airways: 'ana_all_nippon_airways',
+  konami: 'konami_efootball',
+  efootball: 'konami_efootball',
+  konami_digital: 'konami_efootball',
+  konami_digital_entertainment: 'konami_efootball',
+  pes: 'konami_efootball',
+  samsung: 'samsung_galaxy',
+  samsung_electronics: 'samsung_galaxy',
+  ito_en: 'oi_ocha_ito_en',
+  oi_ocha: 'oi_ocha_ito_en',
+  ito_en_oi_ocha: 'oi_ocha_ito_en',
+  oiocha: 'oi_ocha_ito_en',
+  itoen: 'oi_ocha_ito_en',
+  nishikawa: 'nishikawa_air',
+  air_nishikawa: 'nishikawa_air',
+  redbull: 'red_bull',
+  apple: 'apple_iphone',
+  iphone: 'apple_iphone',
+  google: 'google_pixel',
+  pixel: 'google_pixel',
+  sony: 'sony_xperia',
+  xperia: 'sony_xperia',
+  ps5: 'playstation',
+  sony_playstation: 'playstation',
+  ea: 'ea_sports',
+  electronic_arts: 'ea_sports',
+  ea_fc: 'ea_sports',
+  fc25: 'ea_sports',
+  logitech: 'logitech_g',
+  asus: 'asus_rog',
+  rog: 'asus_rog',
+  tencent: 'tencent_games',
+  skechers: 'skechers_football',
+  armani: 'giorgio_armani',
+  emporio_armani: 'giorgio_armani',
+  ermenegildo_zegna: 'zegna',
+  lv: 'louis_vuitton',
+  vuitton: 'louis_vuitton',
+  boss: 'hugo_boss',
+  polo: 'ralph_lauren',
+  polo_ralph_lauren: 'ralph_lauren',
+  ap: 'audemars_piguet',
+  casio: 'casio_g_shock',
+  g_shock: 'casio_g_shock',
+  gshock: 'casio_g_shock',
+  jacob: 'jacob_co',
+  jacob_and_co: 'jacob_co',
+  mercedes: 'mercedes_benz',
+  benz: 'mercedes_benz',
+  land_rover: 'range_rover',
+  mg: 'mg_motor',
+  tata: 'tata_motors',
+  monster: 'monster_energy',
+  prime: 'prime_hydration',
+  guarana: 'guarana_antarctica',
+  wanglaoji: 'walovi_wanglaoji',
+  walovi: 'walovi_wanglaoji',
+  wong_lo_kat: 'walovi_wanglaoji',
+  s_pellegrino: 'san_pellegrino',
+  pellegrino: 'san_pellegrino',
+  athletic_greens: 'ag1',
+  pocari: 'pocari_sweat',
+  fiji: 'fiji_water',
+  liquid_iv: 'liquid_i_v',
+  liquidiv: 'liquid_i_v',
+  nongfu: 'nongfu_spring',
+  herbalife: 'herbalife_nutrition',
+  sis: 'science_in_sport_sis',
+  science_in_sport: 'science_in_sport_sis',
+  theragun: 'therabody',
+  optimum: 'optimum_nutrition',
+  oura_ring: 'oura',
+  bt: 'bt_ee',
+  ee: 'bt_ee',
+  docomo: 'ntt_docomo',
+  ntt: 'ntt_docomo',
+  qatar: 'qatar_airways',
+  turkish: 'turkish_airlines',
+  jal: 'japan_airlines',
+  air_france: 'air_france_klm',
+  klm: 'air_france_klm',
+  asiana: 'asiana_airlines',
+  singapore: 'singapore_airlines',
+  ba: 'british_airways',
+  etihad: 'etihad_airways',
+  korean: 'korean_air',
+  cathay: 'cathay_pacific',
+  swiss: 'swiss_international_air_lines',
+  swiss_air: 'swiss_international_air_lines',
+  swiss_airlines: 'swiss_international_air_lines',
+  delta: 'delta_air_lines',
+  delta_airlines: 'delta_air_lines',
+  united: 'united_airlines',
+  american: 'american_airlines',
+  latam: 'latam_airlines',
+  azul: 'azul_linhas_aereas',
+  azul_airlines: 'azul_linhas_aereas',
+  tap: 'tap_air_portugal',
+  tap_portugal: 'tap_air_portugal',
+  virgin: 'virgin_atlantic',
+  gol: 'gol_linhas_aereas',
+  gol_airlines: 'gol_linhas_aereas',
+  marriott: 'marriott_bonvoy',
+  bonvoy: 'marriott_bonvoy',
+  accor: 'accor_fairmont',
+  fairmont: 'accor_fairmont',
+  mandarin: 'mandarin_oriental',
+  ritz: 'ritz_carlton',
+  booking: 'booking_com',
+  taj: 'taj_hotels',
+  nivea: 'nivea_men',
+  rabanne: 'paco_rabanne',
+  chanel: 'chanel_bleu',
+  bleu_de_chanel: 'chanel_bleu',
+  dove: 'dove_men_care',
+  dove_men: 'dove_men_care',
+  boticario: 'o_boticario',
+  amex: 'american_express',
+  mercado_libre: 'mercado_livre',
+  mercadolivre: 'mercado_livre',
+  mercadolibre: 'mercado_livre',
+  hdfc: 'hdfc_bank',
+  beats: 'beats_by_dre',
+  amazon: 'amazon_prime_video',
+  prime_video: 'amazon_prime_video',
+  primevideo: 'amazon_prime_video',
+  bang_and_olufsen: 'bang_olufsen',
+  b_o: 'bang_olufsen',
+};
+
+const CORPORATE_STOP_WORDS = new Set([
+  'inc', 'corp', 'corporation', 'ltd', 'gmbh', 'sa', 'ag', 'plc', 'co', 'company',
+  'group', 'holdings', 'international', 'official', 'brand', 'global',
+]);
+
+function resolveSponsorLogoFile(brand, sponsorLogos = {}) {
+  if (!brand || !sponsorLogos || typeof sponsorLogos !== 'object') return null;
+  const slug = brandSlug(brand);
+  if (!slug) return null;
+  if (sponsorLogos[slug]) return sponsorLogos[slug];
+
+  const aliasKey = SPONSOR_LOGO_ALIASES[slug] || SPONSOR_LOGO_ALIASES[slug.replace(/_/g, '')];
+  if (aliasKey && sponsorLogos[aliasKey]) return sponsorLogos[aliasKey];
+
+  const keys = Object.keys(sponsorLogos);
+  if (!keys.length) return null;
+
+  // 1. Compact match (e.g. "RedBull" -> "redbull" matches "red_bull")
+  const compact = slug.replace(/_/g, '');
+  for (const k of keys) {
+    if (k.replace(/_/g, '') === compact) return sponsorLogos[k];
+  }
+
+  // 2. Sorted token-bag match (e.g. "Ito En (Oi Ocha)" matches "oi_ocha_ito_en")
+  const sortedBag = (s) => s.split('_').filter(Boolean).sort().join('_');
+  const slugBag = sortedBag(slug);
+  for (const k of keys) {
+    if (sortedBag(k) === slugBag) return sponsorLogos[k];
+  }
+
+  // 3. Strip common corporate suffixes (e.g. "Canon Inc." -> "canon", "Keyence Corp" -> "keyence")
+  const strippedTokens = slug.split('_').filter((t) => t && !CORPORATE_STOP_WORDS.has(t));
+  const strippedSlug = strippedTokens.join('_');
+  if (strippedSlug && strippedSlug !== slug) {
+    if (sponsorLogos[strippedSlug]) return sponsorLogos[strippedSlug];
+    const strippedAlias = SPONSOR_LOGO_ALIASES[strippedSlug] || SPONSOR_LOGO_ALIASES[strippedSlug.replace(/_/g, '')];
+    if (strippedAlias && sponsorLogos[strippedAlias]) return sponsorLogos[strippedAlias];
+    const strippedCompact = strippedSlug.replace(/_/g, '');
+    for (const k of keys) {
+      if (k.replace(/_/g, '') === strippedCompact) return sponsorLogos[k];
+    }
+  }
+
+  // 4. Parenthetical / slash sub-parts (e.g. "All Nippon Airways (ANA)" or "Ito En / Oi Ocha")
+  const subParts = String(brand).split(/[()/,-]+/).map((p) => brandSlug(p)).filter(Boolean);
+  if (subParts.length > 1) {
+    for (const part of subParts) {
+      if (sponsorLogos[part]) return sponsorLogos[part];
+      const partAlias = SPONSOR_LOGO_ALIASES[part] || SPONSOR_LOGO_ALIASES[part.replace(/_/g, '')];
+      if (partAlias && sponsorLogos[partAlias]) return sponsorLogos[partAlias];
+    }
+  }
+
+  // 5. Token-boundary prefix/contains match (e.g. "Konami" -> "konami_efootball", "SAMSUNG" -> "samsung_galaxy", "All Nippon Airways" -> "ana_all_nippon_airways")
+  const checkSlug = strippedSlug || slug;
+  if (checkSlug.length >= 3) {
+    for (const k of keys) {
+      if (k.startsWith(`${checkSlug}_`) || k.endsWith(`_${checkSlug}`)) return sponsorLogos[k];
+    }
+    for (const k of keys) {
+      if (checkSlug.startsWith(`${k}_`) && k.length >= 3) return sponsorLogos[k];
+    }
+  }
+
+  return null;
+}
+
 function canonicalCategory(raw) {
   const clean = String(raw || '').trim();
   const low = clean.toLowerCase();
@@ -197,6 +398,7 @@ const BRAND_CATALOG = [
   { brand: 'Oura', category: 'health', categories: ['health'], minStage: 'established', baseFee: 210000, bonus: 3400, globalEligible: true },
   { brand: 'Cimed', category: 'health', categories: ['health'], minStage: 'rookie', baseFee: 115000, bonus: 2000, globalEligible: false },
   { brand: 'Garmin', category: 'health', categories: ['health'], minStage: 'rising', baseFee: 175000, bonus: 2800, globalEligible: true },
+  { brand: 'Nishikawa AiR', category: 'health', categories: ['health', 'appliances', 'lifestyle'], minStage: 'rising', baseFee: 210000, bonus: 3300, globalEligible: true },
 
   // 10. Smartphones (separated from gaming)
   { brand: 'Samsung Galaxy', category: 'phones', categories: ['phones', 'appliances'], minStage: 'established', baseFee: 450000, bonus: 6000, globalEligible: true, umbrellaNote: 'Smartphones + Appliances' },
@@ -224,6 +426,7 @@ const BRAND_CATALOG = [
   { brand: 'Logitech G', category: 'gaming', categories: ['gaming'], minStage: 'rookie', baseFee: 130000, bonus: 2200, globalEligible: true },
   { brand: 'ASUS ROG', category: 'gaming', categories: ['gaming'], minStage: 'rising', baseFee: 165000, bonus: 2700, globalEligible: false },
   { brand: 'Tencent Games', category: 'gaming', categories: ['gaming'], minStage: 'established', baseFee: 275000, bonus: 4200, globalEligible: true },
+  { brand: 'Keyence', category: 'gaming', categories: ['gaming', 'appliances', 'lifestyle'], minStage: 'established', baseFee: 350000, bonus: 4900, globalEligible: true },
 
   // 12. Telecommunication
   { brand: 'Starlink', category: 'telecom', categories: ['telecom'], minStage: 'established', baseFee: 460000, bonus: 6000, globalEligible: true },
@@ -274,6 +477,7 @@ const BRAND_CATALOG = [
   { brand: 'Air India', category: 'airlines', categories: ['airlines'], minStage: 'rising', baseFee: 270000, bonus: 3700, globalEligible: true },
   { brand: 'IndiGo', category: 'airlines', categories: ['airlines'], minStage: 'rookie', baseFee: 190000, bonus: 2900, globalEligible: false },
   { brand: 'GOL Linhas Aéreas', category: 'airlines', categories: ['airlines'], minStage: 'rookie', baseFee: 175000, bonus: 2700, globalEligible: false },
+  { brand: 'Embraer', category: 'airlines', categories: ['airlines', 'lifestyle'], minStage: 'established', baseFee: 410000, bonus: 5600, globalEligible: true },
 
   // 14. Hospitality (separated from airlines)
   { brand: 'Marriott Bonvoy', category: 'hospitality', categories: ['hospitality'], minStage: 'established', baseFee: 340000, bonus: 4600, globalEligible: true },
@@ -361,6 +565,7 @@ const BRAND_CATALOG = [
   { brand: 'JBL', category: 'media', categories: ['media'], minStage: 'rookie', baseFee: 155000, bonus: 2500, globalEligible: true },
   { brand: 'boAt', category: 'media', categories: ['media'], minStage: 'rookie', baseFee: 120000, bonus: 2000, globalEligible: false },
   { brand: 'Noise', category: 'media', categories: ['media'], minStage: 'rookie', baseFee: 110000, bonus: 1900, globalEligible: false },
+  { brand: 'Canon', category: 'media', categories: ['media', 'appliances'], minStage: 'established', baseFee: 320000, bonus: 4500, globalEligible: true },
 
   // 20. Lifestyle & Luxury Accessories (multi-brand allowed)
   { brand: 'Rimowa', category: 'lifestyle', categories: ['lifestyle'], minStage: 'established', baseFee: 280000, bonus: 4000, globalEligible: true },
@@ -540,7 +745,9 @@ module.exports = {
   CATEGORY_META,
   BRAND_CATALOG,
   ONE_TIME_DEALS,
+  SPONSOR_LOGO_ALIASES,
   brandSlug,
+  resolveSponsorLogoFile,
   canonicalCategory,
   isBettingAllowed,
   generateLocalSponsors,
