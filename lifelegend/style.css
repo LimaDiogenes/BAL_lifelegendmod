@@ -4686,7 +4686,7 @@ html, body { height: 100%; overflow: hidden; background: var(--sh-back); }
 /* Réglages compacts (2.0) : cartes sur deux colonnes quand la place le permet, explications derrière « i ». */
 .rg-panel-head { padding: 16px 0 12px; }
 .rg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); gap: 12px; padding-top: 12px; align-items: start; }
-.rg-grid .rg-row { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; border-bottom: 1px solid var(--line); }
+.rg-grid .rg-row { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-l); border-bottom: 1px solid var(--line); }
 .rg-grid #rg-save, .rg-grid #rg-colors, .rg-grid #rg-theme, .rg-grid #rg-ai { grid-column: 1 / -1; }
 .rg-grid .rg-ctl { max-width: none; }
 .rg-label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -4706,11 +4706,11 @@ html, body { height: 100%; overflow: hidden; background: var(--sh-back); }
 .ml-today-head { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .ml-today-next { font-weight: 600; font-size: 14px; }
 .ml-today > .ml-dec-card { grid-column: 1 / -1; margin: 0; padding: 12px 0 0; border-top: 1px solid var(--line); }
-.ml-today .ml-dec-item { padding: 12px 14px; border: 1px solid var(--gold); border-radius: 12px; margin-top: 10px; background: color-mix(in srgb, var(--gold) 8%, transparent); }
+.ml-today .ml-dec-item { padding: 12px 14px; border: 1px solid var(--gold); border-radius: var(--r-l); margin-top: 10px; background: color-mix(in srgb, var(--gold) 8%, transparent); }
 .ml-today-items { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; padding: 0; list-style: none; }
 .ml-today-items .ml-cal-chip { font-size: 13px; padding: 4px 10px; }
 .ml-cal-chips { display: flex; flex-direction: column; gap: 2px; width: 100%; margin-top: 2px; min-width: 0; }
-.ml-cal-chip { display: block; max-width: 100%; overflow: hidden; padding: 1px 5px; border-radius: 6px; font-size: 10.5px; line-height: 1.4; text-align: left; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); background: var(--surface-2); border-left: 3px solid var(--line-2); }
+.ml-cal-chip { display: block; max-width: 100%; overflow: hidden; padding: 1px 5px; border-radius: var(--r-s); font-size: 11px; line-height: 1.4; text-align: left; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); background: var(--surface-2); border-left: 3px solid var(--line-2); }
 .ml-cal-chip--match { border-left-color: #3b82f6; background: color-mix(in srgb, #3b82f6 16%, transparent); }
 .ml-cal-chip--sponsor { border-left-color: #f59e0b; background: color-mix(in srgb, #f59e0b 16%, transparent); }
 .ml-cal-chip--birthday { border-left-color: #ec4899; background: color-mix(in srgb, #ec4899 16%, transparent); }
