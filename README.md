@@ -76,6 +76,20 @@ Vérifier une sauvegarde sans IA :
 npm run check-save -- "C:\Users\<toi>\Documents\SPGAME\Football Life\2027\save\BL00000000"
 ```
 
+## Lancer depuis blue41 PES2021 Mod Studio (arguments)
+
+```
+LifeLegend.exe --save="<fichier BL0000000x ou dossier save>" --game="<dossier du jeu>" --lang=<en|fr|pt|es|it|de> --theme=<dark|light>
+```
+
+- `--save` : un fichier `BL0000000x`, ou un dossier `save` (LifeLegend prend la sauvegarde BL la plus récente) ;
+  `--game` : le dossier d'installation du jeu. Vérifiés comme dans les Réglages, puis gardés.
+- `--lang` et `--theme` : pour cette session seulement (les Réglages enregistrés ne changent pas).
+- Tous facultatifs ; une valeur refusée est ignorée (et notée dans `activity.log`).
+- Si LifeLegend est déjà ouvert, un second lancement transmet ses arguments à la fenêtre ouverte (changement de
+  sauvegarde, de jeu ou de langue) puis la ramène au premier plan.
+- Pendant une écriture dans une sauvegarde, les deux apps partagent un verrou : [docs/save-lock.md](docs/save-lock.md).
+
 ## Licence
 
 LifeLegend est publié sous licence MIT ([LICENSE](LICENSE)). Polices, icônes, mises en page reprises et dépendances
@@ -118,3 +132,9 @@ Players: download the latest build (`LifeLegend-1.1.0-win-x64.zip`, **Releases**
 (Settings › Save) let it write Influence effects (a formation agreed with your coach, verified in Football Life 2027; a
 transfer, still experimental) and offer redirects (experimental), with the game closed and a backup each time. Saves
 enlarged by game mods (FL Mod Studio, GigaPack…) are read normally, but LifeLegend never writes to them. Developers: `npm install`, `npm start`, `npm test`, `npm run dist`. MIT licence.
+
+**Launching from blue41 PES2021 Mod Studio:** `LifeLegend.exe --save="<BL0000000x file or save folder>"
+--game="<game folder>" --lang=<en|fr|pt|es|it|de> --theme=<dark|light>`. All optional. `--save` (a folder picks its
+most recent BL save) and `--game` are validated like in Settings and then stored; `--lang` and `--theme` apply to this
+session only. If LifeLegend is already open, a second launch passes its arguments to the open window. Both apps share a
+write lock while writing a save: [docs/save-lock.md](docs/save-lock.md).
