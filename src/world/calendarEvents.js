@@ -504,6 +504,14 @@ function resolveCalendarDecision(state, decisionId, choiceId, gameDate = '', { l
   cal.resolvedDecisionIds ||= [];
   if (!cal.resolvedDecisionIds.includes(decisionId)) cal.resolvedDecisionIds.push(decisionId);
   if (cal.resolvedDecisionIds.length > 180) cal.resolvedDecisionIds = cal.resolvedDecisionIds.slice(-180);
+  if (choiceId === 'reschedule_skip' && decisionId.startsWith('dec_cust_') && Array.isArray(cal.customEvents)) {
+    const custId = decisionId.slice('dec_cust_'.length);
+    cal.customEvents = cal.customEvents.filter((e) => e.id !== custId);
+  }
+  if (choiceId === 'skip_focus' && decisionId.startsWith('dec_sys_') && Array.isArray(cal.systemEvents)) {
+    const sysId = decisionId.slice('dec_sys_'.length);
+    cal.systemEvents = cal.systemEvents.filter((e) => e.id !== sysId);
+  }
 
   hub.recentEvents ||= [];
   hub.recentEvents.unshift({ date: today, kind: dec.kind || 'life', text: choice.memory });

@@ -1828,8 +1828,21 @@ function paintShell() {
       const calModeFull = settings?.calendarMode === 'full';
       const canAdvance = calModeFull && bounds.canAdvance;
       const pendingDecs = cal.pendingDecisions || [];
-      const badgeCount = (calModeFull ? (bounds.pendingCount || 0) : 0) + pendingDecs.length;
       const dayItems = mlAgendaItems(s, state.lifeHub, cal, simDate.slice(0, 7)).items.filter((x) => x.date === simDate);
+      const unmatchedDecs = pendingDecs.filter((d) => !dayItems.some((it) => mlDecisionMatchesItem(d, it)));
+      const popEntries = [
+        ...dayItems.map((it) => ({
+          title: mlFormatCalendarItemTitle(it),
+          detail: (!it.spoilerHidden && it.detail) ? it.detail : '',
+          hasDecision: pendingDecs.some((d) => mlDecisionMatchesItem(d, it)),
+        })),
+        ...unmatchedDecs.map((d) => ({
+          title: mlDecisionHeader(d).title,
+          detail: '',
+          hasDecision: true,
+        })),
+      ];
+      const badgeCount = popEntries.length;
       const nextMatchLine = bounds.nextMatch
         ? tr('Prochain match : {match} ({d})', { match: `${bounds.nextMatch.home} – ${bounds.nextMatch.away}`, d: shortDate(bounds.nextMatch.date) })
         : tr('Calendrier à jour avec la sauvegarde');
@@ -1839,8 +1852,7 @@ function paintShell() {
         ${shellCalOpen ? `<div class="ll-pop ll-pop--cal" role="dialog" aria-label="${esc(tr('Calendrier rapide'))}">
           <div class="ll-pop-head"><b>${esc(fmtDate(simDate, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))}</b><span class="ll-tag">${esc(rhythmText)}</span></div>
           <p class="fineprint">${esc(nextMatchLine)}</p>
-          ${dayItems.length ? `<ul class="ll-pop-list">${dayItems.slice(0, 4).map((it) => `<li><b>${esc(it.title)}</b>${it.detail && !it.spoilerHidden ? `<small>${esc(it.detail)}</small>` : ''}</li>`).join('')}</ul>` : ''}
-          ${pendingDecs.length ? `<div class="ll-pop-alert">${esc(trn(pendingDecs.length, '{n} décision calendrier en attente', '{n} décisions calendrier en attente'))}</div>` : ''}
+          ${popEntries.length ? `<ul class="ll-pop-list">${popEntries.slice(0, 4).map((it) => `<li><b>${esc(it.title)}</b>${it.hasDecision ? `<span class="ll-tag">${esc(tr('Décision attendue'))}</span>` : (it.detail ? `<small>${esc(it.detail)}</small>` : '')}</li>`).join('')}</ul>` : ''}
           <div class="ll-pop-acts">
             ${canAdvance ? `<button type="button" class="btn" data-shell-caladv="day">${tr('+1 jour')}</button><button type="button" class="btn primary" data-shell-caladv="next_event">${tr('Prochain événement')}</button>` : ''}
             <button type="button" class="btn" id="ll-cal-open-full">${tr('Ouvrir le calendrier')}</button>
@@ -1947,10 +1959,9 @@ function render() {
   const tabs = $('#tabs');
   const unread = state?.mail?.filter((m) => m.unread).length || 0;
   const mlHub = state?.lifeHub;
-  const mlCalPending = settings?.calendarMode === 'full' ? (state?.calendar?.pendingMatches?.length || 0) : 0;
   const mlSfxPending = (settings?.lifeSaveEffects && ((mlHub?.pendingSaveEffects?.affectionDelta || 0) !== 0 || (mlHub?.pendingSaveEffects?.formArrowDelta || 0) !== 0)) ? 1 : 0;
   const mlPending = mlHub?.calibrated
-    ? ((mlHub.pendingDilemma ? 1 : 0) + (mlHub.offers?.length || 0) + (mlHub.biddingWars?.length || 0) + (mlHub.oneTimeOffers?.length || 0) + (state?.calendar?.pendingDecisions?.length || 0) + (mlHub.obligations || []).filter((o) => o.status === 'pending').length + mlCalPending + mlSfxPending)
+    ? ((mlHub.pendingDilemma ? 1 : 0) + (mlHub.offers?.length || 0) + (mlHub.biddingWars?.length || 0) + (mlHub.oneTimeOffers?.length || 0) + (state?.calendar?.pendingDecisions?.length || 0) + (mlHub.obligations || []).filter((o) => o.status === 'pending').length + mlSfxPending)
     : (state?.snapshot ? 1 : 0);
   tabs.innerHTML = SITES.filter((s) => !s.hidden).map((s) => `
     <button class="tab${s.id === current ? ' active' : ''}" data-site="${s.id}" aria-label="${esc(s.label())}"${s.id === current ? ' aria-current="page"' : ''}>
@@ -9480,6 +9491,33 @@ function mlResolveScheduledActivityTitle(rawTitle, activityId = null) {
   return clean || act?.label() || tr('Activité planifiée');
 }
 
+function mlFormatCalendarItemTitle(it) {
+  if (!it) return '';
+  if (it.kind === 'scheduled' || it.kind === 'custom' || it.activityId) {
+    return mlResolveScheduledActivityTitle(it.title, it.activityId);
+  }
+  if (it.kind === 'system_event') {
+    if (it.eventKey === 'match_eve') return tr('Veille de match : {match}', { match: it.title || '' });
+    const fn = ML_SYSEV_LABELS[it.eventKey];
+    if (fn) return fn();
+    return mlResolveScheduledActivityTitle(it.title, it.eventKey);
+  }
+  if (it.kind === 'birthday') return tr('Anniversaire de {name}', { name: it.name || it.title || '' });
+  return mlResolveScheduledActivityTitle(it.title, it.activityId || it.eventKey);
+}
+
+function mlDecisionMatchesItem(dec, it) {
+  if (!dec || !it) return false;
+  if (it.id && (dec.id === `dec_cust_${it.id}` || dec.id === `dec_sys_${it.id}` || dec.id === `dec_${it.id}`)) return true;
+  if (it.bdayKey && dec.bdayKey && it.bdayKey === dec.bdayKey) return true;
+  if (dec.date && it.date && dec.date === it.date) {
+    if (dec.activityId && it.activityId && dec.activityId === it.activityId) return true;
+    if (dec.eventKey && it.eventKey && dec.eventKey === it.eventKey) return true;
+    if (dec.title && it.title && String(dec.title).toLowerCase() === String(it.title).toLowerCase()) return true;
+  }
+  return false;
+}
+
 function mlAgendaItems(s, hub, cal, monthIso) {
   const ref = /^\d{4}-\d{2}$/.test(monthIso || '') ? monthIso : String(cal?.simDate || s?.gameDate || '2026-08-01').slice(0, 7);
   const simDate = cal?.simDate || s?.gameDate || '';
@@ -9523,7 +9561,31 @@ function mlAgendaItems(s, hub, cal, monthIso) {
     if (inMonth(ev.date)) items.push({ date: ev.date, kind: 'life', title: ev.title, detail: '' });
   }
   for (const ev of cal?.customEvents || []) {
-    if (inMonth(ev.date)) items.push({ id: ev.id, date: ev.date, kind: 'custom', category: ev.category, customCategory: ev.customCategory || '', title: ev.title, detail: '' });
+    if (inMonth(ev.date)) {
+      items.push({
+        id: ev.id,
+        date: ev.date,
+        kind: ev.kind === 'onetime' ? 'sponsor' : ev.kind === 'scheduled' ? 'scheduled' : 'custom',
+        category: ev.category,
+        customCategory: ev.customCategory || '',
+        activityId: ev.activityId || null,
+        title: ev.title,
+        detail: '',
+      });
+    }
+  }
+  for (const ev of cal?.systemEvents || []) {
+    if (inMonth(ev.date)) {
+      items.push({
+        id: ev.id,
+        date: ev.date,
+        kind: 'system_event',
+        eventKey: ev.eventKey,
+        category: ev.category,
+        title: ev.title,
+        detail: ev.competition || '',
+      });
+    }
   }
   const winTitle = (w) => (w.kind === 'été' ? tr('Mercato d’été') : w.kind === 'hiver' ? tr('Mercato d’hiver') : tr('Mercato'));
   for (const w of s?.windows || []) {
@@ -10073,11 +10135,10 @@ function renderMyLife(page) {
   const biddingWars = hub.biddingWars || [];
   const oneTimeOffers = hub.oneTimeOffers || [];
   const pendingDecs = cal.pendingDecisions || [];
-  const spBadge = (hub.offers?.length || 0) + biddingWars.length + oneTimeOffers.length + pendingObs.length;
   const subTabs = [
     ['overview', tr('Tableau de bord'), (hub.pendingDilemma ? 1 : 0) + (sfxEnabled && hasPendingSfx ? 1 : 0)],
-    ['calendar', tr('Calendrier'), pendingCalCount + pendingDecs.length],
-    ['sponsors', slotCap === null ? tr('Sponsors ({cur})', { cur: hub.sponsors.length }) : tr('Sponsors ({cur}/{max})', { cur: hub.sponsors.length, max: slotCap }), spBadge],
+    ['calendar', tr('Calendrier'), pendingDecs.length],
+    ['sponsors', tr('Sponsors'), 0],
     ['shop', tr('Lifestyle & Patrimoine'), 0],
     ['finances', tr('Finances'), 0],
   ];
@@ -10439,18 +10500,7 @@ function renderMyLife(page) {
     }
     return it.customCategory || (ML_CAL_CAT_LABELS[it.category] || ML_CAL_CAT_LABELS.personal)();
   };
-  const calItemTitle = (it) => {
-    if (it.kind === 'scheduled' && it.activityId) {
-      const act = ML_ACTIONS_UI.find((a) => a.id === it.activityId);
-      if (act && it.title === act.id.replace(/_/g, ' ')) return act.label();
-    }
-    if (it.kind === 'system_event' && it.eventKey && it.eventKey !== 'match_eve') {
-      const fn = ML_SYSEV_LABELS[it.eventKey];
-      if (fn) return fn();
-    }
-    if (it.kind === 'birthday') return tr('Anniversaire de {name}', { name: it.name || it.title || '' });
-    return it.title;
-  };
+  const calItemTitle = (it) => mlFormatCalendarItemTitle(it);
   const selItemsHtml = selItems.length
     ? `<ul class="ml-cal-items">${selItems.map((it) => `<li class="ml-cal-item ml-cal-item--${esc(it.kind)}">
         <div>
