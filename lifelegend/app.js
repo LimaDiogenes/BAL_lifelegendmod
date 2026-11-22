@@ -103,6 +103,32 @@ const ML_NATIONAL_PAPERS = [
   { id: 'colombia', country: 'Colombia', name: 'El Pitazo Deportivo', slug: 'pitazodeportivo' },
   { id: 'chile', country: 'Chile', name: 'Gaceta del Sur', slug: 'gacetadelsur' },
 ];
+function inferNatPaperFromLeague(leagueName) {
+  const s = String(leagueName || '');
+  const rules = [
+    [/premier league|championship|fa cup|carabao|efl/i, 'england'],
+    [/brasileir|copa do brasil|paulista|carioca/i, 'brazil'],
+    [/laliga|copa del rey/i, 'spain'],
+    [/serie a|serie b|coppa italia/i, 'italy'],
+    [/bundesliga|dfb/i, 'germany'],
+    [/ligue 1|ligue 2|coupe de france|troph[eé]e des champions/i, 'france'],
+    [/liga portugal|liga nos|ta[cç]a de portugal/i, 'portugal'],
+    [/eredivisie|knvb/i, 'netherlands'],
+    [/liga profesional|copa argentina|superliga argentina/i, 'argentina'],
+    [/roshn|saudi/i, 'saudi'],
+    [/scottish|cinch/i, 'scotland'],
+    [/jupiler|pro league/i, 'belgium'],
+    [/s[üu]per lig/i, 'turkey'],
+    [/\bmls\b|major league soccer/i, 'usa'],
+    [/j1 league|j\.league/i, 'japan'],
+    [/betplay|dimayor/i, 'colombia'],
+  ];
+  for (const [re, id] of rules) {
+    if (re.test(s)) return ML_NATIONAL_PAPERS.find((p) => p.id === id) || null;
+  }
+  return null;
+}
+
 const natPaper = (edition = null) => {
   if (edition?.paperName) {
     return {
@@ -112,24 +138,46 @@ const natPaper = (edition = null) => {
       mode: state?.nationalPaper?.mode || 'auto',
     };
   }
-  return state?.nationalPaper || { id: 'france', country: 'France', name: 'La Transversale', slug: 'latransversale', showName: 'Le Débrief', mode: 'auto' };
+  const saved = state?.nationalPaper;
+  const inferred = inferNatPaperFromLeague(state?.snapshot?.league?.name);
+  if (saved) {
+    if ((!saved.mode || saved.mode === 'auto') && saved.id === 'france' && inferred && inferred.id !== 'france') {
+      return { ...inferred, mode: 'auto' };
+    }
+    return saved;
+  }
+  if (inferred) return { ...inferred, mode: 'auto' };
+  const fallback = lang() === 'fr'
+    ? ML_NATIONAL_PAPERS.find((p) => p.id === 'france')
+    : ML_NATIONAL_PAPERS.find((p) => p.id === 'england');
+  return { ...(fallback || { id: 'france', country: 'France', name: 'La Transversale', slug: 'latransversale' }), showName: 'Le Débrief', mode: 'auto' };
 };
+
+function localizeLocalPaperName(rawName) {
+  const s = String(rawName || '').trim();
+  if (!s) return tr('Journal local');
+  if (lang() === 'fr') return s;
+  const m = s.match(/^L['’]Écho\s+(?:de l['’]|du |de la |des |de |d['’])(.+)$/i);
+  if (m) return tr('L’Écho de {club}', { club: m[1].trim() });
+  if (/^L['’]Écho$/i.test(s)) return tr('Journal local');
+  return s;
+}
 
 const SITES = [
   { id: 'mylife', label: () => tr('Ma vie') },
   { id: 'national', label: () => natPaper().name },
-  { id: 'local', label: () => state?.localPaper?.name || tr('Journal local') },
+  { id: 'local', label: () => localizeLocalPaperName(state?.localPaper?.name) },
   { id: 'tribune', label: () => 'Kop' },
-  { id: 'mail', label: () => 'Mails' },
+  { id: 'mail', label: () => tr('Mails') },
   { id: 'dossier', label: () => tr('Dossier de carrière') },
-  { id: 'huddle', label: () => 'Vestiaire' },
+  { id: 'huddle', label: () => tr('Vestiaire') },
   { id: 'stats', label: () => 'Scoreline' },
-  { id: 'pantheon', label: () => 'Panthéon' },
+  { id: 'pantheon', label: () => tr('Panthéon') },
   { id: 'playerprofile', hidden: true, label: () => tr('Profil du joueur') },
   { id: 'settings', hidden: true, label: () => tr('Réglages') },
 ];
 
-const TYPE_LABEL = { national: 'SÉLECTION', competition: 'COMPÉTITION', journalist: 'PRESSE', rival: 'RIVAL', club: 'CLUB', pundit: 'CONSULTANT', stats: 'STATS', meme: 'MÈME', betting: 'PARIS', highlights: 'VIDÉO', player: '', coach: '', fan: '', me: '' };
+const TYPE_LABEL = { national: 'SÉLECTION', competition: 'COMPÉTITION', journalist: 'PRESSE', rival: 'RIVAL', club: 'CLUB', brand: 'PARTENAIRE', circle: 'PROCHE', pundit: 'CONSULTANT', stats: 'STATS', meme: 'MÈME', betting: 'PARIS', highlights: 'VIDÉO', player: '', coach: '', fan: '', me: '' };
 
 // Textes en cours de frappe : conservés quand la page se redessine (synchro ou ralenti en arrière-plan).
 const drafts = { post: '', poll: null, reply: '', mail: {}, dm: {}, huddle: {}, press: {}, noComment: {} };
@@ -1131,13 +1179,25 @@ function bindDobPicker(wrap, onChange) {
   yIn.onchange = syncVal;
 }
 
+const PERSONA_KOP_OPTIONS = [
+  ['', () => tr('Hors Kop (privé)')],
+  ['supportive', () => tr('Sur Kop · Bienveillant')],
+  ['playful', () => tr('Sur Kop · Taquin')],
+  ['hype', () => tr('Sur Kop · Fan n°1')],
+  ['protective', () => tr('Sur Kop · Protecteur')],
+  ['professional', () => tr('Sur Kop · Professionnel')],
+];
+
 function personaPersonRowHtml(person = {}, groupKey = '') {
   const isClose = person.close !== undefined ? Boolean(person.close) : (groupKey === 'family' || groupKey === 'friends');
   const isAgentRow = groupKey === 'business' && AGENT_ROLE_UI_RE.test(person.role || '') && Boolean(person.name);
+  const kopVal = person.kopPersonality || '';
+  const kopOpts = PERSONA_KOP_OPTIONS.map(([id, fn]) => `<option value="${id}"${kopVal === id ? ' selected' : ''}>${esc(fn())}</option>`).join('');
   return `<div class="per-person-row">
     <div class="per-p-role-wrap"><input class="per-p-role" value="${esc(person.role || '')}" placeholder="${esc(tr('Rôle (ex. Tante, Kiné)'))}" maxlength="60">${isAgentRow ? `<span class="per-sync-pill" title="${esc(tr('Synchronisé avec l’agent dans Mails'))}">${esc(tr('Synchronisé Mails'))}</span>` : ''}</div>
     <input class="per-p-name" value="${esc(person.name || '')}" placeholder="${esc(tr('Nom réel'))}" maxlength="120">
     ${dobPickerHtml(person.dob || '', { inputClass: 'per-p-dob' })}
+    <select class="per-p-kop" title="${esc(tr('Profil & personnalité sur Kop (optionnel)'))}" aria-label="${esc(tr('Profil & personnalité sur Kop (optionnel)'))}">${kopOpts}</select>
     <input class="per-p-decoy" value="${esc(person.decoy || '')}" placeholder="${esc(tr('Pseudo (auto)'))}" maxlength="120">
     <label class="per-p-shield per-p-close" title="${esc(tr('Proche (fête ou dîner d’anniversaire)'))}"><input type="checkbox" class="per-p-close-in"${isClose ? ' checked' : ''} aria-label="${esc(tr('Proche (fête ou dîner d’anniversaire)'))}"><span>${hi('heart')}</span></label>
     <label class="per-p-shield" title="${esc(tr('Masquer dans le bouclier de confidentialité'))}"><input type="checkbox" class="per-p-protect"${person.protect !== false ? ' checked' : ''} aria-label="${esc(tr('Masquer dans le bouclier de confidentialité'))}"><span>${hi('shieldCheck')}</span></label>
@@ -1192,7 +1252,7 @@ function personaFormHtml(prefix, rawPersona, rawPriv = null) {
         <span class="priv-badge${filled ? ' on' : ''}" id="${prefix}-per-cnt-${g.key}">${rows.length} / ${PERSONA_GROUP_MAX}</span>
       </summary>
       <div class="per-group-body">
-        <div class="per-person-row per-col-head"><span>${tr('Rôle')}</span><span>${tr('Nom réel')}</span><span>${tr('Naissance')}</span><span>${tr('Pseudo (auto)')}</span><span>${tr('Proche')}</span><span>${tr('Bouclier')}</span><span></span></div>
+        <div class="per-person-row per-col-head"><span>${tr('Rôle')}</span><span>${tr('Nom réel')}</span><span>${tr('Naissance')}</span><span>${tr('Kop')}</span><span>${tr('Pseudo (auto)')}</span><span>${tr('Proche')}</span><span>${tr('Bouclier')}</span><span></span></div>
         <div class="per-group-list" id="${prefix}-per-list-${g.key}">${rows.map((p) => personaPersonRowHtml(p, g.key)).join('')}</div>
         <button type="button" class="btn per-p-add" data-group="${g.key}"${rows.length >= PERSONA_GROUP_MAX ? ' disabled' : ''}>+ ${esc(tr('Ajouter'))}</button>
       </div>
@@ -1261,10 +1321,11 @@ function readPersonaForm(prefix) {
         const role = row.querySelector('.per-p-role')?.value.trim() || '';
         const name = row.querySelector('.per-p-name')?.value.trim() || '';
         const dob = row.querySelector('.per-p-dob')?.value.trim() || '';
+        const kopPersonality = row.querySelector('.per-p-kop')?.value.trim() || '';
         const decoy = row.querySelector('.per-p-decoy')?.value.trim() || '';
         const close = row.querySelector('.per-p-close-in')?.checked !== false;
         const protect = row.querySelector('.per-p-protect')?.checked !== false;
-        if (role || name || decoy || dob) out.push({ id: `${g.key}_${idx + 1}`, role, name, dob, decoy, close, protect });
+        if (role || name || decoy || dob) out.push({ id: `${g.key}_${idx + 1}`, role, name, dob, kopPersonality, decoy, close, protect });
       });
     }
     circle[g.key] = out;
@@ -1366,6 +1427,8 @@ function bindPersonaForm(prefix, { onChange } = {}) {
     const bindRow = (row) => {
       const dobWrap = row.querySelector('.per-dob-wrap');
       if (dobWrap) bindDobPicker(dobWrap, notify);
+      const kopSel = row.querySelector('.per-p-kop');
+      if (kopSel) kopSel.onchange = notify;
       row.querySelectorAll('input').forEach((inp) => {
         if (inp.classList.contains('per-dob-y') || inp.classList.contains('per-dob-val')) return;
         if (inp.type === 'checkbox' || inp.type === 'date') inp.onchange = notify;
@@ -2016,7 +2079,7 @@ function paintShell() {
     [tr('Profil social Kop'), 'tribune', '[data-twnav="mine"]'],
     [tr('Dossier de carrière'), 'dossier', null],
     [tr('Influence'), 'mail', '[data-sminfluence]'],
-    ['Panthéon', 'pantheon', null],
+    [tr('Panthéon'), 'pantheon', null],
     [tr('Ma vie'), 'mylife', null],
     [tr('Réglages'), 'settings', null],
   ];
@@ -3450,7 +3513,8 @@ async function startDictation(index, onText, onDone) {
 // Chaque édition garde le journal où elle a paru ; les anciennes, celui du premier club suivi.
 function localPaperOf(ei) {
   const eds = state.editions;
-  return eds[ei]?.paper || (state.pastPapers?.length && ei < eds.length - 1 ? state.pastPapers[0] : null) || state.localPaper || { name: tr('Journal local'), city: '' };
+  const p = eds[ei]?.paper || (state.pastPapers?.length && ei < eds.length - 1 ? state.pastPapers[0] : null) || state.localPaper || { name: tr('Journal local'), city: '' };
+  return { ...p, name: localizeLocalPaperName(p.name) };
 }
 
 // Tous les billets du blog, du plus récent au plus ancien : { edition, i, a, date }.
@@ -3940,9 +4004,10 @@ const isMeAuthor = (a) => Boolean(state?.profile && a.handle && (a.isMe || a.typ
 function avatar(author) {
   const initial = esc((author.name || author.handle || '?').trim()[0] || '?').toUpperCase();
   if (isMeAuthor(author)) return `<div class="avatar t-me">${myFaceIn(initial)}</div>`;
-  // Les clubs et compétitions : leur écusson ou logo officiel, dans un carré arrondi comme les comptes d'organisation.
+  // Les clubs, compétitions et partenaires officiels : leur écusson ou logo officiel, dans un carré arrondi.
   const emblem = emblemUrl(clubPage(author.handle)?.emblem)
-    || (ORG_TYPES.has(author.type) ? (teamEmblem(author.name) || compEmblem(author.name)) : null);
+    || (ORG_TYPES.has(author.type) ? (teamEmblem(author.name) || compEmblem(author.name)) : null)
+    || (author.type === 'brand' ? resolveSponsorLogoUi(author.brand || author.name) : null);
   if (emblem) return `<div class="avatar emblem"><img src="${esc(emblem)}" alt=""></div>`;
   return `<div class="avatar t-${esc(author.type || 'fan')}">${authorFace(author, initial)}</div>`;
 }
@@ -4034,8 +4099,8 @@ const andJoin = (list) => (list.length < 2 ? list.join('') : tr('{a} et {b}', { 
 
 // Badge certifié de X : bleu pour les personnes, doré pour les clubs (comptes d'organisation).
 const BADGE_PATH = 'M20.396 11c-.018-.646-.215-1.275-.57-1.816-.354-.54-.852-.972-1.438-1.246.223-.607.27-1.264.14-1.897-.131-.634-.437-1.218-.882-1.687-.47-.445-1.053-.75-1.687-.882-.633-.13-1.29-.083-1.897.14-.273-.587-.704-1.086-1.245-1.44S11.647 1.62 11 1.604c-.646.017-1.273.213-1.813.568s-.969.854-1.24 1.44c-.608-.223-1.267-.272-1.902-.14-.635.13-1.22.436-1.69.882-.445.47-.749 1.055-.878 1.688-.13.633-.08 1.29.144 1.896-.587.274-1.087.705-1.443 1.245-.356.54-.555 1.17-.574 1.817.02.647.218 1.276.574 1.817.356.54.856.972 1.443 1.245-.224.606-.274 1.263-.144 1.896.13.634.433 1.218.877 1.688.47.443 1.054.747 1.687.878.633.132 1.29.084 1.897-.136.274.586.705 1.084 1.246 1.439.54.354 1.17.551 1.816.569.647-.016 1.276-.213 1.817-.567s.972-.854 1.245-1.44c.604.239 1.266.296 1.903.164.636-.132 1.22-.447 1.68-.907.46-.46.776-1.044.908-1.681s.075-1.299-.165-1.903c.586-.274 1.084-.705 1.439-1.246.354-.54.551-1.17.569-1.816zM9.662 14.85l-3.429-3.428 1.293-1.302 2.072 2.072 4.4-4.794 1.347 1.246z';
-// Organisations (clubs, compétitions) : badge doré, toujours certifiées.
-const ORG_TYPES = new Set(['club', 'competition', 'national']);
+// Organisations (clubs, compétitions, partenaires officiels) : badge doré, toujours certifiées.
+const ORG_TYPES = new Set(['club', 'competition', 'national', 'brand']);
 const isVerified = (a) => (a.isMe || isMeAuthor(a) ? Boolean(state.profile.verified) : Boolean(a.verified || ORG_TYPES.has(a.type)));
 const badgeHtml = (a) => {
   if (!isVerified(a)) return '';
@@ -4452,16 +4517,72 @@ function tribuneAccounts() {
 
 // Éléments du fil : des posts, et dans « Profil › Posts » les réponses qu'il a repostées (affichées seules).
 // Tous les comptes connus de Kop : clubs, compétitions et sélections (fiches), auteurs du fil, comptes mémorisés.
+function brandKopHandleUi(brand) {
+  const slug = String(brand || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9]/g, '')
+    .slice(0, 20);
+  return slug || 'OfficialPartner';
+}
+
+function circleKopHandleUi(name) {
+  const slug = String(name || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '')
+    .slice(0, 20);
+  return slug || 'inner_circle';
+}
+
+function extraKopAccounts() {
+  const out = [];
+  const seenBrands = new Set();
+  const addBrand = (brand, category = '') => {
+    const clean = String(brand || '').trim();
+    if (!clean) return;
+    const h = brandKopHandleUi(clean);
+    const lk = h.toLowerCase();
+    if (seenBrands.has(lk)) return;
+    seenBrands.add(lk);
+    out.push({ handle: h, name: clean, type: 'brand', brand: clean, category, verified: true });
+  };
+  const hub = state?.lifeHub;
+  for (const sp of hub?.sponsors || []) addBrand(sp.brand, sp.categories?.[0] || sp.category || '');
+  for (const ofr of hub?.offers || []) addBrand(ofr.brand, ofr.category || '');
+  for (const ot of hub?.oneTimeOffers || []) addBrand(ot.brand, ot.category || '');
+  for (const w of hub?.biddingWars || []) for (const b of w.bids || []) addBrand(b.brand, w.category || '');
+  if (state?.sponsor?.deal?.brand) addBrand(state.sponsor.deal.brand, 'boots');
+  const circle = state?.persona?.circle || {};
+  for (const g of ['family', 'friends', 'roots', 'business']) {
+    for (const p of Array.isArray(circle[g]) ? circle[g] : []) {
+      if (!p?.name || !p?.kopPersonality) continue;
+      out.push({
+        handle: circleKopHandleUi(p.name),
+        name: p.name,
+        type: 'circle',
+        role: p.role || g,
+        kopPersonality: p.kopPersonality,
+        verified: false,
+      });
+    }
+  }
+  return out;
+}
+
 function accountIndex() {
   const map = new Map();
   const add = (a) => {
     if (!a?.handle || a.isMe) return;
     const k = a.handle.toLowerCase();
-    if (!map.has(k)) map.set(k, { handle: a.handle, name: a.name || a.handle, type: a.type || 'fan', verified: a.verified });
+    if (!map.has(k)) map.set(k, { handle: a.handle, name: a.name || a.handle, type: a.type || 'fan', verified: a.verified, ...(a.brand ? { brand: a.brand } : {}), ...(a.role ? { role: a.role } : {}), ...(a.kopPersonality ? { kopPersonality: a.kopPersonality } : {}) });
   };
   for (const pg of Object.values(state.clubPages || {})) if (pg.handle) add({ handle: pg.handle, name: pg.name, type: pg.kind || 'club', verified: true });
+  for (const x of extraKopAccounts()) add(x);
   for (const p of state.feed) for (const x of [p, ...(p.replies || [])]) add(x.author);
-  for (const [h, a] of Object.entries(state.accounts || {})) add({ handle: h, name: a.name, type: a.type });
+  for (const [h, a] of Object.entries(state.accounts || {})) add({ handle: h, name: a.name, type: a.type, brand: a.brand, role: a.role, kopPersonality: a.kopPersonality, verified: a.verified });
   return [...map.values()];
 }
 
@@ -4821,8 +4942,13 @@ function accountOf(handle) {
   const h = String(handle || '').toLowerCase();
   if (!h) return null;
   for (const p of state.feed) for (const x of [p, ...(p.replies || [])]) if (!x.author.isMe && x.author.handle.toLowerCase() === h) return x.author;
+  const extra = extraKopAccounts().find((x) => x.handle.toLowerCase() === h);
+  if (extra) return extra;
   const k = Object.keys(state.accounts || {}).find((x) => x.toLowerCase() === h);
-  if (k) return { handle: k, name: state.accounts[k].name, type: state.accounts[k].type };
+  if (k) {
+    const a = state.accounts[k];
+    return { handle: k, name: a.name, type: a.type, ...(a.brand ? { brand: a.brand } : {}), ...(a.role ? { role: a.role } : {}), ...(a.kopPersonality ? { kopPersonality: a.kopPersonality } : {}), ...(a.verified ? { verified: true } : {}) };
+  }
   const page = state.clubPages?.[h];
   if (page?.handle) return { handle: page.handle, name: page.name, type: page.kind || 'club', verified: true };
   // Un coéquipier qui n'a rien posté sur Kop a quand même un compte : celui de sa conversation ou de la liste des contacts.
@@ -4840,7 +4966,7 @@ const followingOf = (a) => {
 
 // Kop ne simule pas les abonnés des autres : un ordre de grandeur stable selon le type de compte.
 // Même échelle que src/world/engagement.js (les likes des posts en dépendent).
-const ACCOUNT_SCALE = { national: [80000, 7000000], competition: [150000, 9000000], club: [60000, 2500000], player: [20000, 3000000], coach: [10000, 800000], journalist: [6000, 150000], pundit: [20000, 600000], stats: [30000, 900000], meme: [20000, 700000], highlights: [50000, 1500000], betting: [8000, 120000], rival: [80, 6000], fan: [60, 9000] };
+const ACCOUNT_SCALE = { national: [80000, 7000000], competition: [150000, 9000000], club: [60000, 2500000], brand: [120000, 6500000], circle: [250, 45000], player: [20000, 3000000], coach: [10000, 800000], journalist: [6000, 150000], pundit: [20000, 600000], stats: [30000, 900000], meme: [20000, 700000], highlights: [50000, 1500000], betting: [8000, 120000], rival: [80, 6000], fan: [60, 9000] };
 const ACCOUNT_BIO = {
   journalist: 'Journaliste football.', pundit: 'Consultant football.', stats: 'Les chiffres du foot, sans filtre.', meme: 'Le foot, mais en mèmes.',
   betting: 'Cotes, paris et pronos. Jouez avec modération.', highlights: 'Les meilleurs moments du foot en vidéo.', rival: 'Supporter. Pas du même côté que toi.', fan: 'Supporter.',
@@ -4866,6 +4992,15 @@ function accountStats(a) {
 
 // Bio d'un compte : officielle pour les clubs, sélections et compétitions, sinon celle écrite par l'IA ou celle de son type.
 function accountBio(a) {
+  if (a.type === 'brand') {
+    return tr('Compte officiel · {name}. Partenariats sportifs, campagnes et actualités de la marque.', { name: a.name });
+  }
+  if (a.type === 'circle') {
+    const pOpt = PERSONA_KOP_OPTIONS.find(([id]) => id === a.kopPersonality);
+    const tone = pOpt ? pOpt[1]() : '';
+    const who = state.snapshot?.player?.name || state.profile?.displayName || '';
+    return [a.role ? `${a.role}${who ? ` · ${who}` : ''}` : '', tone].filter(Boolean).join(' · ') || tr('Cercle intime.');
+  }
   const club = ORG_TYPES.has(a.type) ? clubPage(a.handle) : null;
   return club?.kind === 'competition' ? `${tr('Compte officiel · {name}.', { name: club.name || a.name })}${club.teams ? ` ${tr('{n} équipes engagées.', { n: club.teams })}` : ''}`
     : club?.kind === 'national' ? tr('Compte officiel de la sélection : {name}.', { name: club.name || a.name })
@@ -4915,7 +5050,7 @@ addEventListener('scroll', () => { if (twCard) closeTwCard(); }, { passive: true
 
 function accountHeaderHtml(a) {
   const club = ORG_TYPES.has(a.type) ? clubPage(a.handle) : null;
-  const emblem = emblemUrl(club?.emblem);
+  const emblem = emblemUrl(club?.emblem) || (a.type === 'brand' ? resolveSponsorLogoUi(a.brand || a.name) : null);
   const stats = accountStats(a);
   const label = tr(TYPE_LABEL[a.type]);
   const bio = accountBio(a);
@@ -5720,7 +5855,7 @@ function hdNavHtml(group, onDay) {
   const groups = state.huddles || [];
   const staff = [...(group.coach ? [{ name: group.coach, role: 'coach' }] : []), ...group.staff];
   const me = state.profile?.displayName || state.snapshot.player.name;
-  return `<div class="hd-brand ll-wordmark">Vestiaire</div>
+  return `<div class="hd-brand ll-wordmark">${tr('Vestiaire')}</div>
     <label class="hd-search">${hi('search')}<input type="search" id="hd-search" placeholder="${tr('Chercher un membre')}" autocomplete="off" value="${esc(view.hdQuery || '')}"><kbd>/</kbd></label>
     <h3>${tr('Groupes')}</h3>${groups.filter((g) => !g.left).map(inbox).join('')}
     ${groups.some((g) => g.left) ? `<h3>${tr('Anciens groupes')}</h3>${groups.filter((g) => g.left).map(inbox).join('')}` : ''}
@@ -5753,7 +5888,7 @@ function renderHuddle(page) {
     if (group) group.unread = 0;
     live.readHuddle(group?.id).then((s) => { state = s; if (current === 'huddle') render(); }).catch(() => {});
   }
-  if (!group) { page.innerHTML = empty('Vestiaire', tr('Le groupe de ton club apparaîtra à ta prochaine synchro.')); return; }
+  if (!group) { page.innerHTML = empty(tr('Vestiaire'), tr('Le groupe de ton club apparaîtra à ta prochaine synchro.')); return; }
   const pending = Boolean(view.hdPending);
   const waiting = !pending && !group.left && hdLastSaid(group)?.who === 'me';
   const quiet = !group.messages.some((m) => m.who !== 'system');
@@ -8792,7 +8927,7 @@ function renderPantheon(page) {
   const bioWaits = state.bio?.text && !state.bio.chapter ? `<p class="pt-none">${tr('L’histoire que tu as écrite entrera dans cette page à la prochaine édition.')}</p>` : '';
   const profile = `${bioWaits}${firstChapter ? `<h3>${esc(firstChapter.title)}</h3><p>${esc(firstChapter.text)}</p>` : `<p class="pt-none">${tr('Sa biographie s’écrira au fil de sa carrière : premier match, premier but, transferts, trophées…')}</p>`}`;
   const links = [nextChapters.length ? `<a data-ptgo="pt-bio">${tr('Lire la suite')}</a>` : '', state.playerKind !== 'real' ? `<a data-ptbio>${state.bio?.text ? tr('modifier') : tr('écrire son histoire')}</a>` : ''].filter(Boolean).join('');
-  const hero = `<header class="pt-hero" id="pt-top"><div class="pt-brand"><b class="ll-wordmark">Panthéon</b><span>${tr('L’encyclopédie du football')}</span></div>
+  const hero = `<header class="pt-hero" id="pt-top"><div class="pt-brand"><b class="ll-wordmark">${tr('Panthéon')}</b><span>${tr('L’encyclopédie du football')}</span></div>
     <div class="pt-hero-in">
       <div class="pt-id"><p class="pt-crumb">${esc(tr('Footballeur'))}${s.season ? ` · ${esc(s.season)}` : ''}</p><h1>${nameHtml}</h1>${position ? `<p class="pt-pos">${esc(position)}</p>` : ''}<p class="pt-club">${crestHtml(club, ' sc-crest s22')}<span>${esc(club)}</span></p></div>
       <div class="pt-visual">${photo ? `<img class="pt-photo" src="${esc(photo)}" alt="">` : `<span class="pt-face">${faceIn(p.name, crestHtml(club, ' pt-crest'))}</span>`}</div>
@@ -8917,9 +9052,9 @@ function renderPantheon(page) {
   // ----- Les onglets et le pied de page -----
   const sections = [['pt-top', 'Profil'], ...(nextChapters.length ? [['pt-bio', 'Biographie']] : []), ['pt-stats', 'Statistiques'], ...(records.length ? [['pt-records', 'Records']] : []), ['pt-honours', 'Palmarès']];
   const tabs = `<nav class="pt-tabs" aria-label="${tr('Sommaire')}">${sections.map(([id, t], k) => `<button class="${k ? '' : 'on'}" data-ptgo="${id}">${esc(tr(t))}</button>`).join('')}</nav>`;
-  const foot = `<footer class="pt-foot"><div class="pt-foot-in"><div class="pt-foot-about"><b>Panthéon</b>${chapters.length ? `<p>${tr('Dernière modification de cette page : {date}.', { date: esc(date(chapters.at(-1).gameDate)) })}</p>` : ''}<p>${tr('Panthéon est l’encyclopédie fictive de LifeLegend : la biographie est écrite par l’IA à partir de ta sauvegarde et de l’histoire que tu lui donnes.')}</p></div>
+  const foot = `<footer class="pt-foot"><div class="pt-foot-in"><div class="pt-foot-about"><b>${tr('Panthéon')}</b>${chapters.length ? `<p>${tr('Dernière modification de cette page : {date}.', { date: esc(date(chapters.at(-1).gameDate)) })}</p>` : ''}<p>${tr('Panthéon est l’encyclopédie fictive de LifeLegend : la biographie est écrite par l’IA à partir de ta sauvegarde et de l’histoire que tu lui donnes.')}</p></div>
     <nav><h4>${tr('Sur cette page')}</h4>${sections.map(([id, t]) => `<a data-ptgo="${id}">${esc(tr(t))}</a>`).join('')}</nav>
-    <nav><h4>${tr('Sur LifeLegend')}</h4><a data-ptsite="national">${esc(natPaper().name)}</a><a data-ptsite="tribune">Kop</a><a data-ptsite="mail">Mails</a><a data-ptsite="stats">Scoreline</a></nav></div></footer>`;
+    <nav><h4>${tr('Sur LifeLegend')}</h4><a data-ptsite="national">${esc(natPaper().name)}</a><a data-ptsite="tribune">Kop</a><a data-ptsite="mail">${tr('Mails')}</a><a data-ptsite="stats">Scoreline</a></nav></div></footer>`;
   page.innerHTML = `<div class="pt">${hero}${tabs}<div class="pt-body">${factsCard}${bioCard}${statsCard}${recordsCard}${honoursCard}</div>${foot}<button class="pt-up" id="pt-up" aria-label="${tr('Retour en haut')}" title="${tr('Retour en haut')}">${sfi('up')}</button></div>`;
 
   ptPaintColors();
@@ -9864,7 +9999,7 @@ function openLifeSceneModal(scene) {
     <h4>${tr('Réactions autour du club')}</h4>
     ${reacts.map((r) => `<div class="ml-scene-react">
       <div class="ml-scene-react-top">
-        <span class="priv-badge on">${esc(r.channel === 'huddle' ? 'Vestiaire' : 'Kop')}</span>
+        <span class="priv-badge on">${esc(r.channel === 'huddle' ? tr('Vestiaire') : 'Kop')}</span>
         <b>${esc(r.channel === 'huddle' ? r.from : (r.authorName || r.from))}</b>
         ${r.from && r.channel === 'kop' ? `<span class="fineprint">${esc(r.from)}</span>` : ''}
       </div>
@@ -10236,11 +10371,11 @@ function renderMyLife(page) {
   const pendingDecs = cal.pendingDecisions || [];
   const subTabs = [
     ['overview', tr('Tableau de bord'), (hub.pendingDilemma ? 1 : 0) + (sfxEnabled && hasPendingSfx ? 1 : 0)],
-    ['calendar', tr('Calendrier'), pendingDecs.length],
     ['sponsors', tr('Sponsors'), 0],
     ['shop', tr('Lifestyle & Patrimoine'), 0],
     ['finances', tr('Finances'), 0],
   ];
+  const calTabBadge = pendingDecs.length;
 
   const dilemmaDef = hub.pendingDilemma ? ML_DILEMMAS_UI[hub.pendingDilemma.dilemmaId] : null;
   const dilemmaHtml = dilemmaDef ? `<section class="card ml-dilemma">
@@ -10692,7 +10827,13 @@ function renderMyLife(page) {
       <div class="card ml-kpi"><small>${tr('Points d’action')}</small><b>${hub.ap || 0} / ${hub.maxAp || 2}</b></div>
     </div>
 
-    <nav class="ml-tabs" role="tablist">${subTabs.map(([id, label, badge]) => `<button type="button" class="ml-tab${tab === id ? ' on' : ''}" data-mltab="${id}">${esc(label)}${badge ? ` <span class="priv-badge on">${badge}</span>` : ''}</button>`).join('')}</nav>
+    <nav class="ml-tabs" role="tablist">
+      <div class="ml-tabs-left">${subTabs.map(([id, label, badge]) => `<button type="button" class="ml-tab${tab === id ? ' on' : ''}" data-mltab="${id}">${esc(label)}${badge ? ` <span class="priv-badge on">${badge}</span>` : ''}</button>`).join('')}</div>
+      <div class="ml-tabs-cal">
+        ${calModeFull && canAdvance ? `<button type="button" class="btn primary ml-cal-quickadv" data-caladv="next_event" data-caljump="1" title="${esc(tr('Avancer au prochain événement et ouvrir le calendrier'))}">${tr('Prochain événement')} →</button>` : ''}
+        <button type="button" class="ml-tab ml-tab--calendar${tab === 'calendar' ? ' on' : ''}" data-mltab="calendar">${hi('calendar')}<span>${esc(tr('Calendrier'))}</span><small class="ml-tab-cal-date">${esc(shortDate(simDate))}</small>${calTabBadge ? `<span class="priv-badge on">${calTabBadge}</span>` : ''}</button>
+      </div>
+    </nav>
 
     <section class="ml-panel"${tab === 'overview' ? '' : ' hidden'}>
       ${dilemmaHtml}
@@ -11192,6 +11333,7 @@ function renderMyLife(page) {
         const res = await live.advanceCalendar(b.dataset.caladv);
         if (res?.state) state = res.state;
         const step = res?.step;
+        if (b.dataset.caljump === '1') view.mlTab = 'calendar';
         if (step?.nextDate) { view.mlCalMonth = step.nextDate.slice(0, 7); view.mlCalDay = step.nextDate; }
         render();
         if (step?.needsPublish) {

@@ -200,6 +200,25 @@ function normalizeDob(raw) {
   return '';
 }
 
+const CIRCLE_KOP_PERSONALITIES = {
+  supportive: 'Active on Kop: warm, proud, always encouraging and celebrating milestones.',
+  playful: 'Active on Kop: playful, bantering, teasing with inside jokes while affectionate.',
+  hype: 'Active on Kop: loud #1 supporter, hyping every goal, look, and big moment.',
+  protective: 'Active on Kop: fiercely protective, defends the player against critics and media.',
+  professional: 'Active on Kop: polished, composed, and strictly professional public voice.',
+};
+
+function circlePersonHandle(person) {
+  const base = String(person?.name || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '')
+    .slice(0, 20);
+  return base || 'inner_circle';
+}
+
 function normalizeCirclePerson(item, idx = 0, group = '') {
   if (!item || typeof item !== 'object') return null;
   const role = cleanStr(item.role, 60);
@@ -207,6 +226,8 @@ function normalizeCirclePerson(item, idx = 0, group = '') {
   const decoy = cleanStr(item.decoy, 120);
   const dob = normalizeDob(item.dob);
   const close = item.close !== undefined ? Boolean(item.close) : (group === 'family' || group === 'friends');
+  const kopRaw = cleanStr(item.kopPersonality, 32);
+  const kopPersonality = CIRCLE_KOP_PERSONALITIES[kopRaw] ? kopRaw : '';
   if (!role && !name && !decoy && !dob) return null;
   const id = cleanStr(item.id, 32) || `p${idx + 1}`;
   return {
@@ -217,6 +238,7 @@ function normalizeCirclePerson(item, idx = 0, group = '') {
     dob,
     close,
     protect: item.protect !== false,
+    kopPersonality,
   };
 }
 
@@ -352,6 +374,9 @@ function personaFacts(persona, { includeDob = false } = {}) {
         group: g,
         ...(person.role ? { role: person.role } : {}),
         name: person.name,
+        ...(person.kopPersonality && CIRCLE_KOP_PERSONALITIES[person.kopPersonality]
+          ? { kop_profile: CIRCLE_KOP_PERSONALITIES[person.kopPersonality] }
+          : {}),
         ...(includeDob && person.dob ? { dob: person.dob } : {}),
       });
     }
@@ -426,6 +451,8 @@ module.exports = {
   PERSONA_PRESETS,
   TRAIT_AI_LABELS,
   DEFAULT_CIRCLE_STARTERS,
+  CIRCLE_KOP_PERSONALITIES,
+  circlePersonHandle,
   normalizeDob,
   normalizePersona,
   defaultStarterCircle,

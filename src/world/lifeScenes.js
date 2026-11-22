@@ -3,6 +3,7 @@
 // aucun appel IA supplémentaire, textes localisés en 6 langues et noms lisibles (sans variables internes).
 
 const { activeHuddle, addMessage } = require('./huddle');
+const { circlePersonHandle } = require('./persona');
 
 const CATALOG_NAMES = {
   fr: {
@@ -205,11 +206,197 @@ function pickInnerCircle(state, seed) {
   const list = [];
   for (const group of ['family', 'friends', 'roots', 'business']) {
     for (const p of Array.isArray(circle[group]) ? circle[group] : []) {
-      if (p?.name) list.push({ name: p.name, role: p.role || group });
+      if (p?.name) list.push({ name: p.name, role: p.role || group, kopPersonality: p.kopPersonality || '', group });
     }
   }
   if (!list.length) return null;
   return list[hashStr(seed) % list.length];
+}
+
+function pickKopInnerCircle(state, seed) {
+  const circle = state?.persona?.circle;
+  if (!circle || typeof circle !== 'object') return null;
+  const list = [];
+  for (const group of ['family', 'friends', 'roots', 'business']) {
+    for (const p of Array.isArray(circle[group]) ? circle[group] : []) {
+      if (p?.name && p?.kopPersonality) {
+        list.push({ name: p.name, role: p.role || group, kopPersonality: p.kopPersonality, group });
+      }
+    }
+  }
+  if (!list.length) return null;
+  return list[hashStr(seed) % list.length];
+}
+
+function brandHandleOf(brand) {
+  const slug = String(brand || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9]/g, '')
+    .slice(0, 20);
+  return slug || 'OfficialPartner';
+}
+
+function ensureBrandKopAccount(state, brand, category = '') {
+  const cleanBrand = String(brand || 'Partner').trim();
+  const handle = brandHandleOf(cleanBrand);
+  state.accounts = state.accounts || {};
+  state.accounts[handle] = {
+    ...(state.accounts[handle] || {}),
+    name: cleanBrand,
+    type: 'brand',
+    brand: cleanBrand,
+    ...(category ? { category } : {}),
+    verified: true,
+  };
+  return { handle, name: cleanBrand, type: 'brand', brand: cleanBrand, category, verified: true };
+}
+
+function ensureCircleKopAccount(state, person) {
+  const handle = circlePersonHandle(person);
+  state.accounts = state.accounts || {};
+  state.accounts[handle] = {
+    ...(state.accounts[handle] || {}),
+    name: person.name,
+    type: 'circle',
+    role: person.role || person.group || '',
+    kopPersonality: person.kopPersonality || 'supportive',
+    verified: false,
+  };
+  return {
+    handle,
+    name: person.name,
+    type: 'circle',
+    role: person.role || person.group || '',
+    kopPersonality: person.kopPersonality || 'supportive',
+    verified: false,
+  };
+}
+
+function buildBrandProfessionalPost(brand, handleTag, obKind, spCat, language, seed) {
+  const l = normLang(language);
+  const tag = `#${brandHandleOf(brand)}`;
+  if (obKind === 'deal_signed') {
+    return trScene(l, {
+      fr: `Bienvenue dans la famille ${brand}, ${handleTag}. L'exigence et l'ambition au service de la performance. 🤝✨ ${tag}`,
+      en: `Welcome to the ${brand} family, ${handleTag}. Built on precision, ambition, and excellence on and off the pitch. 🤝✨ ${tag}`,
+      pt: `Bem-vindo à família ${brand}, ${handleTag}. Excelência, ambição e alta performance dentro e fora de campo. 🤝✨ ${tag}`,
+      es: `Bienvenido a la familia ${brand}, ${handleTag}. Excelencia, ambición y rendimiento dentro y fuera del campo. 🤝✨ ${tag}`,
+      it: `Benvenuto nella famiglia ${brand}, ${handleTag}. Eccellenza, ambizione e performance dentro e fuori dal campo. 🤝✨ ${tag}`,
+      de: `Willkommen in der ${brand}-Familie, ${handleTag}. Präzision, Ehrgeiz und Spitzenleistung auf und neben dem Platz. 🤝✨ ${tag}`,
+    });
+  }
+  const pool = [
+    {
+      fr: `Fiers de dévoiler notre nouvelle activation aux côtés de ${handleTag}. Le souci du détail fait toute la différence. ${tag}`,
+      en: `Proud to unveil our latest chapter alongside ${handleTag}. Relentless focus and attention to detail in every frame. ${tag}`,
+      pt: `Orgulho em revelar nosso novo capítulo ao lado de ${handleTag}. Foco total e atenção a cada detalhe. ${tag}`,
+      es: `Orgullosos de presentar nuestro nuevo capítulo junto a ${handleTag}. Enfoque absoluto y cuidado por cada detalle. ${tag}`,
+      it: `Orgogliosi di svelare il nostro nuovo capitolo insieme a ${handleTag}. Cura dei dettagli e massima determinazione. ${tag}`,
+      de: `Stolz, unser neuestes Kapitel gemeinsam mit ${handleTag} zu präsentieren. Fokus und Präzision bis ins kleinste Detail. ${tag}`,
+    },
+    {
+      fr: `Dans les coulisses avec ${handleTag} aujourd'hui. Une même vision de l'excellence au quotidien. ✨ ${tag}`,
+      en: `Behind the scenes with ${handleTag} today. Sharing a commitment to peak standards every single day. ✨ ${tag}`,
+      pt: `Nos bastidores com ${handleTag} hoje. O mesmo compromisso com a excelência todos os dias. ✨ ${tag}`,
+      es: `Detrás de las cámaras hoy con ${handleTag}. Un mismo compromiso con la excelencia cada día. ✨ ${tag}`,
+      it: `Dietro le quinte oggi con ${handleTag}. La stessa visione di eccellenza, ogni singolo giorno. ✨ ${tag}`,
+      de: `Heute hinter den Kulissen mit ${handleTag}. Ein gemeinsamer Anspruch an höchste Standards, jeden Tag. ✨ ${tag}`,
+    },
+    {
+      fr: `Quand le talent rencontre l'innovation : ${brand} × ${handleTag}. La campagne continue. ${tag}`,
+      en: `Where elite performance meets craftsmanship: ${brand} × ${handleTag}. Setting the pace together. ${tag}`,
+      pt: `Onde a alta performance encontra a inovação: ${brand} × ${handleTag}. Ditando o ritmo juntos. ${tag}`,
+      es: `Donde el alto rendimiento se une a la innovación: ${brand} × ${handleTag}. Marcando el ritmo juntos. ${tag}`,
+      it: `Dove la performance d'élite incontra l'innovazione: ${brand} × ${handleTag}. Insieme per dettare il passo. ${tag}`,
+      de: `Wo Spitzenleistung auf Innovation trifft: ${brand} × ${handleTag}. Gemeinsam Maßstäbe setzen. ${tag}`,
+    },
+    {
+      fr: `Un plaisir d'accueillir ${handleTag} avec nos équipes aujourd'hui. Professionnalisme exemplaire du début à la fin. 🤝 ${tag}`,
+      en: `A privilege hosting ${handleTag} with our team today. World-class professionalism from start to finish. 🤝 ${tag}`,
+      pt: `Um privilégio receber ${handleTag} com nossa equipe hoje. Profissionalismo de classe mundial do início ao fim. 🤝 ${tag}`,
+      es: `Un privilegio recibir hoy a ${handleTag} con nuestro equipo. Profesionalidad de primer nivel de principio a fin. 🤝 ${tag}`,
+      it: `Un privilegio ospitare ${handleTag} con il nostro team oggi. Professionalità esemplare dall'inizio alla fine. 🤝 ${tag}`,
+      de: `Es war uns eine Ehre, ${handleTag} heute bei unserem Team zu begrüßen. Weltklasse-Professionalität von Anfang bis Ende. 🤝 ${tag}`,
+    },
+  ];
+  return trScene(l, pool[hashStr(`${brand}|${obKind}|${spCat}|${seed}`) % pool.length]);
+}
+
+function buildCircleKopReaction(person, handleTag, eventKind, language, seed) {
+  if (!person?.name || !person?.kopPersonality) return null;
+  const l = normLang(language);
+  const p = person.kopPersonality;
+  const templates = {
+    supportive: [
+      {
+        fr: `Tellement fier/fière de voir ${handleTag} continuer d'avancer sans jamais oublier d'où il vient ❤️🙏`,
+        en: `Always so proud watching ${handleTag} grow on and off the pitch while staying true to his roots ❤️🙏`,
+        pt: `Tanto orgulho de ver ${handleTag} conquistando tudo isso sem nunca esquecer suas raízes ❤️🙏`,
+        es: `Qué orgullo ver a ${handleTag} seguir creciendo sin olvidar nunca de dónde viene ❤️🙏`,
+        it: `Sempre più orgogliosi di vedere ${handleTag} crescere restando fedele alle proprie radici ❤️🙏`,
+        de: `So stolz zu sehen, wie ${handleTag} seinen Weg geht und dabei nie vergisst, woher er kommt ❤️🙏`,
+      },
+      {
+        fr: `Le travail de l'ombre finit toujours par payer. Continue de briller ${handleTag} ✨❤️`,
+        en: `Nobody sees all the quiet hours behind the scenes, makes every milestone even sweeter ${handleTag} ✨❤️`,
+        pt: `Só quem acompanha de perto sabe o quanto você trabalhou por cada conquista, ${handleTag} ✨❤️`,
+        es: `Nadie ve todas las horas de esfuerzo detrás de cada paso. Te lo mereces todo, ${handleTag} ✨❤️`,
+        it: `Solo chi c'è da sempre sa quanto lavoro c'è dietro ogni traguardo. Continua così ${handleTag} ✨❤️`,
+        de: `Wer dich kennt, weiß, wie viel harte Arbeit dahintersteckt. Weiter so, ${handleTag} ✨❤️`,
+      },
+    ],
+    playful: [
+      {
+        fr: `Dis donc ${handleTag}, même avec tous ces projecteurs tu restes quand même de corvée de vaisselle au prochain repas 😂❤️`,
+        en: `Looking very fancy out there ${handleTag}, just remember you're still on dish duty at the next family dinner 😂❤️`,
+        pt: `Muito chique ${handleTag}, mas não esquece que no próximo churrasco a louça ainda é tua 😂❤️`,
+        es: `Muy elegante ${handleTag}, pero recuerda que en la próxima cena familiar te sigue tocando fregar los platos 😂❤️`,
+        it: `Tutto molto elegante ${handleTag}, ma alla prossima cena di famiglia ti tocca comunque sparecchiare 😂❤️`,
+        de: `Sieht sehr schick aus ${handleTag}, aber beim nächsten Familienessen bist trotzdem du mit Abspülen dran 😂❤️`,
+      },
+      {
+        fr: `On valide le style ${handleTag} 👀 Essaie juste de ne pas prendre la grosse tête avant dimanche 😂🙌`,
+        en: `Alright we see you ${handleTag} 👀 Try not to let the superstar life get to your head before Sunday 😂🙌`,
+        pt: `Olha ele todo estrela ${handleTag} 👀 Vê se não esquece dos amigos agora hein 😂🙌`,
+        es: `Míralo qué nivel ${handleTag} 👀 No te olvides de los de siempre ahora eh 😂🙌`,
+        it: `Guardatelo che stile ${handleTag} 👀 Vedi di non montarti la testa prima di domenica 😂🙌`,
+        de: `Na schau mal einer an ${handleTag} 👀 Heb uns bloß nicht ab bis Sonntag 😂🙌`,
+      },
+    ],
+    hype: [
+      {
+        fr: `C'est LUI !! ${handleTag} à un autre niveau sur le terrain comme en dehors 🔥🚀`,
+        en: `THAT'S HIM!! ${handleTag} operating on a completely different level right now 🔥🚀`,
+        pt: `É ELE!! ${handleTag} voando baixo dentro e fora de campo, ninguém segura 🔥🚀`,
+        es: `¡¡ES ÉL!! ${handleTag} a otro nivel dentro y fuera de la cancha 🔥🚀`,
+        it: `È LUI!! ${handleTag} su un altro pianeta dentro e fuori dal campo 🔥🚀`,
+        de: `ER IST ES EINFACH!! ${handleTag} auf und neben dem Platz auf einem ganz anderen Level 🔥🚀`,
+      },
+    ],
+    protective: [
+      {
+        fr: `Pendant que certains parlent, ${handleTag} trace sa route avec sérieux. Les vrais savent 💯🛡️`,
+        en: `While outside noise comes and goes, ${handleTag} just keeps working and delivering. The real ones know 💯🛡️`,
+        pt: `Enquanto falam por aí, ${handleTag} segue trabalhando calado e conquistando seu espaço. Os de verdade sabem 💯🛡️`,
+        es: `Mientras otros hablan, ${handleTag} sigue trabajando en silencio y demostrando quién es. Los suyos siempre firmes 💯🛡️`,
+        it: `Mentre fuori parlano, ${handleTag} continua a lavorare a testa bassa. Chi ti conosce sa quanto vali 💯🛡️`,
+        de: `Während andere reden, geht ${handleTag} fokussiert seinen Weg. Die Echten wissen Bescheid 💯🛡️`,
+      },
+    ],
+    professional: [
+      {
+        fr: `Étape après étape, avec cohérence et exigence. Félicitations ${handleTag} pour cette belle dynamique 🤝`,
+        en: `Step by step, built on consistency and high standards. Pleased to see ${handleTag}'s continued momentum 🤝`,
+        pt: `Passo a passo, com consistência e planejamento. Parabéns a ${handleTag} por mais um movimento sólido 🤝`,
+        es: `Paso a paso, con constancia y criterio. Enhorabuena a ${handleTag} por seguir construyendo con solidez 🤝`,
+        it: `Passo dopo passo, con coerenza e professionalità. Complimenti a ${handleTag} per questo percorso 🤝`,
+        de: `Schritt für Schritt, mit Konstanz und klarem Anspruch. Glückwunsch an ${handleTag} zu dieser Entwicklung 🤝`,
+      },
+    ],
+  };
+  const list = templates[p] || templates.supportive;
+  return trScene(l, list[hashStr(`${person.name}|${eventKind}|${seed}`) % list.length]);
 }
 
 function resolveContext(state, snapshot, event, language) {
@@ -269,15 +456,28 @@ function findOrCreateFanAuthor(state, club, language) {
   return { handle, name: state.accounts[handle].name || gen.name, type: 'fan', verified: false };
 }
 
-function pushKopReaction(state, { club, gameDate, language, newId }, text) {
+function pushKopReaction(state, { club, gameDate, language, newId, customAuthor = null, replyAuthor = null, replyText = '' }, text) {
   if (!text) return null;
   state.feed = state.feed || [];
-  const author = findOrCreateFanAuthor(state, club, language);
+  const author = customAuthor || findOrCreateFanAuthor(state, club, language);
   const fol = Math.max(400, Number(state?.profile?.followers) || 4200);
-  const scale = Math.min(25, Math.max(0.4, Math.sqrt(fol / 4200)));
+  const scale = Math.min(25, Math.max(0.4, Math.sqrt(fol / 4200))) * (author.type === 'brand' ? 1.8 : 1);
   const h = hashStr(`${text}|${gameDate}|${state.feed.length}`);
   const likes = Math.max(12, Math.round((35 + (h % 140)) * scale));
   const reposts = Math.max(2, Math.round(likes * 0.14));
+  const replies = [];
+  if (replyAuthor && replyText) {
+    const rLikes = Math.max(6, Math.round(likes * 0.25));
+    replies.push({
+      id: newId(),
+      author: replyAuthor,
+      text: replyText,
+      gameDate: gameDate || '',
+      createdAt: Date.now() + 1,
+      likes: rLikes,
+      reposts: Math.max(1, Math.round(rLikes * 0.1)),
+    });
+  }
   const post = {
     id: newId(),
     author,
@@ -285,10 +485,11 @@ function pushKopReaction(state, { club, gameDate, language, newId }, text) {
     gameDate: gameDate || '',
     createdAt: Date.now(),
     aboutPost: null,
-    replies: [],
+    replies,
     likes,
     reposts,
     lifeScene: true,
+    ...(author.type === 'brand' ? { official: true } : {}),
   };
   state.feed.push(post);
   return { channel: 'kop', from: `@${author.handle}`, authorName: author.name, text };
@@ -1394,9 +1595,42 @@ function buildSceneAndReactions(state, snapshot, event = {}, { language = 'en', 
   else return null;
 
   const reactions = [];
-  if (built.kop) {
-    const k = pushKopReaction(state, { club: ctx.club, gameDate, language: ctx.l, newId }, built.kop);
+  const kopCirclePerson = pickKopInnerCircle(state, ctx.seed);
+  if (event.kind === 'obligation' && event.brand) {
+    const spObj = (state?.lifeHub?.sponsors || []).find((s) => String(s?.brand || '').toLowerCase() === String(event.brand).toLowerCase());
+    const spCat = String(event?.sponsorCategory || spObj?.categories?.[0] || spObj?.category || '').toLowerCase();
+    const brandAuthor = ensureBrandKopAccount(state, event.brand, spCat);
+    const brandText = buildBrandProfessionalPost(event.brand, myHandle, event.obligationKind || '', spCat, ctx.l, ctx.seed);
+    const fanAuthor = built.kop ? findOrCreateFanAuthor(state, ctx.club, ctx.l) : null;
+    const kb = pushKopReaction(
+      state,
+      { club: ctx.club, gameDate, language: ctx.l, newId, customAuthor: brandAuthor, replyAuthor: fanAuthor, replyText: built.kop || '' },
+      brandText
+    );
+    if (kb) reactions.push(kb);
+    if (built.kop && fanAuthor) {
+      reactions.push({ channel: 'kop', from: `@${fanAuthor.handle}`, authorName: fanAuthor.name, text: built.kop });
+    }
+  } else if (built.kop) {
+    let replyAuthor = null;
+    let replyText = '';
+    if (kopCirclePerson) {
+      replyAuthor = ensureCircleKopAccount(state, kopCirclePerson);
+      replyText = buildCircleKopReaction(kopCirclePerson, myHandle, event.kind, ctx.l, ctx.seed) || '';
+    }
+    const k = pushKopReaction(state, { club: ctx.club, gameDate, language: ctx.l, newId, replyAuthor, replyText }, built.kop);
     if (k) reactions.push(k);
+    if (replyAuthor && replyText) {
+      reactions.push({ channel: 'kop', from: `@${replyAuthor.handle}`, authorName: replyAuthor.name, text: replyText });
+    }
+  }
+  if (event.kind === 'obligation' && kopCirclePerson && (hashStr(ctx.seed) % 2 === 0)) {
+    const circleAuthor = ensureCircleKopAccount(state, kopCirclePerson);
+    const circleText = buildCircleKopReaction(kopCirclePerson, myHandle, event.kind, ctx.l, ctx.seed);
+    if (circleText) {
+      const kc = pushKopReaction(state, { club: ctx.club, gameDate, language: ctx.l, newId, customAuthor: circleAuthor }, circleText);
+      if (kc) reactions.push(kc);
+    }
   }
   if (built.huddle) {
     const h = pushHuddleReaction(state, { gameDate, teammate: ctx.teammate, captain: ctx.captain }, built.huddle, built.huddleRole || null, built.hudEmoji);
