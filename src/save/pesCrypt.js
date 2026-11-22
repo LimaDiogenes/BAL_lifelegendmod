@@ -165,6 +165,11 @@ function splitSave(buf, masterKey = null) {
 function joinSave(parts, masterKey = parts.key || MASTER_KEY_PES21) {
   const crypto = require('crypto');
   const keys = ['desc', 'logo', 'data', 'serial'];
+  // L'en-tête de fichier (parts.fh) est repris tel quel : chaque section doit garder la taille qu'il annonce.
+  const declared = { data: parts.fh.readUInt32LE(64), logo: parts.fh.readUInt32LE(68), desc: parts.fh.readUInt32LE(72), serial: parts.fh.readUInt32LE(76) * 2 };
+  if (keys.some((k) => !Buffer.isBuffer(parts[k]) || parts[k].length !== declared[k])) {
+    throw new Error('La modification a changé la taille des données de la sauvegarde : rien n’a été modifié.');
+  }
   const header = Buffer.concat([...keys.map((k) => crypto.createHash('sha512').update(parts[k]).digest()), parts.tail]);
   const headerKey = xorRepeating(parts.tail, reverseLongs(masterKey));
   const encHeader = Buffer.concat([cryptStream(headerKey, header).subarray(0, 256), parts.tail]);

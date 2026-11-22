@@ -2837,4 +2837,8 @@ window.LL_I18N.pt = {
   "Compte officiel · {name}. Partenariats sportifs, campagnes et actualités de la marque.": "Conta oficial · {name}. Parcerias esportivas, campanhas e novidades da marca.",
   "Cercle intime.": "Círculo íntimo.",
   "Avancer au prochain événement et ouvrir le calendrier": "Avançar para o próximo evento e abrir o calendário",
+  "Cette sauvegarde ne se rechiffre pas à l’identique : LifeLegend ne peut pas l’écrire sans risque. Rien n’a été modifié.": "Este save não volta a ser cifrado de forma idêntica: o LifeLegend não consegue gravá-lo com segurança. Nada foi alterado.",
+  "La modification a changé la taille des données de la sauvegarde : rien n’a été modifié.": "A alteração mudou o tamanho dos dados do save: nada foi alterado.",
+  "Le Mod Studio (blue41) écrit dans cette sauvegarde en ce moment : rien n’a été modifié. Réessaie quand il a fini.": "O Mod Studio (blue41) está gravando neste save agora: nada foi alterado. Tente de novo quando ele terminar.",
+  "Une autre application écrit dans cette sauvegarde en ce moment : rien n’a été modifié. Réessaie dans un instant.": "Outro aplicativo está gravando neste save agora: nada foi alterado. Tente de novo daqui a pouco.",
 };

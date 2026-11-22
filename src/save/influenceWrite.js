@@ -13,10 +13,8 @@
 //   Légende, partagée avec la Ligue des Masters. « Infos marché transferts » n'est pas écrit : le jeu choisit lui-même
 //   les transferts qu'il y garde et retire les autres en relisant la sauvegarde (essayé deux fois).
 
-const fs = require('fs');
-const path = require('path');
-const { splitSave, joinSave, decryptSave } = require('./pesCrypt');
-const { assertStandard } = require('./layout');
+const { STANDARD } = require('./layout');
+const { safeSaveWrite } = require('./safeWrite');
 const { gameRunning } = require('./offerRedirect');
 const { PHASE, readPhase } = require('./formations');
 
@@ -39,13 +37,14 @@ const DEPARTURE = 33; // « Départ d'un joueur » (Bras droit)
 const EMPTY_MESSAGE = Buffer.from('ff000000ffff000000000000ff0000000000000000000000ffffffffffff0000ffffffffffff000000000000'
   + 'ffff000000000000ffff000000000000ffffffffffffff7fff00ffffffff0000ffffff00', 'hex');
 
+// Fiche d'un club par sa référence. Comme blReader.readTeams : les places d'une ancienne saison (nom vide, équipes de
+// Football Life 2026 dans une carrière 2027) sont sautées, pas prises pour la fin de la table.
+const TEAM_SLOTS = Math.floor((STANDARD.coach - 8) / TEAM_STRIDE);
 function teamOffset(d, ref) {
-  for (let k = 0; k < 4096; k++) {
-    const o = TEAM_STRIDE * k;
-    if (o + 0x9A > d.length || d[o + 0x54] === 0 || d[o + 0x54] === 0xFF) return -1;
-    if (d.readUInt32LE(o + 0x50) === ref) return o;
-  }
-  return -1;
+  if (!ref || (ref & 0x3FFF) >= TEAM_SLOTS || !(ref >>> 14)) return -1;
+  const k = ref & 0x3FFF, o = TEAM_STRIDE * k;
+  if (o + 0x9A > d.length) return -1;
+  return d.readUInt32LE(o + 0x50) === ref ? o : -1;
 }
 
 function rosterAt(d, o) {
@@ -161,31 +160,10 @@ function transferInData(source, { playerId, fromRef, toRef, news }) {
   return { data: d, shirt, message, changes };
 }
 
-// Écriture dans le fichier de sauvegarde : jeu fermé, copie de sécurité, écriture puis relecture.
+// Écriture dans le fichier de sauvegarde : jeu fermé, verrou partagé, copie de sécurité, écriture puis relecture
+// (src/save/safeWrite.js).
 function writeInSave({ savePath, backupDir, edit, check, tag = 'influence' }) {
-  if (gameRunning()) throw new Error('Le jeu est ouvert : sauvegarde ta partie, quitte-le, puis recommence.');
-  const before = fs.statSync(savePath);
-  const original = fs.readFileSync(savePath);
-  const parts = splitSave(original);
-  // Une sauvegarde agrandie par des modules (FL Mod Studio…) : ses places n'ont pas été vérifiées pour écrire.
-  assertStandard(parts.data);
-  const result = edit(parts.data);
-  parts.data = result.data;
-  const out = joinSave(parts);
-  if (!decryptSave(out).data.equals(result.data)) throw new Error('Vérification de l’écriture échouée : rien n’a été modifié.');
-
-  fs.mkdirSync(backupDir, { recursive: true });
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const backup = path.join(backupDir, `${path.basename(savePath)}-${stamp}-avant-${tag}`);
-  fs.writeFileSync(backup, original);
-  for (const f of fs.readdirSync(backupDir).filter((x) => x.includes(`-avant-${tag}`)).sort().slice(0, -10)) fs.rmSync(path.join(backupDir, f));
-
-  const now = fs.statSync(savePath);
-  if (now.mtimeMs !== before.mtimeMs || now.size !== before.size || gameRunning()) throw new Error('La sauvegarde a changé entre-temps (jeu relancé ?) : rien n’a été modifié.');
-  const tmp = `${savePath}.legendlife-tmp`;
-  fs.writeFileSync(tmp, out);
-  fs.renameSync(tmp, savePath);
-  if (!check(decryptSave(fs.readFileSync(savePath)).data)) throw new Error(`Relecture inattendue après écriture. Ta sauvegarde d’origine est ici : ${backup}`);
+  const { result, backup } = safeSaveWrite({ savePath, backupDir, tag, gameRunning, edit, check });
   return { ...result, data: undefined, backup };
 }
 

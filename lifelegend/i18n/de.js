@@ -2837,4 +2837,8 @@ window.LL_I18N.de = {
   "Compte officiel · {name}. Partenariats sportifs, campagnes et actualités de la marque.": "Offizieller Account · {name}. Sportpartnerschaften, Kampagnen & Markennews.",
   "Cercle intime.": "Engster Kreis.",
   "Avancer au prochain événement et ouvrir le calendrier": "Zum nächsten Ereignis springen und Kalender öffnen",
+  "Cette sauvegarde ne se rechiffre pas à l’identique : LifeLegend ne peut pas l’écrire sans risque. Rien n’a été modifié.": "Dieser Spielstand lässt sich nicht identisch neu verschlüsseln: LifeLegend kann ihn nicht sicher schreiben. Nichts wurde geändert.",
+  "La modification a changé la taille des données de la sauvegarde : rien n’a été modifié.": "Die Änderung hat die Größe der Spielstanddaten verändert: Nichts wurde geändert.",
+  "Le Mod Studio (blue41) écrit dans cette sauvegarde en ce moment : rien n’a été modifié. Réessaie quand il a fini.": "Das Mod Studio (blue41) schreibt gerade in diesen Spielstand: Nichts wurde geändert. Versuche es erneut, wenn es fertig ist.",
+  "Une autre application écrit dans cette sauvegarde en ce moment : rien n’a été modifié. Réessaie dans un instant.": "Eine andere Anwendung schreibt gerade in diesen Spielstand: Nichts wurde geändert. Versuche es gleich noch einmal.",
 };

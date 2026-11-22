@@ -8,11 +8,8 @@
 // sinon l'acceptation part sur la mauvaise.
 // Offsets : voir blReader.js et docs/vers-une-legende.md.
 
-const fs = require('fs');
-const path = require('path');
 const { execFileSync } = require('child_process');
-const { splitSave, joinSave, decryptSave } = require('./pesCrypt');
-const { assertStandard } = require('./layout');
+const { safeSaveWrite } = require('./safeWrite');
 const { readCareer } = require('./blReader');
 
 const OFFER_MARKER = Buffer.concat([Buffer.from('74450700', 'hex'), Buffer.alloc(12)]);
@@ -114,37 +111,30 @@ function gameRunning() {
   return gameInTaskList(out);
 }
 
-// Réoriente l'offre dans le fichier de sauvegarde : jeu fermé, copie de sécurité, écriture puis relecture.
+// Réoriente l'offre dans le fichier de sauvegarde : jeu fermé, verrou partagé, copie de sécurité, écriture puis
+// relecture (src/save/safeWrite.js).
 function redirectOfferInSave({ savePath, backupDir, playerId, offerId, toRef }) {
-  if (gameRunning()) throw new Error('Le jeu est ouvert : sauvegarde ta partie, quitte-le, puis recommence.');
-  const before = fs.statSync(savePath);
-  const original = fs.readFileSync(savePath);
-  const career = readCareer(savePath);
-  if (career.player.id !== playerId) throw new Error('La sauvegarde suivie n’est plus celle de ce joueur : synchronise d’abord.');
-  const team = career.teams.get(toRef);
-  if (!team) throw new Error('Club introuvable dans ta sauvegarde.');
-  const parts = splitSave(original);
-  assertStandard(parts.data); // pas d'écriture dans une sauvegarde agrandie par des modules
-  const { data, fromRef, changes } = redirectInData(parts.data, { playerId, clubRef: career.club.ref, offerId, toRef });
-  parts.data = data;
-  const out = joinSave(parts);
-  // relecture : le fichier réécrit se déchiffre et porte la nouvelle offre
-  if (!decryptSave(out).data.equals(data)) throw new Error('Vérification de l’écriture échouée : rien n’a été modifié.');
-
-  fs.mkdirSync(backupDir, { recursive: true });
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const backup = path.join(backupDir, `${path.basename(savePath)}-${stamp}-avant-reorientation`);
-  fs.writeFileSync(backup, original);
-  for (const f of fs.readdirSync(backupDir).filter((x) => x.includes('-avant-reorientation')).sort().slice(0, -10)) fs.rmSync(path.join(backupDir, f));
-
-  const now = fs.statSync(savePath);
-  if (now.mtimeMs !== before.mtimeMs || now.size !== before.size || gameRunning()) throw new Error('La sauvegarde a changé entre-temps (jeu relancé ?) : rien n’a été modifié.');
-  const tmp = `${savePath}.legendlife-tmp`;
-  fs.writeFileSync(tmp, out);
-  fs.renameSync(tmp, savePath);
-  const check = readCareer(savePath).player.offers.find((x) => x.id === offerId);
-  if (!check || check.clubRef !== toRef) throw new Error(`Relecture inattendue après écriture. Ta sauvegarde d’origine est ici : ${backup}`);
-  return { from: career.teams.get(fromRef)?.name || null, to: team.name, changes, backup, offer: check };
+  let career = null, team = null, fromRef = null, changes = [], offer = null;
+  const { backup } = safeSaveWrite({
+    savePath,
+    backupDir,
+    tag: 'reorientation',
+    gameRunning,
+    edit: (source) => {
+      career = readCareer(savePath);
+      if (career.player.id !== playerId) throw new Error('La sauvegarde suivie n’est plus celle de ce joueur : synchronise d’abord.');
+      team = career.teams.get(toRef);
+      if (!team) throw new Error('Club introuvable dans ta sauvegarde.');
+      const r = redirectInData(source, { playerId, clubRef: career.club.ref, offerId, toRef });
+      ({ fromRef, changes } = r);
+      return r;
+    },
+    check: (_data, file) => {
+      offer = readCareer(file).player.offers.find((x) => x.id === offerId);
+      return Boolean(offer && offer.clubRef === toRef);
+    },
+  });
+  return { from: career.teams.get(fromRef)?.name || null, to: team.name, changes, backup, offer };
 }
 
 module.exports = { redirectOfferInSave, redirectInData, gameRunning, gameInTaskList };

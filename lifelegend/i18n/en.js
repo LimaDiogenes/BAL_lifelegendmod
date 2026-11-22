@@ -2837,4 +2837,8 @@ window.LL_I18N.en = {
   "Compte officiel · {name}. Partenariats sportifs, campagnes et actualités de la marque.": "Official account · {name}. Sports partnerships, campaigns & brand news.",
   "Cercle intime.": "Inner circle.",
   "Avancer au prochain événement et ouvrir le calendrier": "Advance to the next event and open the calendar",
+  "Cette sauvegarde ne se rechiffre pas à l’identique : LifeLegend ne peut pas l’écrire sans risque. Rien n’a été modifié.": "This save does not re-encrypt identically: LifeLegend cannot write it safely. Nothing was changed.",
+  "La modification a changé la taille des données de la sauvegarde : rien n’a été modifié.": "The change altered the size of the save data: nothing was changed.",
+  "Le Mod Studio (blue41) écrit dans cette sauvegarde en ce moment : rien n’a été modifié. Réessaie quand il a fini.": "The Mod Studio (blue41) is writing to this save right now: nothing was changed. Try again when it has finished.",
+  "Une autre application écrit dans cette sauvegarde en ce moment : rien n’a été modifié. Réessaie dans un instant.": "Another application is writing to this save right now: nothing was changed. Try again in a moment.",
 };
