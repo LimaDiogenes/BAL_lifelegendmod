@@ -2855,4 +2855,7 @@ window.LL_I18N.en = {
   "Logos des sponsors installés.": "Sponsor logos installed.",
   "Événements du jour affichés.": "Today's events are shown.",
   "Plus d’infos": "More info",
+  "Match aujourd’hui : {m}": "Match today: {m}",
+  "Prochain match dans {n} jour : {m}": "Next match in {n} day: {m}",
+  "Prochain match dans {n} jours : {m}": "Next match in {n} days: {m}",
 };

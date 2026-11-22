@@ -4699,3 +4699,29 @@ html, body { height: 100%; overflow: hidden; background: var(--sh-back); }
 .rg-switch-wrap { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; margin: 0 0 10px; }
 .rg-switch-wrap:last-child { margin-bottom: 0; }
 .rg .settings .rg-switch-wrap .rg-switch { margin: 0; }
+
+/* Calendrier 2.0 : carte « Aujourd'hui » (événements du jour et décisions en évidence), pastilles colorées dans le mois. */
+.ml-today { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px 20px; border-left: 4px solid var(--gold); }
+.ml-today.has-decisions { box-shadow: 0 0 0 1px var(--gold) inset; }
+.ml-today-head { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.ml-today-next { font-weight: 600; font-size: 14px; }
+.ml-today > .ml-dec-card { grid-column: 1 / -1; margin: 0; padding: 12px 0 0; border-top: 1px solid var(--line); }
+.ml-today .ml-dec-item { padding: 12px 14px; border: 1px solid var(--gold); border-radius: 12px; margin-top: 10px; background: color-mix(in srgb, var(--gold) 8%, transparent); }
+.ml-today-items { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; padding: 0; list-style: none; }
+.ml-today-items .ml-cal-chip { font-size: 13px; padding: 4px 10px; }
+.ml-cal-chips { display: flex; flex-direction: column; gap: 2px; width: 100%; margin-top: 2px; min-width: 0; }
+.ml-cal-chip { display: block; max-width: 100%; overflow: hidden; padding: 1px 5px; border-radius: 6px; font-size: 10.5px; line-height: 1.4; text-align: left; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); background: var(--surface-2); border-left: 3px solid var(--line-2); }
+.ml-cal-chip--match { border-left-color: #3b82f6; background: color-mix(in srgb, #3b82f6 16%, transparent); }
+.ml-cal-chip--sponsor { border-left-color: #f59e0b; background: color-mix(in srgb, #f59e0b 16%, transparent); }
+.ml-cal-chip--birthday { border-left-color: #ec4899; background: color-mix(in srgb, #ec4899 16%, transparent); }
+.ml-cal-chip--scheduled { border-left-color: #10b981; background: color-mix(in srgb, #10b981 16%, transparent); }
+.ml-cal-chip--system_event, .ml-cal-chip--life { border-left-color: #8b5cf6; background: color-mix(in srgb, #8b5cf6 16%, transparent); }
+.ml-cal-chip--custom { border-left-color: #14b8a6; background: color-mix(in srgb, #14b8a6 16%, transparent); }
+.ml-cal-chip--window { border-left-color: #64748b; }
+.ml-cal-more { font-size: 10px; color: var(--ink-3); }
+.ml-cal-cell { align-items: flex-start; }
+.ml-scheduler > summary, .ml-cal-hist > summary { cursor: pointer; list-style: none; }
+.ml-scheduler > summary h4, .ml-cal-hist > summary h4 { display: inline; }
+.ml-scheduler > summary::before, .ml-cal-hist > summary::before { content: "▸ "; color: var(--ink-3); }
+.ml-scheduler[open] > summary::before, .ml-cal-hist[open] > summary::before { content: "▾ "; }
+@media (max-width: 760px) { .ml-today { grid-template-columns: minmax(0, 1fr); } }

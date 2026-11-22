@@ -10730,8 +10730,11 @@ function renderMyLife(page) {
       calModeFull && calBounds.maxDate && iso > simDate && iso <= calBounds.maxDate ? 'is-ahead' : '',
       dayItems.some((x) => x.kind === 'match') ? 'has-match' : '',
     ].filter(Boolean).join(' ');
-    const dots = dayItems.slice(0, 3).map((x) => `<i class="ml-dot ml-dot--${esc(x.kind)}"></i>`).join('');
-    return `<button type="button" class="${cls}" data-calday="${iso}"><span class="ml-cal-num">${Number(iso.slice(8))}</span>${dots ? `<span class="ml-cal-dots">${dots}</span>` : ''}</button>`;
+    // 2.0 : de vraies pastilles lisibles (titre court) au lieu de points ; « +n » quand il y en a plus.
+    const short = (t) => { const x = String(t || '').trim(); return x.length > 16 ? `${x.slice(0, 15)}…` : x; };
+    const chips = dayItems.slice(0, 2).map((x) => `<span class="ml-cal-chip ml-cal-chip--${esc(x.kind)}" title="${esc(mlFormatCalendarItemTitle(x))}">${esc(short(mlFormatCalendarItemTitle(x)))}</span>`).join('');
+    const more = dayItems.length > 2 ? `<span class="ml-cal-more">+${dayItems.length - 2}</span>` : '';
+    return `<button type="button" class="${cls}" data-calday="${iso}"><span class="ml-cal-num">${Number(iso.slice(8))}</span>${chips || more ? `<span class="ml-cal-chips">${chips}${more}</span>` : ''}</button>`;
   }).join('');
   const selRhythmKey = mlDayRhythm(s, cal, calDay);
   const simRhythmKey = mlDayRhythm(s, cal, simDate);
@@ -10765,7 +10768,10 @@ function renderMyLife(page) {
     : `<p class="fineprint">${tr('Journée calme : tu peux ajouter un événement personnel ou avancer dans le calendrier.')}</p>`;
   const calCatOpts = `${Object.entries(ML_CAL_CAT_LABELS).map(([k, fn]) => `<option value="${k}">${esc(fn())}</option>`).join('')}<option value="__custom__">${esc(tr('Personnalisé…'))}</option>`;
   const calActOpts = ML_ACTIONS_UI.map((a) => `<option value="${esc(a.id)}">${esc(a.label())} (${esc(a.tags().join(' · '))})</option>`).join('');
-  const decisionsCardHtml = pendingDecs.length ? `<div class="card ml-dec-card">
+  // ce qui se passe aujourd'hui, en tête de la carte « Aujourd'hui »
+  const todayItems = (byDay.get(simDate) || []).filter((it) => it.kind !== 'window');
+  const todayItemsHtml = todayItems.length ? `<ul class="ml-today-items">${todayItems.map((it) => `<li class="ml-cal-chip ml-cal-chip--${esc(it.kind)}">${esc(mlFormatCalendarItemTitle(it))}</li>`).join('')}</ul>` : '';
+  const decisionsCardHtml = pendingDecs.length ? `<div class="ml-dec-card">
     <div class="ml-sec-head"><span class="priv-badge on">${esc(trn(pendingDecs.length, '{n} décision calendrier', '{n} décisions calendrier'))}</span><span class="fineprint">${esc(eventMode === 'games_only' ? tr('Mode Matchs uniquement') : tr('Événements du jour'))}</span></div>
     ${pendingDecs.map((dec) => {
       const hdr = mlDecisionHeader(dec);
@@ -10958,8 +10964,8 @@ function renderMyLife(page) {
     </section>
 
     <section class="ml-panel"${tab === 'calendar' ? '' : ' hidden'}>
-      ${decisionsCardHtml}
-      <div class="card ml-cal-banner">
+      <div class="card ml-cal-banner ml-today${pendingDecs.length ? ' has-decisions' : ''}">
+        <div class="ml-today-head"><span class="ml-tag">${tr('Aujourd’hui')}</span>${calBounds.nextMatch ? `<span class="ml-today-next">${esc(daysToMatch === 0 ? tr('Match aujourd’hui : {m}', { m: nextMatchName }) : trn(daysToMatch, 'Prochain match dans {n} jour : {m}', 'Prochain match dans {n} jours : {m}', { m: nextMatchName }))}</span>` : ''}</div>
         <div class="ml-cal-banner-info">
           <div class="ml-cal-dates">
             <div><small>${tr('Date simulée')}</small><b>${esc(fmtDate(simDate))}</b></div>
@@ -10967,6 +10973,7 @@ function renderMyLife(page) {
             <div><small>${tr('Rythme du jour')}</small><b>${esc((ML_RHYTHM_LABELS[simRhythmKey] || ML_RHYTHM_LABELS.training)())}</b></div>
           </div>
           <p class="fineprint">${esc(calStatusText)}${!calModeFull ? ` — ${tr('Passe en mode Complet pour avancer jour par jour même si tu joues plusieurs matchs d’affilée dans le jeu.')}` : ''}</p>
+          ${todayItemsHtml}
         </div>
         <div class="ml-cal-banner-acts">
           ${calModeFull
@@ -10975,6 +10982,7 @@ function renderMyLife(page) {
                <button type="button" class="btn" data-caladv="catch_up"${canAdvance ? '' : ' disabled'}>${calThirdBtnLabel}</button>`
             : `<button type="button" class="btn primary" id="ml-cal-enable-full">${tr('Activer le mode Complet')}</button>`}
         </div>
+        ${decisionsCardHtml}
       </div>
 
       <div class="ml-cal-layout">
@@ -11008,9 +11016,9 @@ function renderMyLife(page) {
             </div>
           </div>
           ${selItemsHtml}
-          <div class="ml-scheduler">
+          <details class="ml-scheduler"${view.mlSchedOpen ? ' open' : ''}>
+            <summary><h4>${tr('Planifier à l’avance')}</h4></summary>
             <div class="ml-sec-head">
-              <h4>${tr('Planifier à l’avance')}</h4>
               <div class="ml-chips">
                 <button type="button" class="ml-chip${(view.mlSchedMode || 'activity') === 'activity' ? ' on' : ''}" data-schedmode="activity">${tr('Activité hors terrain')}</button>
                 <button type="button" class="ml-chip${view.mlSchedMode === 'event' ? ' on' : ''}" data-schedmode="event">${tr('Événement personnalisé')}</button>
@@ -11031,8 +11039,8 @@ function renderMyLife(page) {
                   <label class="per-field" id="ml-calev-cat-custom-wrap" hidden><span>${tr('Catégorie personnalisée')}</span><input id="ml-calev-cat-custom" placeholder="${esc(tr('ex. Gala, Entraînement perso…'))}" maxlength="40"></label>
                   <button type="button" class="btn primary" id="ml-calev-go">${tr('Planifier')}</button>
                 </div>`}
-          </div>
-          ${calHistHtml ? `<div class="ml-cal-hist"><h4>${tr('Journal du calendrier')}</h4><ul class="ml-feed">${calHistHtml}</ul></div>` : ''}
+          </details>
+          ${calHistHtml ? `<details class="ml-cal-hist"><summary><h4>${tr('Journal du calendrier')}</h4></summary><ul class="ml-feed">${calHistHtml}</ul></details>` : ''}
         </div>
       </div>
       ${squadBdaysHtml}

@@ -2855,4 +2855,7 @@ window.LL_I18N.it = {
   "Logos des sponsors installés.": "Loghi degli sponsor installati.",
   "Événements du jour affichés.": "Eventi del giorno mostrati.",
   "Plus d’infos": "Più informazioni",
+  "Match aujourd’hui : {m}": "Partita oggi: {m}",
+  "Prochain match dans {n} jour : {m}": "Prossima partita tra {n} giorno: {m}",
+  "Prochain match dans {n} jours : {m}": "Prossima partita tra {n} giorni: {m}",
 };
