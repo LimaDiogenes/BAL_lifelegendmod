@@ -52,8 +52,8 @@ function makePeakCareerState() {
   const form = ['V', 'V', 'V', 'V', 'V'];
   const state = {
     careerId: 'peak_42',
-    profile: { handle: 'diordi', displayName: 'Diordi', position: 'AMF', followers: 2800000 },
-    bio: { text: 'Born in Manaíra, came up through street pitches and academy setbacks before conquering Europe.', kind: 'created' },
+    profile: { handle: 'alexsilva', displayName: 'Alex Silva', position: 'AMF', followers: 2800000 },
+    bio: { text: 'Born in Belo Horizonte, came up through street pitches and academy setbacks before conquering Europe.', kind: 'created' },
     persona: {
       preset: 'custom',
       traits: {
@@ -64,7 +64,7 @@ function makePeakCareerState() {
         lifestyle: 'bookish_calm',
         ego: 'humble_star',
       },
-      roots: { hometown: 'João Pessoa', childhood: 'Street futsal', academy: '', heritage: '' },
+      roots: { hometown: 'Belo Horizonte', childhood: 'Street futsal', academy: '', heritage: '' },
       flavor: { signature: 'Quiet headphones walk', hobby: 'Reading tactics', favoriteDish: 'Feijoada', motto: 'Let the pitch speak' },
       circle: {
         family: [{ id: 'f1', role: 'Father', name: 'Carlos', decoy: '', protect: false }],
@@ -87,8 +87,8 @@ function makePeakCareerState() {
       ],
       assets: [
         { id: 'a1', catalogId: 'luxury_villa', category: 'home', name: 'Luxury Villa' },
-        { id: 'a2', custom: true, category: 'car', name: 'Nissan Elgrand' },
-        { id: 'a3', custom: true, category: 'car', name: 'Custom Chopper Bike' },
+        { id: 'a2', custom: true, category: 'car', name: 'Luxury Touring Van' },
+        { id: 'a3', custom: true, category: 'car', name: 'Custom Cruiser Bike' },
       ],
       recentEvents: [{ date: '2029-01-01', text: 'Invited academy kids onto the grass after session' }],
     },
@@ -107,11 +107,11 @@ function makePeakCareerState() {
   const snapshot = {
     gameDate: '2029-01-10',
     season: '2028-2029',
-    player: { id: 42, name: 'Diordi', nationality: 'Brazil', contractUntil: '2031-06-30', salary: 12000000, offers: [], interests: [], profile: { age: 24, marketValue: 135000000, abilities: { offensiveAwareness: 92 } }, history: { joinedClub: '2026-07-01' } },
+    player: { id: 42, name: 'Alex Silva', nationality: 'Brazil', contractUntil: '2031-06-30', salary: 12000000, offers: [], interests: [], profile: { age: 24, marketValue: 135000000, abilities: { offensiveAwareness: 92 } }, history: { joinedClub: '2026-07-01' } },
     club: { ref: '10', name: 'Liverpool FC', short: 'LIV', stadium: 'Anfield', coach: 'A. Slot' },
     league: { id: 17, name: 'Premier League' },
     stats: { total: { apps: 20, starts: 20, minutes: 1780, goals: 37, assists: 26, avgRating: 8.6 }, byCompetition: {} },
-    squad: [{ name: 'Diordi', me: true, goals: 37 }, { name: 'M. Salah', pos: 'RWF', apps: 20, goals: 14 }],
+    squad: [{ name: 'Alex Silva', me: true, goals: 37 }, { name: 'M. Salah', pos: 'RWF', apps: 20, goals: 14 }],
     squadIntel: {
       captain: { name: 'V. van Dijk', me: false },
       positionRivals: [{ name: 'M. Rosiak', pos: 'AMF' }],
@@ -123,10 +123,10 @@ function makePeakCareerState() {
       { pos: 2, ref: '20', team: 'Arsenal FC', p: 20, w: 15, d: 2, l: 3, gf: 45, ga: 18, pts: 47, mine: false, form: ['V', 'V', 'N', 'V', 'V'] },
     ],
     fixtures: [
-      { id: 'm20', date: '2029-01-10', home: 'Brighton', away: 'Liverpool FC', competition: 'Premier League', venue: 'extérieur', played: true, score: [2, 4], me: { starter: true, minutes: 90, goals: 2, assists: 1, rating: 8.5, ratingWord: 'exceptionnel' }, goalTimeline: [{ minute: 18, scorer: 'Diordi', side: 'away' }, { minute: 67, scorer: 'Diordi', side: 'away' }], clubLineup: [{ name: 'Diordi', starter: true, position: 'milieu offensif', goals: 2, assists: 1, rating: 8.5 }, { name: 'M. Salah', starter: true, goals: 1, assists: 1, rating: 8.0 }] },
+      { id: 'm20', date: '2029-01-10', home: 'Brighton', away: 'Liverpool FC', competition: 'Premier League', venue: 'extérieur', played: true, score: [2, 4], me: { starter: true, minutes: 90, goals: 2, assists: 1, rating: 8.5, ratingWord: 'exceptionnel' }, goalTimeline: [{ minute: 18, scorer: 'Alex Silva', side: 'away' }, { minute: 67, scorer: 'Alex Silva', side: 'away' }], clubLineup: [{ name: 'Alex Silva', starter: true, position: 'milieu offensif', goals: 2, assists: 1, rating: 8.5 }, { name: 'M. Salah', starter: true, goals: 1, assists: 1, rating: 8.0 }] },
       { id: 'm21', date: '2029-01-14', home: 'Brentford FC', away: 'Liverpool FC', competition: 'FA Cup', venue: 'extérieur', played: false, score: null, me: null },
     ],
-    last: { id: 'm20', date: '2029-01-10', home: 'Brighton', away: 'Liverpool FC', competition: 'Premier League', venue: 'extérieur', played: true, score: [2, 4], me: { starter: true, minutes: 90, goals: 2, assists: 1, rating: 8.5, ratingWord: 'exceptionnel' }, goalTimeline: [{ minute: 18, scorer: 'Diordi', side: 'away' }] },
+    last: { id: 'm20', date: '2029-01-10', home: 'Brighton', away: 'Liverpool FC', competition: 'Premier League', venue: 'extérieur', played: true, score: [2, 4], me: { starter: true, minutes: 90, goals: 2, assists: 1, rating: 8.5, ratingWord: 'exceptionnel' }, goalTimeline: [{ minute: 18, scorer: 'Alex Silva', side: 'away' }] },
     next: { id: 'm21', date: '2029-01-14', home: 'Brentford FC', away: 'Liverpool FC', competition: 'FA Cup', venue: 'extérieur', played: false, score: null, me: null },
     roundResults: [],
     nextRound: [],
@@ -180,7 +180,7 @@ describe('Mémoire narrative locale et anti-répétition', () => {
       gameDate: '2029-01-07',
       matchId: 'm19',
       questions: [
-        { journalist: 'J1', outlet: 'O1', question: 'Diordi, with 60 points from 20 matches, how are you maintaining this level of consistency before facing Brentford?' },
+        { journalist: 'J1', outlet: 'O1', question: 'Alex Silva, with 60 points from 20 matches, how are you maintaining this level of consistency before facing Brentford?' },
         { journalist: 'J2', outlet: 'O2', question: 'Do you think nine commercial sponsors distract you on matchdays?' },
       ],
     });
@@ -266,7 +266,7 @@ describe('Moteur de drame et phase faste (Spotlight Drama Engine)', () => {
     const mem = { dramaArcs: [], quoteVault: [], pressBehavior: { skips: 0, noComments: 0, totalDone: 0 } };
     const drama = tickDramaArcs({ state, snapshot, changes: {}, mem });
 
-    const slots = tribunePlan({ state, snapshot, changes: { newResults: [snapshot.last] }, handle: 'diordi', drama });
+    const slots = tribunePlan({ state, snapshot, changes: { newResults: [snapshot.last] }, handle: 'alexsilva', drama });
     assert.ok(slots.some((s) => s.angle.includes('media & fan drama')), 'créneau drame sur Kop');
     assert.ok(slots.some((s) => s.angle.includes('off-pitch life')), 'créneau hors-terrain/persona conservé');
 
@@ -320,7 +320,7 @@ describe('Moteur de drame et phase faste (Spotlight Drama Engine)', () => {
         });
       }
       return JSON.stringify({
-        article: { headline: 'Diordi hits back at critics', dek: 'Focused only on the pitch', author: 'Marc Lhermitte', body: 'He faced the room cleanly. "Tactics won us the game at 18 minutes." That settled the room.' },
+        article: { headline: 'Alex Silva hits back at critics', dek: 'Focused only on the pitch', author: 'Marc Lhermitte', body: 'He faced the room cleanly. "Tactics won us the game at 18 minutes." That settled the room.' },
         posts: [],
         promises: [],
       });

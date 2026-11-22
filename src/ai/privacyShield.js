@@ -251,7 +251,7 @@ function buildPrivacyMap(privacy, { careerId = '', playerName = '', displayName 
         playerDecoyLast = decoyTokens.at(-1) || null;
       }
       addPair(parsed.real, decoyFull, key);
-      // Map significant individual name tokens (>= 3 chars, not particles) so "Diogenes" and "Lima" alone are masked.
+      // Map significant individual name tokens (>= 3 chars, not particles) so first and last names alone are masked.
       const sigReal = tokens.filter((t) => t.length >= 3 && !PARTICLES.has(t.toLowerCase()));
       if (sigReal.length >= 2) {
         sigReal.forEach((tok, idx) => {

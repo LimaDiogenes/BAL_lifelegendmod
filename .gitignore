@@ -25,6 +25,8 @@ data/keys/
 *.pak
 *.legendlife-tmp
 
-# Local AI handoff notes (never commit)
+# Local AI handoff notes & internal memory (never commit)
 CLAUDE_HANDOFF.md
 *_HANDOFF.md
+docs/*_HANDOFF.md
+memory/
