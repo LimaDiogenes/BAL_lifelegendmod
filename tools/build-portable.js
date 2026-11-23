@@ -73,24 +73,4 @@ if (process.argv.includes('--zip')) {
   console.log(`${zip} (${(fs.statSync(zip).size / 1048576).toFixed(0)} Mo)`);
 }
 
-// 6. Pack des logos des sponsors (téléchargé à part depuis les Réglages) : rien de KONAMI (logo eFootball / PES exclus).
-{
-  const NOT_SHIPPED = /^(konami|efootball|pes[-_]?\d*|winning[-_]?eleven)/i;
-  const stage = path.join(DIST, `logos-${pkg.version}`);
-  const zip = path.join(DIST, `LifeLegend-sponsor-logos-${pkg.version}.zip`);
-  if (!stage.startsWith(DIST + path.sep)) throw new Error(`dossier inattendu : ${stage}`);
-  fs.rmSync(stage, { recursive: true, force: true });
-  fs.mkdirSync(stage, { recursive: true });
-  let n = 0;
-  for (const f of fs.readdirSync(SPONSORS)) {
-    if (NOT_SHIPPED.test(f) || !/\.(svg|png|jpe?g|webp|json)$/i.test(f)) continue;
-    fs.copyFileSync(path.join(SPONSORS, f), path.join(stage, f));
-    if (!f.endsWith('.json')) n++;
-  }
-  fs.rmSync(zip, { force: true });
-  execFileSync('powershell.exe', ['-NoProfile', '-Command', `Compress-Archive -Path '${path.join(stage, '*')}' -DestinationPath '${zip}' -CompressionLevel Optimal`], { stdio: 'inherit' });
-  fs.rmSync(stage, { recursive: true, force: true });
-  const sha = require('crypto').createHash('sha256').update(fs.readFileSync(zip)).digest('hex');
-  console.log(`${zip} : ${n} logos
-SHA-256 ${sha}  (à mettre dans LOGO_PACK_SHA256, src/logoPack.js, puis téléverser le .zip dans la release)`);
-}
+// Le pack des logos des sponsors se fait à part : npm run logos (tools/build-logos.js).

@@ -23,7 +23,33 @@ LifeLegend 2.0 est livré avec blue41 PES2021 Mod Studio (il peut aussi être ut
 
 ### Logos des sponsors à part
 - Les logos des marques ne sont plus dans l'application : un pack séparé se télécharge depuis les Réglages (« Logos des
-  sponsors »), vérifié puis installé tout seul. Sans le pack, des monogrammes s'affichent. Aucun logo KONAMI.
+  sponsors »), vérifié puis installé tout seul. Sans le pack, des monogrammes s'affichent.
+
+### Calendrier et vie hors terrain
+- Nouvelle carte « Aujourd'hui » : la date, le compte à rebours du prochain match, les événements du jour et les
+  décisions en évidence ; des pastilles colorées et lisibles dans le mois.
+- « Prochain événement » déclenche d'abord ce qui est dû aujourd'hui ; le calendrier complet montre tout de suite les
+  événements du jour.
+- Décisions avec de vrais choix : les choix risqués (fêtes, galas « à fond ») peuvent se retourner contre lui et revenir
+  quelques jours plus tard ; les choix sages (entraînement, récupération, famille) ne sont jamais punis.
+- Ma vie pas encore configurée : un rappel dit ce que la calibration débloque.
+- Le monde réagit à sa vie : proches ajoutés ou retirés, lieux, biographie et profil deviennent des sujets. Ce qui est
+  public pour la presse et les supporters ; ce qui est privé (case « Connu des médias » décochée) seulement pour ses
+  proches.
+
+### Le ton du monde
+- Nouveau réglage « Drame médiatique » (calme, réaliste, tabloïd) et rumeurs inventées les jours calmes (désactivables).
+
+### Réglages
+- Plus compacts : des cartes sur deux colonnes, les explications derrière un petit « i ».
+- Lancé par le Mod Studio, LifeLegend laisse le Studio gérer les mises à jour ; seul, il ne regarde que les versions de
+  l'application (pas le pack de logos).
+
+### Bouclier de confidentialité
+- Masque aussi les formes collées (#PrénomNom, NomFC, Ville2026, nom_10) et chaque partie des noms composés.
+
+### Transferts
+- Le club de départ garde un ordre des joueurs, des tireurs et un capitaine corrects après un transfert.
 
 ### Tests
 - Le test sur une vraie sauvegarde ne regarde plus les données de l'utilisateur sauf s'il est demandé

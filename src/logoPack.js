@@ -8,10 +8,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const zlib = require('node:zlib');
 
-// Adresse du pack publié avec la version (à téléverser dans la release GitHub de la 2.0.0).
-const LOGO_PACK_URL = 'https://github.com/LimaDiogenes/BAL_lifelegendmod/releases/download/v2.0.0/LifeLegend-sponsor-logos-2.0.0.zip';
-// SHA-256 du pack, affiché par « npm run dist » ; tant qu'il vaut PLACEHOLDER, la vérification est sautée (avertissement).
-const LOGO_PACK_SHA256 = 'PLACEHOLDER';
+// Adresse du pack : sa propre release GitHub (« logos-v1 »), indépendante des versions de l'application.
+const LOGO_PACK_URL = 'https://github.com/LimaDiogenes/BAL_lifelegendmod/releases/download/logos-v1/LifeLegend-sponsor-logos-v1.zip';
+// SHA-256 du pack, affiché par « npm run logos » (tools/build-logos.js).
+const LOGO_PACK_SHA256 = '102d03d411f8c81abb027acbeb27be85aa5e7cac228884eefdecc9868f670c7d';
 const MAX_PACK_BYTES = 64 * 1024 * 1024;
 const LOGO_FILE = /^[a-z0-9_-]+\.(svg|png|jpe?g|webp)$/i;
 

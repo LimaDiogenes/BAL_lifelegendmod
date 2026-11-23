@@ -76,7 +76,7 @@ dans son propre jeu, et y restent.
 SPONSOR LOGOS / LOGOS DES SPONSORS
 Brand logos are not part of the application. They come as an optional, separate download (Settings > Sponsor logos)
 and are trademarks of their respective owners, shown only to illustrate the fictional sponsorships of a player's
-career. No logo of Konami, eFootball or PES is included. Les logos des marques ne font pas partie de l'application :
+career. Les logos des marques ne font pas partie de l'application :
 un pack optionnel, téléchargé à part ; ce sont des marques de leurs propriétaires.
 
 MY LIFE IMAGES / IMAGES DE « MA VIE »
