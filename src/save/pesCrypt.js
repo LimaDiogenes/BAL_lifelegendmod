@@ -96,11 +96,20 @@ function reverseLongs(key) {
   return out;
 }
 
-// Clés des patchs qui chiffrent leurs sauvegardes autrement que PES 2021 (Football Life 2027 a la sienne). LifeLegend
-// n'en fournit aucune : le joueur ajoute la sienne dans les Réglages (main.js les charge ici).
+// Clé de SP Football Life 2027, publiée par SmokePatch pour les outils d'édition (FL_key.bin, « Download FL27 Encryption
+// Key » sur pessmokepatch.com ; voir THIRD-PARTY-NOTICES.txt). Intégrée en 2.0, comme dans le blue41 PES2021 Mod Studio.
+const MASTER_KEY_FL27 = Buffer.from([
+  0xCE, 0xF7, 0x98, 0xB8, 0x71, 0x82, 0x31, 0xB5, 0x32, 0x5D, 0xFB, 0xC7, 0x30, 0x1B, 0xA4, 0xAD,
+  0xF8, 0x4F, 0xD4, 0xD8, 0x5C, 0x4B, 0x0E, 0x6B, 0x4F, 0x3E, 0xAC, 0x61, 0xF2, 0x28, 0x15, 0xC9,
+  0x0C, 0x43, 0x10, 0x55, 0x97, 0xC1, 0x3F, 0x00, 0xD3, 0x67, 0x4F, 0x3B, 0x63, 0x73, 0x1F, 0x9D,
+  0x28, 0xE4, 0x79, 0xB7, 0x33, 0x33, 0x13, 0x66, 0xB8, 0x71, 0x09, 0x92, 0x5E, 0x90, 0x2C, 0x05,
+]);
+
+// Clés d'autres patchs, ajoutées par le joueur dans les Réglages quand une sauvegarde reste verrouillée (main.js les
+// charge ici).
 let extraKeys = [];
 function setSaveKeys(keys) {
-  extraKeys = keys.filter((k) => Buffer.isBuffer(k) && k.length === 64 && !k.equals(MASTER_KEY_PES21));
+  extraKeys = keys.filter((k) => Buffer.isBuffer(k) && k.length === 64 && !k.equals(MASTER_KEY_PES21) && !k.equals(MASTER_KEY_FL27));
 }
 
 // En-tête de fichier déchiffré avec cette clé, ou null si la clé ne donne pas une sauvegarde de cette taille.
@@ -115,14 +124,14 @@ function fileHeader(buf, masterKey) {
   return total === buf.length ? { rolling, fh, sizes } : null;
 }
 
-// L'en-tête et la clé qui ouvrent ce fichier : la clé demandée, sinon celle de PES 2021 puis celles du joueur.
+// L'en-tête et la clé qui ouvrent ce fichier : la clé demandée, sinon celle de PES 2021, de Football Life 2027, puis celles du joueur.
 function openSave(buf, masterKey) {
   if (buf.length < ENCRYPTION_HEADER_SIZE + FILE_HEADER_SIZE) throw new Error('Fichier trop petit pour être une sauvegarde du jeu.');
-  for (const key of masterKey ? [masterKey] : [MASTER_KEY_PES21, ...extraKeys]) {
+  for (const key of masterKey ? [masterKey] : [MASTER_KEY_PES21, MASTER_KEY_FL27, ...extraKeys]) {
     const head = fileHeader(buf, key);
     if (head) return { ...head, key };
   }
-  const locked = new Error('Sauvegarde verrouillée : elle est chiffrée avec une clé que LifeLegend n’a pas (Football Life 2027 : ajoute sa clé dans Réglages › Sauvegarde), ou ce n’est pas une sauvegarde du jeu.');
+  const locked = new Error('Sauvegarde verrouillée : elle est chiffrée avec une clé inconnue (ni PES 2021, ni Football Life 2027 : ajoute sa clé dans Réglages › Sauvegarde), ou ce n’est pas une sauvegarde du jeu.');
   locked.code = 'SAVE_KEY';
   throw locked;
 }
@@ -178,4 +187,4 @@ function joinSave(parts, masterKey = parts.key || MASTER_KEY_PES21) {
     ...keys.map((k, i) => cryptStream(xorWithLong(rolling, i), parts[k]))]);
 }
 
-module.exports = { decryptSave, splitSave, joinSave, setSaveKeys };
+module.exports = { decryptSave, splitSave, joinSave, setSaveKeys, MASTER_KEY_FL27 };

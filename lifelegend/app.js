@@ -547,7 +547,7 @@ function toast(msg, isError = false, action = null) {
 const SYNC_HELP = {
   save: ['Vérifie la sauvegarde choisie dans les réglages.', 'Ma sauvegarde', () => openSettings('rg-save')],
   pick: ['', 'Ma sauvegarde', () => openSettings('rg-save')], // « Choisis ta sauvegarde… » dit déjà quoi faire
-  key: ['Il manque la clé de sauvegarde de Football Life 2027 : ajoute-la dans les réglages.', 'Ajouter ma clé…', () => openSettings('rg-save')],
+  key: ['Cette sauvegarde est chiffrée avec une clé inconnue : ajoute-la dans les réglages.', 'Ajouter ma clé…', () => openSettings('rg-save')],
   ai: ['Vérifie ta clé et ton modèle d’IA dans les réglages.', 'Réglages de l’IA', () => openSettings('rg-ai')],
   quota: ['Le quota gratuit du jour de ton IA est épuisé : il se renouvelle chaque jour. D’ici là, tu peux choisir un autre fournisseur gratuit (Groq) dans les réglages.', 'Réglages de l’IA', () => openSettings('rg-ai')],
   busy: ['Attends quelques secondes que le jeu ait fini, puis réessaie.', 'Réessayer', () => doSync()],
@@ -1533,10 +1533,10 @@ function setupBack() {
 }
 
 // Sauvegarde verrouillée : ce qu'il manque et quoi faire, à la première ouverture comme dans les réglages.
-const FL27_KEY_PAGE = 'https://www.pessmokepatch.com/p/customizations-and-mods.html';
-const keyHelpHtml = (id) => `<div class="keyhelp"><h4>${tr('Il te manque la clé de Football Life 2027')}</h4>
-  <p>${tr('Ce jeu chiffre ses sauvegardes avec sa propre clé : un fichier de 64 octets, que LifeLegend ne fournit pas. Tu la trouves sur le site de PES Smoke Patch, rubrique {section}, lien {link}. Télécharge-la, puis ajoute-la ici. Elle reste sur ce PC et n’est envoyée nulle part.', { section: quote('Edit File Encryption'), link: quote('Download FL27 Encryption Key') })}</p>
-  <div class="keyhelp-actions"><a class="btn" href="${FL27_KEY_PAGE}" target="_blank" rel="noopener">${tr('Ouvrir la page de la clé')}</a><button class="btn primary" id="${id}">${tr('Ajouter ma clé…')}</button></div></div>`;
+// La clé de Football Life 2027 est intégrée (2.0) : ce cas ne reste que pour une sauvegarde chiffrée avec une autre clé.
+const keyHelpHtml = (id) => `<div class="keyhelp"><h4>${tr('Cette sauvegarde utilise une clé inconnue')}</h4>
+  <p>${tr('LifeLegend ouvre déjà les sauvegardes de PES 2021 et de Football Life 2027. Celle-ci est chiffrée avec une autre clé (un autre patch ?) : si tu l’as (un fichier de 64 octets), ajoute-la ici. Elle reste sur ce PC et n’est envoyée nulle part.')}</p>
+  <div class="keyhelp-actions"><button class="btn primary" id="${id}">${tr('Ajouter ma clé…')}</button></div></div>`;
 const savePlace = (file) => `…\\${String(file).split(/[\\/]/).slice(-4).join('\\')}`;
 const lockedSaveHtml = (s) => `<div><b>${tr('Sauvegarde verrouillée')}</b><br><span class="fineprint">${esc(savePlace(s.path))}</span></div>`;
 // Après l'ajout d'une clé, une fois la liste relue : ouvre-t-elle la sauvegarde ?
@@ -1558,9 +1558,8 @@ function setupSaveHtml(su) {
       <p class="su-text">${tr('Dans le jeu, lance Vers une Légende et crée ton joueur ({mode}), puis sauvegarde ta carrière depuis son menu. LifeLegend part de cette sauvegarde : ta biographie et ta première édition s’appuient dessus.', { mode: quote(tr('Joueur original')) })}</p>
       <div class="saves">${list}</div>
       ${locked ? keyHelpHtml('su-key') : ''}
-      <div class="su-tools"><button class="btn" id="su-rescan">${tr('Rechercher à nouveau')}</button><button class="btn" id="su-browse">${tr('Choisir un autre fichier…')}</button>${locked ? '' : `<button class="btn" id="su-key">${tr('Ajouter une clé de sauvegarde…')}</button>`}</div>
+      <div class="su-tools"><button class="btn" id="su-rescan">${tr('Rechercher à nouveau')}</button><button class="btn" id="su-browse">${tr('Choisir un autre fichier…')}</button></div>
       ${rgSwitch('su-autolatest', autoLatestOn, tr('Charger automatiquement la sauvegarde modifiée la plus récente'), tr('Si tu utilises plusieurs emplacements (BL00000000, BL00000001…), LifeLegend bascule automatiquement sur le fichier sauvegardé le plus récemment par le jeu.'))}
-      ${locked ? '' : `<p class="fineprint">${tr('Football Life 2027 chiffre ses sauvegardes avec sa propre clé, que LifeLegend ne fournit pas. Si tu l’as (un fichier de 64 octets), ajoute-la ici : elle reste sur ce PC.')}</p>`}
     </section>
     <div class="su-nav"><span></span><button class="btn primary big" id="su-next"${su.savePath ? '' : ' disabled'}>${tr('Suivant')}</button></div>`;
 }
@@ -1709,7 +1708,7 @@ function renderSetup(page) {
         if (r) { su.saves = [r, ...(su.saves || []).filter((s) => s.path !== r.path)]; su.info = r; su.savePath = r.path; render(); }
       } catch (err) { toast(err.message, true); }
     };
-    $('#su-key').onclick = async () => {
+    if ($('#su-key')) $('#su-key').onclick = async () => {
       try {
         const r = await live.addSaveKey();
         if (!r) return;
@@ -11572,7 +11571,7 @@ const RG_TABS = [
   ['about', 'À propos', ''],
 ];
 // L'onglet de chaque section qu'ouvrent les autres pages (« Réglages de l'IA », « Ajouter ma clé… »).
-const RG_SECTION_TAB = { 'rg-save': 'save', 'rg-key': 'save', 'rg-names': 'save', 'rg-reset': 'save', 'rg-ai': 'ai', 'rg-lang': 'look', 'rg-theme': 'look', 'rg-tone': 'world', 'rg-sponsormode': 'world', 'rg-eventmode': 'world', 'rg-calmode': 'world', 'rg-replays': 'world', 'rg-about': 'about', 'rg-credits': 'about', 'rg-update': 'about' };
+const RG_SECTION_TAB = { 'rg-save': 'save', 'rg-names': 'save', 'rg-reset': 'save', 'rg-ai': 'ai', 'rg-lang': 'look', 'rg-theme': 'look', 'rg-tone': 'world', 'rg-sponsormode': 'world', 'rg-eventmode': 'world', 'rg-calmode': 'world', 'rg-replays': 'world', 'rg-about': 'about', 'rg-credits': 'about', 'rg-update': 'about' };
 // Réglages compacts (2.0) : des cartes sur deux colonnes, les explications derrière un petit « i ».
 const rgInfo = (note) => (note ? `<details class="rg-info"><summary title="${tr('Plus d’infos')}" aria-label="${tr('Plus d’infos')}">i</summary><p>${note}</p></details>` : '');
 const rgRow = (id, label, control, note = '') => `<div class="rg-row"${id ? ` id="${id}"` : ''}><div class="rg-label"><h3>${label}</h3>${rgInfo(note)}</div><div class="rg-ctl">${control}</div></div>`;
@@ -11977,9 +11976,7 @@ async function renderSettings(page) {
       <button class="btn" id="browse">${tr('Choisir un autre fichier…')}</button>
       <p class="fineprint">${tr('Fichier choisi')}${colon()} <code id="save-path">${esc(settings.savePath || tr('aucun'))}</code></p>
       <p class="fineprint">${tr('Chaque carrière a son fichier ({first} pour {name01}, {second} pour la 02…), dans {path}. Ferme le jeu (ou sauvegarde) avant de synchroniser.', { first: '<code>BL00000000</code>', second: '<code>BL00000001</code>', name01: quote(tr('Vers une Légende 01')), path: 'Documents\\SPGAME\\Football Life\\2027\\save' })}</p>`),
-    rgRow('rg-key', tr('Clé de sauvegarde'), `<div id="key-help"></div>
-      <div id="key-plain"><p class="fineprint">${tr('Football Life 2027 chiffre ses sauvegardes avec sa propre clé, que LifeLegend ne fournit pas. Si tu l’as (un fichier de 64 octets), ajoute-la ici : elle reste sur ce PC.')} <span id="key-count"></span></p>
-      <button class="btn" id="add-key">${tr('Ajouter une clé de sauvegarde…')}</button></div>`),
+    `<div id="key-help"></div>`,
     rgRow('', tr('Synchronisation automatique'), rgSwitch('autosync', settings.autoSync, tr('Synchroniser automatiquement dès que le jeu sauvegarde la carrière'), tr('LifeLegend surveille le fichier pendant qu’il est ouvert. Active aussi la sauvegarde automatique dans les paramètres du jeu : chaque match sera alors enregistré et publié sans que tu touches à rien. Une requête à l’IA n’est envoyée que si quelque chose a vraiment changé.'))
       + rgSwitch('autolatestsave', settings.autoLatestSave, tr('Charger automatiquement la sauvegarde modifiée la plus récente'), tr('Si tu utilises plusieurs emplacements (BL00000000, BL00000001…), LifeLegend bascule automatiquement sur le fichier sauvegardé le plus récemment par le jeu.'))),
     rgRow('rg-names', tr('Noms des joueurs'), `<p class="fineprint">${tr('Dossier du jeu')}${colon()} <code id="game-dir">${esc(settings.gameDir || tr('détection automatique…'))}</code></p>
@@ -12193,17 +12190,13 @@ async function renderSettings(page) {
     }).catch(() => {});
   }
 
-  const showKeys = (n) => { const el = $('#key-count'); if (el) el.textContent = n ? trn(n, '({n} clé ajoutée)', '({n} clés ajoutées)') : ''; };
-  live.saveKeyCount().then(showKeys).catch(() => {});
   const addKey = async () => {
     try {
       const r = await live.addSaveKey();
       if (!r) return;
-      showKeys(r.count);
       keyResult(r, await fillSaves());
     } catch (err) { toast(err.message, true); }
   };
-  $('#add-key').onclick = addKey;
   await fillSaves();
 
   // Les sauvegardes trouvées (relues après l'ajout d'une clé) ; une sauvegarde illisible dit pourquoi.
@@ -12214,17 +12207,19 @@ async function renderSettings(page) {
     if (!box) return saves;
     const locked = saves.some((s) => s.locked);
     $('#key-help').innerHTML = locked ? keyHelpHtml('add-key-now') : '';
-    $('#key-plain').hidden = locked;
     if (locked) $('#add-key-now').onclick = addKey;
+    // Une liste déroulante (2.0) : une ligne par carrière, la plus récente signalée ; illisibles et verrouillées grisées.
     const firstGoodIdx = saves.findIndex((x) => !x.error && !x.locked);
-    box.innerHTML = saves.length ? saves.map((s, i) => `
-      <label class="save-option"><input type="radio" name="save" value="${i}"${s.path === (pendingSave || settings.savePath) ? ' checked' : ''}${s.error ? ' disabled' : ''}>
-        ${s.locked ? lockedSaveHtml(s) : `<div><b>${esc(s.player || tr('Sauvegarde illisible'))}</b> · ${esc(s.club || '')} ${s.league ? `(${esc(s.league)})` : ''}${i === firstGoodIdx ? ` <span class="priv-badge on">${esc(tr('Plus récente'))}</span>` : ''}<br>
-        <span class="fineprint">${esc(s.game || (s.error && tr(s.error)) || '')}${s.date ? ` · ${esc(fmtDate(s.date, { day: 'numeric', month: 'long', year: 'numeric' }))}` : ''}</span></div>`}</label>`).join('')
+    const current = pendingSave || settings.savePath;
+    const optLabel = (s, i) => s.locked ? `${tr('Sauvegarde verrouillée')} · ${savePlace(s.path)}`
+      : [s.error ? tr('Sauvegarde illisible') : `${s.player || tr('Sauvegarde illisible')}${s.club ? ` · ${s.club}` : ''}${s.league ? ` (${s.league})` : ''}`,
+        s.game || (s.error && tr(s.error)) || '', s.date ? fmtDate(s.date, { day: 'numeric', month: 'short', year: 'numeric' }) : '',
+        i === firstGoodIdx ? tr('Plus récente') : ''].filter(Boolean).join(' · ');
+    const known = saves.some((s) => s.path === current);
+    box.innerHTML = saves.length ? `<select id="save-select" class="save-select">${known ? '' : `<option value="" selected disabled>${esc(current ? savePlace(current) : tr('aucun'))}</option>`}${saves.map((s, i) => `<option value="${i}"${s.path === current ? ' selected' : ''}${s.error || s.locked ? ' disabled' : ''}>${esc(optLabel(s, i))}</option>`).join('')}</select>`
       : `<p class="fineprint">${tr('Aucune sauvegarde trouvée automatiquement. Utilise {button}.', { button: quote(tr('Choisir un autre fichier')) })}</p>`;
-    box.querySelectorAll('input[name=save]').forEach((r) => {
-      r.onchange = () => { pendingSave = saves[Number(r.value)].path; $('#save-path').textContent = pendingSave; };
-    });
+    const sel = $('#save-select');
+    if (sel) sel.onchange = () => { const s = saves[Number(sel.value)]; if (!s) return; pendingSave = s.path; $('#save-path').textContent = pendingSave; };
     return saves;
   }
 }

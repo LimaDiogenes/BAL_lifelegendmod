@@ -14,6 +14,9 @@ Community PES 2021 / Football Life tools & research acknowledged:
   - pesXdecrypter (the4chancup) — https://github.com/the4chancup/pesXdecrypter (public domain)
   - PES21 BAL Ultimate Editor (AlexDelPiero23)
   - TyNet
+SP Football Life 2027 save key / clé de sauvegarde (src/save/pesCrypt.js, MASTER_KEY_FL27):
+  the 64-byte key published by SmokePatch for editing tools (https://www.pessmokepatch.com/p/customizations-and-mods.html,
+  "Download FL27 Encryption Key", FL_key.bin). Thanks to SmokePatch for sharing it with the modding community.
 
 
 FONTS / POLICES  (lifelegend/fonts)

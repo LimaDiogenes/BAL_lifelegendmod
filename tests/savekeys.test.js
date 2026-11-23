@@ -1,7 +1,7 @@
 'use strict';
-// Clés de sauvegarde : un patch qui chiffre ses sauvegardes avec sa propre clé (Football Life 2027) n'est lu qu'avec la
-// clé ajoutée par le joueur, et une sauvegarde réécrite garde la clé qui l'a ouverte. Les sauvegardes sont fabriquées
-// ici avec une clé tirée au hasard : aucune vraie clé dans le dépôt. Une vraie carrière Football Life 2027 est lue si
+// Clés de sauvegarde : la clé de Football Life 2027 est intégrée (2.0, publiée par SmokePatch) ; un autre patch qui
+// chiffre ses sauvegardes avec sa propre clé n'est lu qu'avec la clé ajoutée par le joueur, et une sauvegarde réécrite
+// garde la clé qui l'a ouverte. Les autres sauvegardes sont fabriquées ici avec une clé tirée au hasard. Une vraie carrière Football Life 2027 est lue si
 // sa copie et sa clé sont dans les fichiers de référence (voir tests/README.md).
 
 const test = require('node:test');
@@ -11,7 +11,7 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const { decryptSave, splitSave, joinSave, setSaveKeys } = require(path.join(ROOT, 'src/save/pesCrypt.js'));
+const { decryptSave, splitSave, joinSave, setSaveKeys, MASTER_KEY_FL27 } = require(path.join(ROOT, 'src/save/pesCrypt.js'));
 const FIXTURES = process.env.LIFELEGEND_FIXTURES || path.join(__dirname, 'fixtures');
 const SAVE = path.join(FIXTURES, 'BL00000000'), KEY = path.join(FIXTURES, 'key.bin');
 
@@ -29,7 +29,7 @@ test('une sauvegarde chiffrée avec une autre clé : refusée sans elle, lue ave
   const key = crypto.randomBytes(64);
   const { file, data } = fakeSave(key);
   setSaveKeys([]);
-  assert.throws(() => decryptSave(file), /Football Life 2027 : ajoute sa clé dans Réglages › Sauvegarde/);
+  assert.throws(() => decryptSave(file), /clé inconnue \(ni PES 2021, ni Football Life 2027/);
   assert.throws(() => decryptSave(file), (err) => err.code === 'SAVE_KEY', 'le code qui fait proposer l’ajout de la clé');
   setSaveKeys([crypto.randomBytes(64), key]);
   const r = decryptSave(file);
@@ -64,4 +64,13 @@ test('vraie carrière Football Life 2027 : lue avec sa clé', { skip: !(fs.exist
   assert.strictEqual(c.game, 'SP Football Life 2027');
   assert.ok(c.player.name && c.club.name, 'joueur et club lus');
   assert.ok(c.teams.size > 500 && c.matches.length > 1000, 'équipes et calendrier lus');
+});
+
+test('Football Life 2027 : sa clé est intégrée, aucune clé à ajouter', (t) => {
+  t.after(() => setSaveKeys([]));
+  setSaveKeys([]);
+  const { file, data } = fakeSave(MASTER_KEY_FL27);
+  const r = decryptSave(file);
+  assert.strictEqual(r.gameVersion, 'SP Football Life 2027');
+  assert.ok(r.data.equals(data));
 });

@@ -10,6 +10,11 @@ LifeLegend 2.0 est livré avec blue41 PES2021 Mod Studio (il peut aussi être ut
 - La toute première copie de secours de chaque sauvegarde est gardée pour toujours ; seules les suivantes sont limitées.
 - Verrou partagé avec le Mod Studio (`.blue41-save.lock` à côté de la sauvegarde, voir docs/save-lock.md) : les deux
   applications n'écrivent jamais en même temps.
+- La clé de sauvegarde de Football Life 2027 (publiée par SmokePatch) est intégrée : plus rien à ajouter dans les
+  Réglages. L'ajout d'une clé ne reste proposé que pour une sauvegarde chiffrée avec une clé inconnue.
+- Réglages › Sauvegarde : la carrière se choisit dans une liste déroulante.
+- Calendrier : la grille du mois ne déborde plus sous le panneau du jour ; une couleur bien distincte par genre,
+  la même dans la légende et dans le mois.
 
 ### Lancement depuis le Mod Studio
 - Arguments `--save`, `--game`, `--lang`, `--theme` (voir README) ; un second lancement change de sauvegarde ou de langue.
