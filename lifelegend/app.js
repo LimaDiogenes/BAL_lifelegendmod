@@ -11574,7 +11574,7 @@ const RG_TABS = [
   ['about', 'À propos', ''],
 ];
 // L'onglet de chaque section qu'ouvrent les autres pages (« Réglages de l'IA », « Ajouter ma clé… »).
-const RG_SECTION_TAB = { 'rg-save': 'save', 'rg-names': 'save', 'rg-reset': 'save', 'rg-ai': 'ai', 'rg-lang': 'look', 'rg-theme': 'look', 'rg-tone': 'world', 'rg-sponsormode': 'world', 'rg-eventmode': 'world', 'rg-calmode': 'world', 'rg-replays': 'world', 'rg-about': 'about', 'rg-credits': 'about', 'rg-update': 'about' };
+const RG_SECTION_TAB = { 'rg-save': 'save', 'rg-transfer': 'save', 'rg-names': 'save', 'rg-reset': 'save', 'rg-ai': 'ai', 'rg-lang': 'look', 'rg-theme': 'look', 'rg-tone': 'world', 'rg-sponsormode': 'world', 'rg-eventmode': 'world', 'rg-calmode': 'world', 'rg-replays': 'world', 'rg-about': 'about', 'rg-credits': 'about', 'rg-update': 'about' };
 // Réglages compacts (2.0) : des cartes sur deux colonnes, les explications derrière un petit « i ».
 const rgInfo = (note) => (note ? `<details class="rg-info"><summary title="${tr('Plus d’infos')}" aria-label="${tr('Plus d’infos')}">i</summary><p>${note}</p></details>` : '');
 const rgRow = (id, label, control, note = '') => `<div class="rg-row"${id ? ` id="${id}"` : ''}><div class="rg-label"><h3>${label}</h3>${rgInfo(note)}</div><div class="rg-ctl">${control}</div></div>`;
@@ -11988,6 +11988,11 @@ async function renderSettings(page) {
     rgRow('', tr('Écrire dans la sauvegarde'), rgSwitch('offerredirect', settings.offerRedirect, tr('Réorientation d’offres (expérimental) : autoriser LifeLegend à modifier ma sauvegarde'), tr('Avec l’attitude « Je veux partir », ton agent peut faire passer une vraie offre reçue dans le jeu au nom d’un autre club. LifeLegend écrit alors dans ta sauvegarde, jeu fermé, et en garde une copie. Testé sur peu de carrières : laisse décoché si tu ne veux prendre aucun risque.'))
       + rgSwitch('influencewrites', settings.influenceWrites, tr('Influence : effets réels dans le jeu : autoriser LifeLegend à écrire dans ma sauvegarde les décisions de mon entraîneur et de mon club'), tr('Une formation acceptée par ton entraîneur, un transfert accepté pendant un mercato : LifeLegend les écrit dans ta sauvegarde quand tu le lui demandes, jeu fermé, et en garde une copie. La formation est vérifiée dans Football Life 2027 ; le transfert reste expérimental. Sans ces deux options, LifeLegend ne fait que lire ta sauvegarde.'))
       + rgSwitch('lifesaveeffects', settings.lifeSaveEffects, tr('Ma vie : effets réels dans la sauvegarde (forme & affection coach)'), tr('Les actions de tes journées libres et tes dilemmes accumulent des bonus ou malus de forme et d’affection coach. Quand cette option est activée, un bouton dans Ma vie te permet d’écrire ces effets dans ta sauvegarde (jeu fermé, copie automatique conservée). Laisse décoché si tu préfères garder Ma vie purement narratif.'))),
+    ...(state ? [rgRow('rg-transfer', tr('Transférer le profil'), `<p class="fineprint">${tr('Exporte ton joueur (son entourage, ses traits, sa biographie, son profil Kop et ses choix de confidentialité) dans un fichier, pour le reprendre dans une autre carrière. L’historique de la carrière (posts, mails, statistiques) et tes clés d’IA ne sont jamais exportés.')}</p>
+      <p class="fineprint">${tr('Inclure aussi :')}</p>
+      ${rgSwitch('pt-settings', true, tr('Réglages (sans les clés d’IA ni les dossiers)'))}${rgSwitch('pt-sponsors', false, tr('Sponsors'))}${rgSwitch('pt-calendar', false, tr('Mes événements du calendrier'))}
+      <div class="rg-btns"><button type="button" class="btn" id="pt-export">${tr('Exporter le profil…')}</button><button type="button" class="btn" id="pt-import">${tr('Importer dans cette carrière…')}</button></div>`,
+    tr('Le fichier contient les vrais noms de ton entourage : il reste sur ce PC, garde-le pour toi.'))] : []),
     ...(state ? [rgRow('rg-reset', tr('Réinitialiser la carrière'), `<div class="pp-danger"><p class="fineprint">${tr('Efface uniquement les données LifeLegend de cette carrière (sans toucher à tes fichiers .bin).')}</p><button type="button" class="btn ml-danger" id="rg-reset-career">${tr('Réinitialiser cette carrière')}</button></div>`)] : []),
   ])}
     ${panel('ai', [
@@ -12059,6 +12064,22 @@ async function renderSettings(page) {
   page.querySelectorAll('[data-rgtab]').forEach((b) => { b.onclick = () => rgShowTab(b.dataset.rgtab); });
   rgTabInView();
   if ($('#rg-reset-career')) $('#rg-reset-career').onclick = confirmAndResetCareer;
+  const ptOpts = () => ({ settings: Boolean($('#pt-settings')?.checked), sponsors: Boolean($('#pt-sponsors')?.checked), calendar: Boolean($('#pt-calendar')?.checked) });
+  if ($('#pt-export')) $('#pt-export').onclick = async () => {
+    try { if (await live.exportProfile(ptOpts())) toast(tr('Profil exporté.')); } catch (err) { toast(err.message, true); }
+  };
+  if ($('#pt-import')) $('#pt-import').onclick = async () => {
+    const ok = await kConfirm({ title: tr('Importer un profil ?'), body: tr('Le profil de cette carrière (entourage, traits, biographie, profil Kop, confidentialité) sera remplacé par celui du fichier. Les cases cochées ajoutent aussi les réglages, les sponsors ou les événements.'), ok: tr('Importer') });
+    if (!ok) return;
+    try {
+      const r = await live.importProfile(ptOpts());
+      if (!r) return;
+      state = r.state;
+      settings = r.settings;
+      toast(tr('Profil importé dans cette carrière.'));
+      render();
+    } catch (err) { toast(err.message, true); }
+  };
   if ($('#rg-go-pp')) $('#rg-go-pp').onclick = () => go('playerprofile');
   if ($('#rg-intro-btn')) $('#rg-intro-btn').onclick = () => playIntro({ save: false });
   // Vérifier les mises à jour : la réponse sous le bouton, avec le lien de la nouvelle version s'il y en a une.

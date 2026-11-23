@@ -8,6 +8,7 @@ const { Store } = require('./src/store');
 const { peekSave } = require('./src/save/blReader');
 const { scanSaveFiles, snapshotWatchedFiles, detectModifiedSave, resolveSaveForSync } = require('./src/save/autoSaveWatch');
 const { setSaveKeys } = require('./src/save/pesCrypt');
+const { buildProfileExport, checkProfileFile, importableSettings, applyProfileImport } = require('./src/world/profileTransfer');
 const { answerAdvice } = require('./src/world/coachAdvice');
 const { answerSponsor } = require('./src/world/sponsors');
 const { dmContacts, findDm } = require('./src/world/dms');
@@ -432,6 +433,31 @@ app.whenReady().then(() => {
   });
   handle('privacy:save', (privacy) => world.savePrivacy({ store, privacy }));
   handle('persona:save', (persona) => world.savePersona({ store, persona }));
+  // Transfert de profil (2.0) : un fichier JSON choisi par le joueur ; réglages, sponsors et événements en option.
+  handle('profile:export', async (opts = {}) => {
+    const state = store.activeCareer();
+    if (!state) throw new Error('Synchronise ta sauvegarde une première fois.');
+    const data = buildProfileExport(state, store.storedSettings(), opts);
+    const name = String(state.profile?.displayName || 'profil').replace(/[^\p{L}\p{N} _-]/gu, '').trim().replace(/\s+/g, '-') || 'profil';
+    const r = await dialog.showSaveDialog(win, { title: tr(lang0(), 'Exporter le profil'), defaultPath: path.join(app.getPath('documents'), `LifeLegend-${name}.json`), filters: [{ name: 'LifeLegend', extensions: ['json'] }] });
+    if (r.canceled || !r.filePath) return null;
+    fs.writeFileSync(r.filePath, `${JSON.stringify(data, null, 2)}\n`);
+    return { file: r.filePath };
+  });
+  handle('profile:import', async (opts = {}) => {
+    const state = store.activeCareer();
+    if (!state) throw new Error('Synchronise ta sauvegarde une première fois.');
+    const r = await dialog.showOpenDialog(win, { title: tr(lang0(), 'Importer un profil'), properties: ['openFile'], filters: [{ name: 'LifeLegend', extensions: ['json'] }] });
+    if (r.canceled || !r.filePaths[0]) return null;
+    if (fs.statSync(r.filePaths[0]).size > 5 * 1048576) throw new Error('Ce fichier n’est pas un profil LifeLegend.');
+    let data;
+    try { data = JSON.parse(fs.readFileSync(r.filePaths[0], 'utf8')); } catch { throw new Error('Ce fichier n’est pas un profil LifeLegend.'); }
+    checkProfileFile(data);
+    const applied = applyProfileImport(state, data, opts, () => `id_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`);
+    store.saveCareer(state);
+    if (opts.settings && data.settings) store.saveSettings(importableSettings(data.settings, store.storedSettings()));
+    return { state, settings: store.publicSettings(), applied };
+  });
   handle('agent:update', (payload) => world.updateAgent({ store, ...(payload || {}) }));
   handle('bio:generate', (payload) => world.generateBackstory({ store, settings: store.getSettings(), ...(payload || {}) }));
   handle('lifeHub:calibrate', (payload) => world.calibrateCareerLifeHub({ store, payload }));

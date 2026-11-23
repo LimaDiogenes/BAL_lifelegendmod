@@ -4759,3 +4759,5 @@ html, body { height: 100%; overflow: hidden; background: var(--sh-back); }
 
 /* Kop : une pastille sur l'onglet qui a de nouveaux posts. */
 .tw-tab-dot { width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--gold-hi); }
+
+.rg-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }

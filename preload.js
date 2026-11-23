@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld('live', {
   browseSave: () => call('saves:browse'),
   saveKeyCount: () => call('keys:count'),
   addSaveKey: () => call('keys:add'),
+  exportProfile: (opts) => call('profile:export', opts),
+  importProfile: (opts) => call('profile:import', opts),
   detectGame: () => call('game:detect'),
   browseGame: () => call('game:browse'),
   defaultClipsDir: () => call('clips:default'),

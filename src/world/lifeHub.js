@@ -1725,6 +1725,7 @@ module.exports = {
   sponsorSlotCap,
   normalizeSponsorCategories,
   isDuplicateSponsor,
+  normalizeSponsorEntry,
   estimateStartProfile,
   ensureLifeHub,
   addLedger,
