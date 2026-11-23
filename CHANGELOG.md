@@ -18,6 +18,7 @@ LifeLegend 2.0 est livré avec blue41 PES2021 Mod Studio (il peut aussi être ut
 
 ### Lancement depuis le Mod Studio
 - Arguments `--save`, `--game`, `--lang`, `--theme` (voir README) ; un second lancement change de sauvegarde ou de langue.
+- `--data-dir=<dossier>` (ou `LL_DATA_DIR`) : un dossier de données à part, pour essayer LifeLegend comme au premier lancement sans toucher au vrai.
 
 ### Sécurité et vie privée
 - Seuls les liens https:// et mailto: s'ouvrent dans le navigateur ; tout le reste est bloqué.

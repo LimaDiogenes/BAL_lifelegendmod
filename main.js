@@ -28,7 +28,11 @@ const { dominantColors } = require('./src/world/clubColors');
 
 // La mod s'appelait LiveTweet : son dossier de données garde ce nom (carrières, réglages, clés, mémoire du
 // navigateur), pour que le changement de nom ne perde rien.
-app.setPath('userData', path.join(app.getPath('appData'), 'LiveTweet'));
+// Essai sur une installation vierge (2.0) : --data-dir=<dossier> (ou LL_DATA_DIR) prend un autre dossier de données,
+// sans toucher au vrai. Une instance par dossier : l'essai tourne à côté de la vraie.
+const dataDirArg = process.argv.find((a) => a.startsWith('--data-dir='));
+const dataDirOverride = dataDirArg ? dataDirArg.slice('--data-dir='.length).replace(/^"|"$/g, '') : process.env.LL_DATA_DIR;
+app.setPath('userData', dataDirOverride ? path.resolve(dataDirOverride) : path.join(app.getPath('appData'), 'LiveTweet'));
 
 // L'interface est LifeLegend (lifelegend/). L'ancienne, LegendLife, est archivée dans ../archives/legendlife-2026-10-21
 // (avec le main.js qui savait ouvrir l'une ou l'autre).
