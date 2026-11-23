@@ -1200,10 +1200,12 @@ function personaPersonRowHtml(person = {}, groupKey = '') {
     ${dobPickerHtml(person.dob || '', { inputClass: 'per-p-dob' })}
     <select class="per-p-kop" title="${esc(tr('Profil & personnalité sur Kop (optionnel)'))}" aria-label="${esc(tr('Profil & personnalité sur Kop (optionnel)'))}">${kopOpts}</select>
     <input class="per-p-decoy" value="${esc(person.decoy || '')}" placeholder="${esc(tr('Pseudo (auto)'))}" maxlength="120">
+    <button type="button" class="per-p-del per-p-del-person" title="${esc(tr('Retirer cette personne'))}" aria-label="${esc(tr('Retirer cette personne'))}">−<span class="per-p-del-txt">${esc(tr('Retirer cette personne'))}</span></button>
+    <div class="per-p-flags">
     <label class="per-p-shield per-p-close" title="${esc(tr('Proche (fête ou dîner d’anniversaire)'))}"><input type="checkbox" class="per-p-close-in"${isClose ? ' checked' : ''} aria-label="${esc(tr('Proche (fête ou dîner d’anniversaire)'))}"><span>${hi('heart')}</span></label>
     <label class="per-p-shield per-p-media" title="${esc(tr('Connu des médias : la presse et les supporters peuvent en parler'))}"><input type="checkbox" class="per-p-media-in"${person.media !== undefined ? (person.media ? ' checked' : '') : (groupKey !== 'family' ? ' checked' : '')} aria-label="${esc(tr('Connu des médias : la presse et les supporters peuvent en parler'))}"><span>${hi('megaphone')}</span></label>
     <label class="per-p-shield" title="${esc(tr('Masquer dans le bouclier de confidentialité'))}"><input type="checkbox" class="per-p-protect"${person.protect !== false ? ' checked' : ''} aria-label="${esc(tr('Masquer dans le bouclier de confidentialité'))}"><span>${hi('shieldCheck')}</span></label>
-    <button type="button" class="per-p-del" title="${esc(tr('Retirer cette personne'))}" aria-label="${esc(tr('Retirer cette personne'))}">−</button>
+    </div>
   </div>`;
 }
 
@@ -1254,7 +1256,7 @@ function personaFormHtml(prefix, rawPersona, rawPriv = null) {
         <span class="priv-badge${filled ? ' on' : ''}" id="${prefix}-per-cnt-${g.key}">${rows.length} / ${PERSONA_GROUP_MAX}</span>
       </summary>
       <div class="per-group-body">
-        <div class="per-person-row per-col-head"><span>${tr('Rôle')}</span><span>${tr('Nom réel')}</span><span>${tr('Naissance')}</span><span>${tr('Kop')}</span><span>${tr('Pseudo (auto)')}</span><span>${tr('Proche')}</span><span>${tr('Bouclier')}</span><span></span></div>
+        <div class="per-person-row per-col-head"><span>${tr('Rôle')}</span><span>${tr('Nom réel')}</span><span>${tr('Naissance')}</span><span>${tr('Kop')}</span><span>${tr('Pseudo (auto)')}</span><span></span><span></span></div>
         <div class="per-group-list" id="${prefix}-per-list-${g.key}">${rows.map((p) => personaPersonRowHtml(p, g.key)).join('')}</div>
         <button type="button" class="btn per-p-add" data-group="${g.key}"${rows.length >= PERSONA_GROUP_MAX ? ' disabled' : ''}>+ ${esc(tr('Ajouter'))}</button>
       </div>
@@ -5536,7 +5538,7 @@ function renderTribune(page) {
       <main class="tw-main">
         <div class="tw-header${home && !openPost && !author && !view.twQuery ? ' tw-header-home' : ''}"><div class="tw-header-in">${openPost || author || view.twQuery || dmAccount ? `<button class="tw-iconbtn tw-back" data-twback aria-label="${tr('Revenir au fil')}">${hi('back')}</button>` : ''}<div class="tw-header-title"${dmAccount ? ` role="link" tabindex="0" data-twprofile="${esc(dmAccount.handle)}"` : ''}><h2>${esc(title)}</h2>${sub ? `<p class="tw-header-sub">${sub}</p>` : ''}</div></div>
           ${notifPage ? `<div class="tw-tabs">${TW_NOTIF_TABS.map(([k, l]) => `<button class="tw-tab${(view.twNotifTab || 'all') === k ? ' active' : ''}" data-twnotiftab="${k}"><span class="tw-tab-in">${tr(l)}<span class="tw-tab-bar"></span></span></button>`).join('')}</div>` : ''}
-          ${home && !openPost && !author && !view.twQuery ? `<div class="tw-tabs">${TW_TABS.map(([k, l]) => `<button class="tw-tab${view.twFilter === k ? ' active' : ''}" data-twfilter="${k}"><span class="tw-tab-in">${tr(l)}<span class="tw-tab-bar"></span></span></button>`).join('')}</div>` : ''}${newPill}</div>
+          ${home && !openPost && !author && !view.twQuery ? `<div class="tw-tabs">${TW_TABS.map(([k, l]) => `<button class="tw-tab${view.twFilter === k ? ' active' : ''}" data-twfilter="${k}"><span class="tw-tab-in">${tr(l)}${heldPosts().some(TW_FILTER[k]) ? `<span class="tw-tab-dot" title="${esc(tr('Nouveaux posts sur Kop'))}"></span>` : ''}<span class="tw-tab-bar"></span></span></button>`).join('')}</div>` : ''}${newPill}</div>
         ${mainBody}
       </main>
       <aside class="tw-aside"><div class="tw-aside-in">
@@ -10340,7 +10342,8 @@ function renderMyLife(page) {
           cash: Number($('#ml-cal-cash')?.value ?? defaultCash),
           applyFollowers: Boolean($('#ml-cal-fol-on')?.checked),
           followers: Number($('#ml-cal-fol-val')?.value || est.followers),
-          existingSponsors: calSponsorMode === 'custom' ? (view.mlCalSponsors || []).filter((x) => x.brand) : [],
+          // Les sponsors déjà en place (ou saisis) restent, quel que soit le mode : le mode réaliste ne fait que gérer la suite.
+          existingSponsors: (Array.isArray(view.mlCalSponsors) ? view.mlCalSponsors : (hub.sponsors || []).filter((x) => !x.linkedBootDeal)).filter((x) => x.brand),
         });
         view.mlCalibrate = false;
         view.mlCalSponsors = null;

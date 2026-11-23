@@ -15,6 +15,11 @@ LifeLegend 2.0 est livré avec blue41 PES2021 Mod Studio (il peut aussi être ut
 - Réglages › Sauvegarde : la carrière se choisit dans une liste déroulante.
 - Calendrier : la grille du mois ne déborde plus sous le panneau du jour ; une couleur bien distincte par genre,
   la même dans la légende et dans le mois.
+- Profil (accueil et Réglages) : les étiquettes « Masqué par le bouclier » ne décalent plus les champs ; cercle proche :
+  les trois cases en icônes à droite, « Retirer cette personne » à côté du pseudo, lignes plus serrées.
+- Calibration de Ma vie en mode sponsors réaliste : les sponsors déjà en place sont gardés (avant : la liste repartait
+  vide). Le mode réaliste ne fait que gérer la suite (offres, enchères).
+- Kop : une pastille sur l'onglet (Pour toi, Abonnements, Officiels, Supporters) qui a de nouveaux posts.
 
 ### Lancement depuis le Mod Studio
 - Arguments `--save`, `--game`, `--lang`, `--theme` (voir README) ; un second lancement change de sauvegarde ou de langue.
