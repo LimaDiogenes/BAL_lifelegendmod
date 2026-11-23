@@ -158,7 +158,7 @@ const CORE_RULES = `HARD RULES — never break these:
 42. Media memory & spotlight drama: FACTS.media_spotlight holds active media/fan drama arcs built from real FACTS, FACTS.persona, FACTS.biography, and FACTS.off_pitch_hub — weave them naturally into Kop debates, pundit hot takes, press questions, and reactions without ever inventing fake crimes, injuries, transfers, or unlisted relatives. MEMORY.media_memory.recent_questions_do_not_repeat lists questions journalists ALREADY asked: NEVER repeat their angle or phrasing. MEMORY.media_memory.quote_vault stores exact past quotes from earlier in his career: journalists and pundits may bring one back verbatim (rules 7 & 8) to challenge or confront him.`;
 
 // Ton du monde : calculé sur la situation réelle (taille du club, enjeu, crise), plus de réglages.
-function toneLines(tone = {}, vulgarity = true) {
+function toneLines(tone = {}, vulgarity = true, rumours = true) {
   const { market = 50, drama = 25, why = {} } = tone;
   const lvl = (v, low, mid, high) => (v < 34 ? low : v < 67 ? mid : high);
   const because = (list) => (list?.length ? ` (${list.join('; ')})` : '');
@@ -167,6 +167,9 @@ function toneLines(tone = {}, vulgarity = true) {
       : 'Fan tone: set by the results (rule 27, FACTS.fan_mood), but VULGARITY IS OFF: even furious fans stay harsh, sarcastic and can demand his sale, without swearing or insults.',
     `Media attention: ${lvl(market, 'small market, one beat writer, quiet coverage', 'normal attention', 'pressure cooker: loud headlines, hot takes, lots of eyes')}${because(why.market)}.`,
     `Stakes and storytelling: ${lvl(drama, 'nothing special at stake: sober match-report journalism', 'something is at stake: balanced, with some narrative', 'high stakes: every detail becomes a story, tension and narratives pushed hard')}${because(why.drama)}.`,
+    rumours
+      ? 'Rumours: like real media and fans, on quiet days they may invent harmless gossip and speculation about his life and career (always framed as rumour, never as fact, never about protected people or places).'
+      : 'Rumours are OFF: report and discuss facts only; no invented gossip or speculation.',
   ].join('\n');
 }
 
@@ -261,7 +264,7 @@ OUTPUT: ONE JSON object and nothing else:
 function transversaleUser({ facts, changes, memory, desk, plan, press, settings, kind }) {
   return `EDITION TYPE: ${kind}
 TONE:
-${toneLines(settings.tone, settings.fanVulgarity !== false)}
+${toneLines(settings.tone, settings.fanVulgarity !== false, settings.inventedRumours !== false)}
 
 DESK: ${JSON.stringify(desk)}
 PLAN: ${JSON.stringify(plan)}
@@ -344,7 +347,7 @@ HUDDLE: here GROUP is MEMORY.huddle. ${HUDDLE_VOICE} Write "huddle": 4 to 7 mess
 function editionUser({ facts, changes, memory, settings, kind, plan = [] }) {
   return `EDITION TYPE: ${kind}
 TONE:
-${toneLines(settings.tone, settings.fanVulgarity !== false)}
+${toneLines(settings.tone, settings.fanVulgarity !== false, settings.inventedRumours !== false)}
 
 KOP_PLAN (the Kop posts to write first, one per slot, in this order):
 ${JSON.stringify(plan)}
@@ -384,7 +387,7 @@ OUTPUT: ONE JSON object: {"replies": [ {"handle": string, "name": string, "type"
 
 function repliesUser({ facts, memory, post, settings, mentioned = [], quoted = null, poll = null }) {
   return `TONE:
-${toneLines(settings.tone, settings.fanVulgarity !== false)}
+${toneLines(settings.tone, settings.fanVulgarity !== false, settings.inventedRumours !== false)}
 
 MENTIONED: ${JSON.stringify(mentioned)}
 QUOTED: ${JSON.stringify(quoted)}
@@ -411,7 +414,7 @@ OUTPUT: ONE JSON object: {"replies": [ {"handle": string, "name": string, "type"
 }
 function threadUser({ facts, memory, post, thread, target, reply, settings }) {
   return `TONE:
-${toneLines(settings.tone, settings.fanVulgarity !== false)}
+${toneLines(settings.tone, settings.fanVulgarity !== false, settings.inventedRumours !== false)}
 
 FACTS: ${JSON.stringify(facts)}
 MEMORY: ${JSON.stringify(memory)}
@@ -690,7 +693,7 @@ OUTPUT: ONE JSON object: {"threads": [ {"post_id": string, "messages": [ {"handl
 }
 function discussionsUser({ facts, memory, posts, settings, newVoices = [] }) {
   return `TONE:
-${toneLines(settings.tone, settings.fanVulgarity !== false)}
+${toneLines(settings.tone, settings.fanVulgarity !== false, settings.inventedRumours !== false)}
 
 FACTS: ${JSON.stringify(facts)}
 MEMORY: ${JSON.stringify(memory)}
@@ -709,7 +712,7 @@ ${names.length ? `Si ces noms sont prononcés, écris-les ainsi : ${names.join('
 }
 
 module.exports = {
-  dictationPrompt, discussionsSystem, discussionsUser, transversaleSystem, transversaleUser, transversaleRepairSystem, transversaleRepairUser, TRANSVERSALE_KINDS, ARTICLE_SIZES,
+  toneLines, dictationPrompt, discussionsSystem, discussionsUser, transversaleSystem, transversaleUser, transversaleRepairSystem, transversaleRepairUser, TRANSVERSALE_KINDS, ARTICLE_SIZES,
   LANGUAGES, languageRule, withLanguage, wrongLanguage, languageRetry, editionSystem, editionUser, repliesSystem, repliesUser, threadSystem, threadUser, mailSystem, mailUser, dmSystem, dmUser, huddleSystem, huddleUser, agentMailSystem, agentMailUser, influenceMailSystem, influenceMailUser, factcheckSystem, factcheckUser,
   pressQuestionsSystem, pressQuestionsUser, pressWriteupSystem, pressWriteupUser, interviewSystem, interviewUser,
 };

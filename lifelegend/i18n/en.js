@@ -2870,4 +2870,11 @@ window.LL_I18N.en = {
   "Assumer et en remettre une couche": "Own it and double down",
   "Des photos de ta soirée circulent": "Photos from your party are going around",
   "Une de tes phrases fait le buzz": "Something you said has gone viral",
+  "Drame médiatique": "Media drama",
+  "Calme : presse sobre, peu de bruit": "Calm: sober press, little noise",
+  "Réaliste : suit ton club et l’enjeu du moment": "Realistic: follows your club and what's at stake",
+  "Tabloïd : gros titres, polémiques, tout devient une histoire": "Tabloid: big headlines, controversy, everything becomes a story",
+  "Rumeurs inventées les jours calmes": "Invented rumours on quiet days",
+  "Comme les vrais médias et supporters, ils inventent parfois des ragots quand il ne se passe rien. Toujours présentés comme des rumeurs, jamais sur les personnes ou lieux protégés.": "Like real media and fans, they sometimes make up gossip when nothing is happening. Always presented as rumours, never about protected people or places.",
+  "La pression médiatique suit la taille de ton club et de son championnat (et l’Europe, la sélection, ta notoriété), et le drame suit l’enjeu du moment. Ce réglage la décale vers le calme ou vers le tabloïd.": "Media pressure follows the size of your club and league (plus Europe, the national team, your fame), and drama follows what's at stake. This setting shifts it towards calm or towards tabloid.",
 };

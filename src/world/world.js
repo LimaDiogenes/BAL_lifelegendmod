@@ -623,7 +623,15 @@ const { tribunePlan, newVoices, renameInvented, playingTime, styleOf, isStyleTex
 
 // Ton du monde (pression médiatique, drame) : calculé sur la situation, transmis aux consignes de l'IA.
 const toneOf = (state) => state.tone || (state.snapshot ? toneContext({ snapshot: state.snapshot, state }) : { market: 50, drama: 25, why: { market: [], drama: [] } });
-const withTone = (settings, state) => ({ ...settings, tone: toneOf(state) });
+// Réglage « Drame médiatique » (2.0) : décale les niveaux calculés (calme −25, tabloïd +25), bornés 0..100.
+const DRAMA_SHIFT = { calm: -25, realistic: 0, tabloid: 25 };
+const shiftTone = (tone, mode) => {
+  const d = DRAMA_SHIFT[mode] || 0;
+  if (!d) return tone;
+  const clamp = (v) => Math.max(0, Math.min(100, (v ?? 50) + d));
+  return { ...tone, market: clamp(tone.market), drama: clamp(tone.drama) };
+};
+const withTone = (settings, state) => ({ ...settings, tone: shiftTone(toneOf(state), settings.mediaDrama) });
 const { postTexts } = require('./postTexts');
 const { TOUR_KIND, competitionStories, tourAngle, longViewAngle, debateAngle, coverageOf, coverageProblems } = require('./competitionDesk');
 const { tidyArticle, fixArticle, ruleFlags, flagsProblem, paperProblems } = require('./paperRules');

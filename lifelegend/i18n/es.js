@@ -2870,4 +2870,11 @@ window.LL_I18N.es = {
   "Assumer et en remettre une couche": "Mantenerlo y redoblar",
   "Des photos de ta soirée circulent": "Circulan fotos de tu fiesta",
   "Une de tes phrases fait le buzz": "Una frase tuya se ha hecho viral",
+  "Drame médiatique": "Drama mediático",
+  "Calme : presse sobre, peu de bruit": "Calmo: prensa sobria, poco ruido",
+  "Réaliste : suit ton club et l’enjeu du moment": "Realista: sigue a tu club y lo que está en juego",
+  "Tabloïd : gros titres, polémiques, tout devient une histoire": "Tabloide: grandes titulares, polémicas, todo se convierte en historia",
+  "Rumeurs inventées les jours calmes": "Rumores inventados en los días tranquilos",
+  "Comme les vrais médias et supporters, ils inventent parfois des ragots quand il ne se passe rien. Toujours présentés comme des rumeurs, jamais sur les personnes ou lieux protégés.": "Como los medios y aficionados reales, a veces inventan chismes cuando no pasa nada. Siempre presentados como rumores, nunca sobre personas o lugares protegidos.",
+  "La pression médiatique suit la taille de ton club et de son championnat (et l’Europe, la sélection, ta notoriété), et le drame suit l’enjeu du moment. Ce réglage la décale vers le calme ou vers le tabloïd.": "La presión mediática sigue el tamaño de tu club y su liga (y Europa, la selección, tu fama), y el drama sigue lo que está en juego. Este ajuste la desplaza hacia lo calmo o hacia lo tabloide.",
 };

@@ -26,6 +26,8 @@ const DEFAULT_SETTINGS = {
   baseUrl: '',
   language: 'en',
   fanVulgarity: true, // supporters vulgaires possibles après de très mauvais résultats (décochable)
+  mediaDrama: 'realistic', // 'calm' | 'realistic' | 'tabloid' : décale la pression médiatique et le drame calculés (2.0)
+  inventedRumours: true, // les jours calmes, rumeurs et ragots inventés (présentés comme tels)
   theme: 'auto',
   keys: {},          // fournisseur -> clé chiffrée (base64)
 };

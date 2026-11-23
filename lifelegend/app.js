@@ -12007,7 +12007,12 @@ async function renderSettings(page) {
       <p class="fineprint">${tr('Une seule langue pour tout : l’interface, et ce que l’IA écrit (articles, posts, mails, conférences de presse). Ce qui est déjà publié reste dans sa langue d’origine.')}</p>`),
   ])}
     ${panel('world', [
-    rgRow('rg-tone', tr('Le ton du monde'), `<p class="fineprint">${tr('Pas de réglage de ton : la pression médiatique suit la taille de ton club et de son championnat (et l’Europe, la sélection, ta notoriété), et le drame suit l’enjeu du moment (titre, maintien, coupe, fin de mercato, crise).')}</p>`),
+    rgRow('rg-tone', tr('Le ton du monde'), `<select id="mediadrama" aria-label="${tr('Drame médiatique')}">
+      <option value="calm"${settings.mediaDrama === 'calm' ? ' selected' : ''}>${tr('Calme : presse sobre, peu de bruit')}</option>
+      <option value="realistic"${!settings.mediaDrama || settings.mediaDrama === 'realistic' ? ' selected' : ''}>${tr('Réaliste : suit ton club et l’enjeu du moment')}</option>
+      <option value="tabloid"${settings.mediaDrama === 'tabloid' ? ' selected' : ''}>${tr('Tabloïd : gros titres, polémiques, tout devient une histoire')}</option>
+    </select>${rgSwitch('inventedrumours', settings.inventedRumours !== false, tr('Rumeurs inventées les jours calmes'), tr('Comme les vrais médias et supporters, ils inventent parfois des ragots quand il ne se passe rien. Toujours présentés comme des rumeurs, jamais sur les personnes ou lieux protégés.'))}`,
+      tr('La pression médiatique suit la taille de ton club et de son championnat (et l’Europe, la sélection, ta notoriété), et le drame suit l’enjeu du moment. Ce réglage la décale vers le calme ou vers le tabloïd.')),
     rgRow('rg-sponsormode', tr('Système de sponsors'), `<select id="sponsormode" aria-label="${tr('Système de sponsors')}">
       <option value="realistic"${sponsorMode === 'realistic' ? ' selected' : ''}>${tr('Réaliste (offres, enchères, exclusivités & rachats)')}</option>
       <option value="custom"${sponsorMode === 'custom' ? ' selected' : ''}>${tr('Personnalisé (édition libre & sélection dans le catalogue)')}</option>
@@ -12251,6 +12256,8 @@ async function saveSettings() {
     theme: document.querySelector('input[name=rg-theme]:checked')?.value || settings.theme || 'auto',
     colors: rgFormColors(),
     fanVulgarity: $('#fanvulgarity').checked,
+    mediaDrama: $('#mediadrama')?.value || settings.mediaDrama || 'realistic',
+    inventedRumours: $('#inventedrumours') ? $('#inventedrumours').checked : settings.inventedRumours !== false,
   };
   const key = $('#apikey').value.trim();
   if (key) update.apiKey = key;

@@ -2870,4 +2870,11 @@ window.LL_I18N.pt = {
   "Assumer et en remettre une couche": "Assumir e reforçar",
   "Des photos de ta soirée circulent": "Fotos da sua festa estão circulando",
   "Une de tes phrases fait le buzz": "Uma frase sua viralizou",
+  "Drame médiatique": "Drama da mídia",
+  "Calme : presse sobre, peu de bruit": "Calmo: imprensa sóbria, pouco barulho",
+  "Réaliste : suit ton club et l’enjeu du moment": "Realista: segue seu clube e o que está em jogo",
+  "Tabloïd : gros titres, polémiques, tout devient une histoire": "Tabloide: manchetes, polêmicas, tudo vira história",
+  "Rumeurs inventées les jours calmes": "Boatos inventados nos dias calmos",
+  "Comme les vrais médias et supporters, ils inventent parfois des ragots quand il ne se passe rien. Toujours présentés comme des rumeurs, jamais sur les personnes ou lieux protégés.": "Como a mídia e os torcedores reais, às vezes inventam fofocas quando nada acontece. Sempre apresentadas como boatos, nunca sobre pessoas ou lugares protegidos.",
+  "La pression médiatique suit la taille de ton club et de son championnat (et l’Europe, la sélection, ta notoriété), et le drame suit l’enjeu du moment. Ce réglage la décale vers le calme ou vers le tabloïd.": "A pressão da mídia segue o tamanho do seu clube e da liga (e a Europa, a seleção, sua fama), e o drama segue o que está em jogo. Este ajuste a desloca para o calmo ou para o tabloide.",
 };
