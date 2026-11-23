@@ -238,6 +238,8 @@ function normalizeCirclePerson(item, idx = 0, group = '') {
     dob,
     close,
     protect: item.protect !== false,
+    // connu des médias (2.0) : la presse et les supporters peuvent en parler ; sinon seulement son cercle proche
+    media: item.media !== undefined ? Boolean(item.media) : group !== 'family',
     kopPersonality,
   };
 }
@@ -374,6 +376,8 @@ function personaFacts(persona, { includeDob = false } = {}) {
         group: g,
         ...(person.role ? { role: person.role } : {}),
         name: person.name,
+        // 2.0 : seuls les proches « connus des médias » peuvent être cités par la presse et les supporters
+        ...(person.media === false ? { private_not_known_to_media: true } : {}),
         ...(person.kopPersonality && CIRCLE_KOP_PERSONALITIES[person.kopPersonality]
           ? { kop_profile: CIRCLE_KOP_PERSONALITIES[person.kopPersonality] }
           : {}),

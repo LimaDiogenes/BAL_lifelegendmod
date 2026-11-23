@@ -2877,4 +2877,5 @@ window.LL_I18N.en = {
   "Rumeurs inventées les jours calmes": "Invented rumours on quiet days",
   "Comme les vrais médias et supporters, ils inventent parfois des ragots quand il ne se passe rien. Toujours présentés comme des rumeurs, jamais sur les personnes ou lieux protégés.": "Like real media and fans, they sometimes make up gossip when nothing is happening. Always presented as rumours, never about protected people or places.",
   "La pression médiatique suit la taille de ton club et de son championnat (et l’Europe, la sélection, ta notoriété), et le drame suit l’enjeu du moment. Ce réglage la décale vers le calme ou vers le tabloïd.": "Media pressure follows the size of your club and league (plus Europe, the national team, your fame), and drama follows what's at stake. This setting shifts it towards calm or towards tabloid.",
+  "Connu des médias : la presse et les supporters peuvent en parler": "Known to the media: the press and fans can talk about them",
 };

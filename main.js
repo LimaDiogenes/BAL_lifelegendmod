@@ -420,7 +420,9 @@ app.whenReady().then(() => {
   handle('bio:save', ({ text, kind }) => {
     const state = store.activeCareer();
     if (!state) throw new Error('Synchronise ta sauvegarde une première fois.');
+    const bioBefore = state.bio?.text || '';
     setBio(state, text, kind);
+    world.addHooks(state, world.diffBio(bioBefore, state.bio?.text || '', state.snapshot?.gameDate || ''));
     store.saveCareer(state);
     return state;
   });

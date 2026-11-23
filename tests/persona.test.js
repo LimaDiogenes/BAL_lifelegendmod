@@ -114,7 +114,7 @@ describe('Phase B Persona, Presets, Inner Circle & Privacy Shield', () => {
     assert.deepEqual(facts.roots, { hometown: 'Curitiba', heritage: 'Polish-Brazilian' });
     assert.deepEqual(facts.flavor, { motto: 'Work in silence' });
     assert.deepEqual(facts.inner_circle, [
-      { group: 'family', role: 'Mother', name: 'Clara Rocha' },
+      { group: 'family', role: 'Mother', name: 'Clara Rocha', private_not_known_to_media: true },
       { group: 'business', role: 'Agent', name: 'Carlos Mendes' },
     ]);
   });

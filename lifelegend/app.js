@@ -1201,6 +1201,7 @@ function personaPersonRowHtml(person = {}, groupKey = '') {
     <select class="per-p-kop" title="${esc(tr('Profil & personnalité sur Kop (optionnel)'))}" aria-label="${esc(tr('Profil & personnalité sur Kop (optionnel)'))}">${kopOpts}</select>
     <input class="per-p-decoy" value="${esc(person.decoy || '')}" placeholder="${esc(tr('Pseudo (auto)'))}" maxlength="120">
     <label class="per-p-shield per-p-close" title="${esc(tr('Proche (fête ou dîner d’anniversaire)'))}"><input type="checkbox" class="per-p-close-in"${isClose ? ' checked' : ''} aria-label="${esc(tr('Proche (fête ou dîner d’anniversaire)'))}"><span>${hi('heart')}</span></label>
+    <label class="per-p-shield per-p-media" title="${esc(tr('Connu des médias : la presse et les supporters peuvent en parler'))}"><input type="checkbox" class="per-p-media-in"${person.media !== undefined ? (person.media ? ' checked' : '') : (groupKey !== 'family' ? ' checked' : '')} aria-label="${esc(tr('Connu des médias : la presse et les supporters peuvent en parler'))}"><span>${hi('megaphone')}</span></label>
     <label class="per-p-shield" title="${esc(tr('Masquer dans le bouclier de confidentialité'))}"><input type="checkbox" class="per-p-protect"${person.protect !== false ? ' checked' : ''} aria-label="${esc(tr('Masquer dans le bouclier de confidentialité'))}"><span>${hi('shieldCheck')}</span></label>
     <button type="button" class="per-p-del" title="${esc(tr('Retirer cette personne'))}" aria-label="${esc(tr('Retirer cette personne'))}">−</button>
   </div>`;
@@ -1326,7 +1327,8 @@ function readPersonaForm(prefix) {
         const decoy = row.querySelector('.per-p-decoy')?.value.trim() || '';
         const close = row.querySelector('.per-p-close-in')?.checked !== false;
         const protect = row.querySelector('.per-p-protect')?.checked !== false;
-        if (role || name || decoy || dob) out.push({ id: `${g.key}_${idx + 1}`, role, name, dob, kopPersonality, decoy, close, protect });
+        const media = row.querySelector('.per-p-media-in') ? row.querySelector('.per-p-media-in').checked : g.key !== 'family';
+        if (role || name || decoy || dob) out.push({ id: `${g.key}_${idx + 1}`, role, name, dob, kopPersonality, decoy, close, protect, media });
       });
     }
     circle[g.key] = out;
@@ -4062,6 +4064,7 @@ const HI = {
   flag: 'M3 3v1.5M3 21v-6m0 0 2.77-.693a9 9 0 0 1 6.208.682l.108.054a9 9 0 0 0 6.086.71l3.114-.732a48.524 48.524 0 0 1-.005-10.499l-3.11.732a9 9 0 0 1-6.085-.711l-.108-.054a9 9 0 0 0-6.208-.682L3 4.5M3 15V4.5',
   userPlus: 'M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z',
   shieldCheck: 'M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z',
+  megaphone: 'M10.34 15.84c-.688-.06-1.386-.09-2.09-.09H7.5a4.5 4.5 0 1 1 0-9h.75c.704 0 1.402-.03 2.09-.09m0 9.18c.253.962.584 1.892.985 2.783.247.55.06 1.21-.463 1.511l-.657.38c-.551.318-1.26.117-1.527-.461a20.845 20.845 0 0 1-1.44-4.282m3.102.069a18.03 18.03 0 0 1-.59-4.59c0-1.586.205-3.124.59-4.59m0 9.18a23.848 23.848 0 0 1 8.835 2.535M10.34 6.66a23.847 23.847 0 0 0 8.835-2.535m0 0A23.74 23.74 0 0 0 18.795 3m.38 1.125a23.91 23.91 0 0 1 1.014 5.395m-1.014 8.855c-.118.38-.245.754-.38 1.125m.38-1.125a23.91 23.91 0 0 0 1.014-5.395m0-3.46c.495.413.811 1.035.811 1.73 0 .695-.316 1.317-.811 1.73m0-3.46a24.347 24.347 0 0 1 0 3.46',
   exit: 'M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9',
   contract: 'M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z',
   mic: 'M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z',

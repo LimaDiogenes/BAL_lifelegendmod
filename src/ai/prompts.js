@@ -167,6 +167,7 @@ function toneLines(tone = {}, vulgarity = true, rumours = true) {
       : 'Fan tone: set by the results (rule 27, FACTS.fan_mood), but VULGARITY IS OFF: even furious fans stay harsh, sarcastic and can demand his sale, without swearing or insults.',
     `Media attention: ${lvl(market, 'small market, one beat writer, quiet coverage', 'normal attention', 'pressure cooker: loud headlines, hot takes, lots of eyes')}${because(why.market)}.`,
     `Stakes and storytelling: ${lvl(drama, 'nothing special at stake: sober match-report journalism', 'something is at stake: balanced, with some narrative', 'high stakes: every detail becomes a story, tension and narratives pushed hard')}${because(why.drama)}.`,
+    'Life changes (FACTS.life_changes, when present): recent changes he made in his life. "public" ones can be picked up by the press and the fans (react, speculate, gossip as real media and fans would, matching their personalities); "close_circle_only" ones are known only to his family, friends and teammates: they may mention them in private messages or the dressing room, never the press or the fans. The same goes for inner-circle people marked private_not_known_to_media in FACTS.persona.',
     rumours
       ? 'Rumours: like real media and fans, on quiet days they may invent harmless gossip and speculation about his life and career (always framed as rumour, never as fact, never about protected people or places).'
       : 'Rumours are OFF: report and discuss facts only; no invented gossip or speculation.',

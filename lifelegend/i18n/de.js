@@ -2877,4 +2877,5 @@ window.LL_I18N.de = {
   "Rumeurs inventées les jours calmes": "Erfundene Gerüchte an ruhigen Tagen",
   "Comme les vrais médias et supporters, ils inventent parfois des ragots quand il ne se passe rien. Toujours présentés comme des rumeurs, jamais sur les personnes ou lieux protégés.": "Wie echte Medien und Fans erfinden sie manchmal Klatsch, wenn nichts passiert. Immer als Gerücht dargestellt, nie über geschützte Personen oder Orte.",
   "La pression médiatique suit la taille de ton club et de son championnat (et l’Europe, la sélection, ta notoriété), et le drame suit l’enjeu du moment. Ce réglage la décale vers le calme ou vers le tabloïd.": "Der Mediendruck folgt der Größe deines Vereins und seiner Liga (plus Europa, Nationalteam, deine Bekanntheit), das Drama dem, was auf dem Spiel steht. Diese Einstellung verschiebt ihn Richtung ruhig oder Boulevard.",
+  "Connu des médias : la presse et les supporters peuvent en parler": "Den Medien bekannt: Presse und Fans dürfen darüber reden",
 };

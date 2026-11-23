@@ -60,7 +60,9 @@ function savePrivacy({ store, privacy }) {
 function savePersona({ store, persona }) {
   const state = store.activeCareer();
   if (!state) throw new Error('Synchronise ta sauvegarde une première fois.');
+  const before = state.persona;
   state.persona = normalizePersona(persona);
+  if (before) addHooks(state, diffPersona(before, state.persona, state.snapshot?.gameDate || ''));
   syncAgentWithPersona(state);
   store.saveCareer(state);
   return state;
@@ -582,6 +584,7 @@ async function complete(settings, apiKey, opts) {
   return map?.enabled ? unmaskText(out, map) : out;
 }
 const prompts = require('../ai/prompts');
+const { diffPersona, diffBio, diffProfile, addHooks, lifeChangesFacts } = require('./lifeChanges');
 const { factCheck } = require('../ai/factcheck');
 const { buildScores } = require('./scores');
 const { worldFootball, worldStories, worldDebate, worldDebates, worldBrief, potmSummary, worldTotw } = require('./worldFootball');
@@ -799,6 +802,7 @@ function factsFor(s, profile = {}, state = null, narrativeMem = null) {
     career: state ? careerFacts(state) : null,
     biography: state?.bio?.text || undefined,
     persona: state?.persona ? personaFacts(state.persona) : undefined,
+    life_changes: state ? lifeChangesFacts(state, s.gameDate) : undefined,
     off_pitch_hub: state?.lifeHub ? lifeHubFacts(state) : undefined,
     mercato: state ? { transfer_window_open: windowOpen(s.gameDate), window: windowFacts(s), recent_transfers: (state.transfers || []).slice(-12) } : null,
     agent: state ? agentFacts(state.agent) : null,
@@ -1536,7 +1540,7 @@ function renameInventedAccounts(state, out, { voices = [], people = [], clubLeag
 // Discussions sous les posts (règle 30) : une requête à part après l'édition, pour de vrais échanges entre comptes
 // (réponses à d'autres réponses, désaccords, l'auteur qui réplique), sous les posts de l'édition et quelques posts
 // récents. Les faits envoyés sont réduits à ce qui sert à discuter (pas les autres compétitions, le mercato, l'agent).
-const DISCUSSION_FACTS = ['game_date', 'season', 'player', 'club', 'league', 'league_table', 'last_match', 'next_match', 'club_recent_results', 'league_last_round', 'league_next_round', 'scorer_race_in_league', 'season_stats', 'club_squad', 'coaches', 'fan_mood', 'media_spotlight', 'persona', 'off_pitch_hub', 'club_accounts', 'competition_accounts', 'national_team', 'football_elsewhere'];
+const DISCUSSION_FACTS = ['game_date', 'season', 'player', 'club', 'league', 'league_table', 'last_match', 'next_match', 'club_recent_results', 'league_last_round', 'league_next_round', 'scorer_race_in_league', 'season_stats', 'club_squad', 'coaches', 'fan_mood', 'media_spotlight', 'persona', 'life_changes', 'off_pitch_hub', 'club_accounts', 'competition_accounts', 'national_team', 'football_elsewhere'];
 async function writeDiscussions({ state, settings, apiKey, facts, fresh, people, gameDate, onProgress, clubLeague = null, privacyMap = null, narrativeMem = null }) {
   const brief = (p, isNew) => {
     const q = quotedIn(state, p);
@@ -4189,6 +4193,7 @@ function updateProfile({ store, update }) {
   if (!state) throw new Error('Synchronise ta sauvegarde une première fois.');
   const prof = state.profile;
   const old = { handle: prof.handle, name: prof.displayName };
+  const profileBefore = { location: prof.location, bio: prof.bio };
   if (update.handle !== undefined) {
     const h = String(update.handle).replace(/^@/, '').replace(/[^\w]/g, '').slice(0, 20);
     if (h && h.length < 3) throw new Error('Le pseudo doit faire au moins 3 caractères (lettres, chiffres ou _).');
@@ -4207,6 +4212,7 @@ function updateProfile({ store, update }) {
   if (update.website !== undefined) prof.website = oneLine(update.website, 100).replace(/\s/g, '');
   if (update.verified !== undefined) prof.verified = Boolean(update.verified);
   if (update.bannerColor !== undefined && PROFILE_COLORS.includes(update.bannerColor)) prof.bannerColor = update.bannerColor;
+  addHooks(state, diffProfile(profileBefore, prof, state.snapshot?.gameDate || ''));
 
   const dir = path.join(store.dir, 'careers', state.careerId, 'profile');
   const replaced = [];
@@ -4381,4 +4387,4 @@ Rules:
   };
 }
 
-module.exports = { getNarrativeMemory, dismissNarrativeArc, clearNarrativeQuestions, savePrivacy, savePersona, updateAgent, generateBackstory, saveSquadBirthdays, resetCareer, saveNationalPaper, saveClubAlias, saveLifeEvents, calibrateCareerLifeHub, buyLifeAsset, sellLifeAsset, getSponsorCatalog, addLifeSponsor, updateLifeSponsor, removeLifeSponsor, answerLifeSponsorOffer, answerLifeBiddingWar, answerLifeOneTimeDeal, completeLifeObligation, rescheduleLifeObligation, doLifeAction, answerLifeDilemma, setLifeMedia, ensureLifeHub, calendarAdvance, getCalendarAgenda, resolveLifeCalendarDecision, flipCalendarBirthdayShift, scheduleCalendarActivity, runDailyAiPulse, calendarSetMode, calendarAddEvent, calendarRemoveEvent, applyLifeSaveEffects, dismissLifeSaveEffects, noteKeyMemory, privacyMapFor, previewMasked, getAiAuditLog, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, emitInterviewSilenceReactions, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };
+module.exports = { diffBio, addHooks, getNarrativeMemory, dismissNarrativeArc, clearNarrativeQuestions, savePrivacy, savePersona, updateAgent, generateBackstory, saveSquadBirthdays, resetCareer, saveNationalPaper, saveClubAlias, saveLifeEvents, calibrateCareerLifeHub, buyLifeAsset, sellLifeAsset, getSponsorCatalog, addLifeSponsor, updateLifeSponsor, removeLifeSponsor, answerLifeSponsorOffer, answerLifeBiddingWar, answerLifeOneTimeDeal, completeLifeObligation, rescheduleLifeObligation, doLifeAction, answerLifeDilemma, setLifeMedia, ensureLifeHub, calendarAdvance, getCalendarAgenda, resolveLifeCalendarDecision, flipCalendarBirthdayShift, scheduleCalendarActivity, runDailyAiPulse, calendarSetMode, calendarAddEvent, calendarRemoveEvent, applyLifeSaveEffects, dismissLifeSaveEffects, noteKeyMemory, privacyMapFor, previewMasked, getAiAuditLog, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, emitInterviewSilenceReactions, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };
