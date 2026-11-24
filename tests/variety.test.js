@@ -43,3 +43,29 @@ test('scènes des journées libres : trois versions par action, sans répétitio
     }
   }
 });
+
+test('scènes d’achat et de dilemme : variées, sans texte manquant, dans les 6 langues', () => {
+  const { renderPurchaseScene, renderDilemmaScene } = require(path.join(__dirname, '..', 'src/world/lifeScenes.js'));
+  const assets = [
+    { catalogId: 'index_portfolio', category: 'investment', price: 250000 },
+    { catalogId: 'small_yacht', category: 'luxury', price: 3200000 },
+    { catalogId: 'clothing_line', category: 'venture', price: 750000 },
+    { catalogId: 'art_collection', category: 'collection', price: 1500000 },
+    { catalogId: 'parents_house', category: 'home', price: 650000 },
+  ];
+  for (const l of ['fr', 'en', 'pt', 'es', 'it', 'de']) {
+    const state = {};
+    const ctx = { l, player: 'Rui', club: 'Lyon', seed: 's', state };
+    const seen = new Set();
+    for (const a of assets) {
+      for (let i = 0; i < 2; i += 1) {
+        const sc = renderPurchaseScene(ctx, a, '@rui');
+        assert.ok(sc.headline && sc.narrative && !/[{}]/.test(`${sc.headline}${sc.narrative}${sc.kop || ''}${sc.huddle || ''}`), `${a.catalogId} ${l}`);
+        seen.add(sc.narrative);
+      }
+    }
+    assert.ok(seen.size >= 8, `${l}: ${seen.size}`);
+    const heads = new Set(['late_party', 'agent_leak', 'docu_crew'].map((d) => renderDilemmaScene(ctx, d, 'a', '@rui').headline));
+    assert.strictEqual(heads.size, 3, 'un titre par dilemme');
+  }
+});

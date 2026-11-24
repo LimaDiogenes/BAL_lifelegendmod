@@ -39,6 +39,9 @@ LifeLegend 2.0 est livré avec blue41 PES2021 Mod Studio (il peut aussi être ut
   leur date dans tous les modes de calendrier (avant : seulement en mode Complet).
 - Scènes des journées libres : trois versions par action (titre, récit, message du vestiaire, post des supporters),
   dans les 6 langues, choisies sans répétition.
+- Scènes d'achat : jets et yachts, entreprises, collections et la maison des parents ont leurs propres scènes (deux
+  versions chacune) ; voitures, logements, dons, staff et placements gagnent une deuxième version. Dilemmes : un titre
+  propre à chaque dilemme et six suites variées (avant : un seul texte pour tous).
 - Pastilles (Ma vie, calendrier, cloche) : ce qui est déjà planifié ne compte que le jour venu ; plus d'« obligation à
   planifier » dans la cloche (une obligation devient une décision du calendrier à sa date).
 - Événements à toi : tu peux y inviter jusqu'à 10 proches de ton cercle ; une courte requête à l'IA écrit alors trois choix
