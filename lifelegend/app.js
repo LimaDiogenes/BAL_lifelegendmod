@@ -9299,6 +9299,9 @@ const ML_ASSET_CAT_LABELS = {
   car: () => tr('Véhicules'),
   staff: () => tr('Staff privé'),
   investment: () => tr('Investissements'),
+  venture: () => tr('Entreprises'),
+  collection: () => tr('Collections'),
+  luxury: () => tr('Jets & yachts'),
   charity: () => tr('Œuvres & Dons'),
   custom: () => tr('Personnalisé'),
 };
@@ -9320,10 +9323,30 @@ const ML_ASSET_CATALOG_UI = [
   { id: 'personal_physio', category: 'staff', price: 18000, monthlyCost: 5800, passiveReturn: 0, label: () => tr('Kiné / Préparateur privé'), desc: () => tr('Soins quotidiens et récupération accélérée à domicile.') },
   { id: 'pr_manager', category: 'staff', price: 25000, monthlyCost: 7500, passiveReturn: 0, label: () => tr('Conseiller image & RP'), desc: () => tr('Protège ton image publique et attire de plus gros sponsors.') },
   { id: 'social_team', category: 'staff', price: 32000, monthlyCost: 8500, passiveReturn: 0, label: () => tr('Équipe réseaux sociaux'), desc: () => tr('Gère ta présence sur Kop et accélère ta croissance.') },
-  { id: 'youth_academy_fund', category: 'investment', price: 180000, monthlyCost: 0, passiveReturn: 2400, label: () => tr('Fonds jeunes & terrains'), desc: () => tr('Financement local rentable et très apprécié des supporters.') },
-  { id: 'brand_portfolio', category: 'investment', price: 600000, monthlyCost: 0, passiveReturn: 9500, label: () => tr('Portfolio marques & participations'), desc: () => tr('Revenus passifs réguliers et crédibilité business.') },
-  { id: 'real_estate_fund', category: 'investment', price: 1400000, monthlyCost: 0, passiveReturn: 21000, label: () => tr('Société immobilière'), desc: () => tr('Solide rente mensuelle pour assurer l’après-carrière.') },
+  { id: 'youth_academy_fund', category: 'investment', price: 180000, monthlyCost: 0, passiveReturn: 2400, risk: 'low', yieldPct: 2, lockMonths: 12, label: () => tr('Fonds jeunes & terrains'), desc: () => tr('Financement local rentable et très apprécié des supporters.') },
+  { id: 'brand_portfolio', category: 'investment', price: 600000, monthlyCost: 0, passiveReturn: 9500, risk: 'medium', yieldPct: 6, lockMonths: 12, label: () => tr('Portfolio marques & participations'), desc: () => tr('Revenus passifs réguliers et crédibilité business.') },
+  { id: 'real_estate_fund', category: 'investment', price: 1400000, monthlyCost: 0, passiveReturn: 21000, risk: 'low', yieldPct: 3, lockMonths: 12, label: () => tr('Société immobilière'), desc: () => tr('Solide rente mensuelle pour assurer l’après-carrière.') },
   { id: 'local_clinic_gift', category: 'charity', price: 35000, monthlyCost: 0, passiveReturn: 0, label: () => tr('Don à un hôpital local'), desc: () => tr('Geste fort salué par toute la ville et la presse.') },
+  { id: 'savings_bonds', category: 'investment', price: 50000, monthlyCost: 0, passiveReturn: 0, risk: 'low', yieldPct: 3, lockMonths: 12, label: () => tr('Obligations & épargne sûre'), desc: () => tr('Placement prudent : rendement modeste, presque sans risque.') },
+  { id: 'index_portfolio', category: 'investment', price: 250000, monthlyCost: 0, passiveReturn: 0, risk: 'medium', yieldPct: 7, lockMonths: 6, label: () => tr('Portefeuille indiciel'), desc: () => tr('Actions du monde entier : suit les marchés, à la hausse comme à la baisse.') },
+  { id: 'startup_fund', category: 'investment', price: 400000, monthlyCost: 0, passiveReturn: 0, risk: 'high', yieldPct: 18, lockMonths: 24, label: () => tr('Fonds start-up'), desc: () => tr('Fort potentiel, gros risque : certaines start-up ne survivent pas.') },
+  { id: 'rental_property', category: 'investment', price: 900000, monthlyCost: 1500, passiveReturn: 4200, risk: 'low', yieldPct: 2, lockMonths: 12, label: () => tr('Bien locatif'), desc: () => tr('Un appartement loué : un loyer chaque mois, une valeur stable.') },
+  { id: 'restaurant_stake', category: 'venture', price: 300000, monthlyCost: 0, passiveReturn: 2200, risk: 'medium', yieldPct: 4, lockMonths: 12, label: () => tr('Parts d’un restaurant'), desc: () => tr('Ton nom sur la carte d’un restaurant à la mode.') },
+  { id: 'clothing_line', category: 'venture', price: 750000, monthlyCost: 2500, passiveReturn: 7500, risk: 'high', yieldPct: 8, lockMonths: 18, label: () => tr('Ta marque de vêtements'), desc: () => tr('Ta propre ligne streetwear : la visibilité est garantie, le succès non.') },
+  { id: 'esports_team', category: 'venture', price: 1200000, monthlyCost: 6000, passiveReturn: 11000, risk: 'high', yieldPct: 10, lockMonths: 18, label: () => tr('Équipe esport'), desc: () => tr('Une équipe pro de jeux vidéo à ton nom.') },
+  { id: 'physio_clinic', category: 'venture', price: 900000, monthlyCost: 3000, passiveReturn: 7000, risk: 'medium', yieldPct: 5, lockMonths: 12, label: () => tr('Clinique du sport'), desc: () => tr('Kiné et récupération : des revenus réguliers, et le meilleur pour ton corps.') },
+  { id: 'watch_collection', category: 'collection', price: 180000, monthlyCost: 300, passiveReturn: 0, risk: 'low', yieldPct: 5, lockMonths: 0, label: () => tr('Collection de montres'), desc: () => tr('Des pièces rares qui prennent de la valeur avec le temps.') },
+  { id: 'art_collection', category: 'collection', price: 1500000, monthlyCost: 2000, passiveReturn: 0, risk: 'medium', yieldPct: 6, lockMonths: 0, label: () => tr('Collection d’art'), desc: () => tr('Peintures et sculptures : une passion, et un placement qui varie.') },
+  { id: 'signed_shirts', category: 'collection', price: 40000, monthlyCost: 0, passiveReturn: 0, risk: 'low', yieldPct: 4, lockMonths: 0, label: () => tr('Maillots signés'), desc: () => tr('Les maillots de légendes, encadrés chez toi.') },
+  { id: 'parents_house', category: 'home', price: 650000, monthlyCost: 900, passiveReturn: 0, label: () => tr('Une maison pour tes parents'), desc: () => tr('Le cadeau d’une vie, pour ceux qui t’ont amené jusque-là.') },
+  { id: 'hometown_foundation', category: 'charity', price: 400000, monthlyCost: 2500, passiveReturn: 0, label: () => tr('Fondation dans ta ville natale'), desc: () => tr('Rendre à ceux de ta ville : un terrain, une école de foot, des bourses.') },
+  { id: 'security_detail', category: 'staff', price: 15000, monthlyCost: 12000, passiveReturn: 0, label: () => tr('Équipe de sécurité'), desc: () => tr('Discrète et toujours là : la tranquillité pour toi et les tiens.') },
+  { id: 'small_jet', category: 'luxury', price: 9500000, monthlyCost: 85000, passiveReturn: 0, label: () => tr('Jet privé léger'), desc: () => tr('Pour l’Europe sans attendre personne. Équipage, hangar et entretien compris dans le coût mensuel.') },
+  { id: 'medium_jet', category: 'luxury', price: 28000000, monthlyCost: 170000, passiveReturn: 0, label: () => tr('Jet privé intermédiaire'), desc: () => tr('Un vol transatlantique sans escale, la famille à bord.') },
+  { id: 'big_jet', category: 'luxury', price: 72000000, monthlyCost: 330000, passiveReturn: 0, label: () => tr('Jet long-courrier'), desc: () => tr('Le tour du monde avec une chambre à bord. Le jouet des plus grandes stars.') },
+  { id: 'small_yacht', category: 'luxury', price: 3200000, monthlyCost: 28000, passiveReturn: 0, label: () => tr('Petit yacht'), desc: () => tr('Une vingtaine de mètres pour les vacances d’été entre amis.') },
+  { id: 'medium_yacht', category: 'luxury', price: 22000000, monthlyCost: 180000, passiveReturn: 0, label: () => tr('Yacht de 40 mètres'), desc: () => tr('Un équipage à temps plein et des escales qui font les photos de l’été.') },
+  { id: 'big_yacht', category: 'luxury', price: 110000000, monthlyCost: 900000, passiveReturn: 0, label: () => tr('Superyacht'), desc: () => tr('70 mètres, un héliport et une piscine. Les tabloïds ne parleront que de ça.') },
   { id: 'foundation_launch', category: 'charity', price: 220000, monthlyCost: 2000, passiveReturn: 0, label: () => tr('Fondation pour la jeunesse'), desc: () => tr('Impact durable : prestige énorme auprès du public et des marques.') },
 ];
 
@@ -10683,77 +10706,98 @@ function renderMyLife(page) {
   const shopCat = view.mlShopCat || 'all';
   const shopFilterBtns = Object.entries(ML_ASSET_CAT_LABELS).map(([k, fn]) => `<button type="button" class="ml-chip${shopCat === k ? ' on' : ''}" data-mlshopcat="${k}">${esc(fn())}</button>`).join('');
   const catalogFiltered = ML_ASSET_CATALOG_UI.filter((a) => shopCat === 'all' || a.category === shopCat);
-  const ownedGifted = (hub.assets || []).filter((a) => a.giftedBy && (shopCat === 'all' || a.category === shopCat));
-  const ownedCustom = (hub.assets || []).filter((a) => a.custom && !a.giftedBy && (shopCat === 'all' || a.category === shopCat));
-
-  const catalogCards = ownedGifted.map((a) => {
-    const cid = a.catalogId || 'car_sports';
-    const catLabel = a.model || (cid === 'sponsor_watch' ? tr('Montre') : mlFormatAssetName(cid));
-    const imgUrl = mlResolveArtUrl(cid, a.customImage || hub.catalogImages?.[cid], a.category, a.name);
-    return `<div class="card ml-shop-card owned ml-shop-card--gifted">
+  // 2.0 : « Ce que tu possèdes » en tête (tout le patrimoine, cadeaux compris) ; la boutique ne montre que le reste.
+  const riskLbl = (r) => ({ low: tr('Risque faible'), medium: tr('Risque moyen'), high: tr('Risque élevé') })[r] || '';
+  const mlLockUntil = (a) => {
+    if (!a?.lockMonths || !a.since) return '';
+    const [y, mo] = String(a.since).slice(0, 7).split('-').map(Number);
+    const t = y * 12 + (mo - 1) + a.lockMonths;
+    return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}${String(a.since).slice(7, 10)}`;
+  };
+  const mediaActs = (id, hasCustom) => `<div class="ml-card-media-acts">
+          <button type="button" class="ml-media-btn" data-mlimg-target="asset" data-mlimg-id="${esc(id)}" title="${esc(tr('Photo personnalisée'))}">${hi('camera')}</button>
+          ${hasCustom ? `<button type="button" class="ml-media-btn" data-mlimg-clear="asset" data-mlimg-id="${esc(id)}" title="${esc(tr('Retirer la photo'))}">${hi('xmark')}</button>` : ''}
+        </div>`;
+  const ownedName = (a) => {
+    const cid = a.catalogId || '';
+    const ui = ML_ASSET_CATALOG_UI.find((x) => x.id === (ML_LEGACY_CAR_MAP[cid] || cid));
+    if (a.giftedBy) return `${a.giftedBy} · ${a.model || (cid === 'sponsor_watch' ? tr('Montre') : mlFormatAssetName(cid))}`;
+    if (a.stakeSponsorId) return tr('Parts de {brand}', { brand: a.brand || '' });
+    if (a.custom) return a.name;
+    if (a.brand && a.model) return `${a.brand} ${a.model}`;
+    return ui ? ui.label() : mlFormatAssetName(cid);
+  };
+  const ownedList = hub.assets || [];
+  const ownedTotal = ownedList.filter((a) => a.category !== 'staff' && a.category !== 'charity').reduce((sum, a) => sum + (Number(a.resaleValue ?? a.price) || 0), 0);
+  const ownedCards = ownedList.map((a) => {
+    const cid = a.catalogId || '';
+    const name = ownedName(a);
+    const customImg = a.customImage || hub.catalogImages?.[cid] || null;
+    const imgUrl = mlResolveArtUrl(cid || a.id, customImg, a.category, a.name);
+    const tag = a.giftedBy ? tr('Offert par {brand}', { brand: a.giftedBy }) : a.forFamily ? tr('Pour un proche') : (a.customCategory || (ML_ASSET_CAT_LABELS[a.category] || ML_ASSET_CAT_LABELS.custom)());
+    const value = Number(a.resaleValue ?? a.price) || 0;
+    const pct = a.price > 0 ? Math.round(((value - a.price) / a.price) * 100) : 0;
+    const until = mlLockUntil(a);
+    const lines = [
+      a.failed ? tr('Faillite : il ne reste presque rien') : a.risk ? `${tr('Valeur : {v}', { v: euros(value) })} (${pct >= 0 ? '+' : ''}${pct} %) · ${riskLbl(a.risk)}` : (a.price > 0 ? tr('Prix : {p}', { p: euros(a.price) }) : ''),
+      until && simDate && simDate < until ? tr('Bloqué jusqu’au {d} : revendre avant coûte 15 %', { d: shortDate(until) }) : '',
+      a.monthlyCost > 0 ? tr('Entretien : {p}/mois', { p: euros(a.monthlyCost) }) : '',
+      a.passiveReturn > 0 && !a.failed ? tr('Revenu : +{p}/mois', { p: euros(a.passiveReturn) }) : '',
+    ].filter(Boolean);
+    const btn = a.giftedBy ? `<button type="button" class="btn" data-mlsell="${esc(a.id)}">${tr('Restituer')}</button>`
+      : (cid === 'rented_studio' || a.category === 'charity') ? ''
+        : `<button type="button" class="btn" data-mlsell="${esc(a.id)}">${a.category === 'staff' ? tr('Licencier') : tr('Revendre')}</button>`;
+    return `<div class="card ml-shop-card owned">
       <div class="ml-card-media">
-        ${imgUrl ? `<img src="${esc(imgUrl)}" alt="${esc(catLabel)}">` : mlAssetArtSvg(cid, 'car')}
-        <div class="ml-card-media-acts">
-          <button type="button" class="ml-media-btn" data-mlimg-target="asset" data-mlimg-id="${esc(a.id)}" title="${esc(tr('Photo personnalisée'))}">${hi('camera')}</button>
-          ${a.customImage ? `<button type="button" class="ml-media-btn" data-mlimg-clear="asset" data-mlimg-id="${esc(a.id)}" title="${esc(tr('Retirer la photo'))}">${hi('xmark')}</button>` : ''}
-        </div>
+        ${imgUrl ? `<img src="${esc(imgUrl)}" alt="${esc(name)}">` : mlAssetArtSvg(cid || a.id, a.category)}
+        ${mediaActs(a.id, Boolean(customImg))}
       </div>
-      <div class="ml-sp-head">${mlSponsorMedallionHtml({ brand: a.giftedBy, category: a.category === 'collection' ? 'watches' : 'automotive' })}<span class="priv-badge on">${esc(tr('Offert par {brand}', { brand: a.giftedBy }))}</span></div>
-      <h4>${esc(a.giftedBy)} · ${esc(catLabel)}</h4>
-      <p class="fineprint">${esc(a.giftReason === 'season_watch' ? tr('Montre offerte chaque saison par ton partenaire.') : a.giftReason === 'annual' ? tr('Véhicule de fonction annuel inclus dans ton contrat sponsor.') : tr('Véhicule bonus débloqué par tes objectifs de saison.'))}</p>
+      <div class="ml-sp-head"><span class="priv-tag">${esc(tag)}</span></div>
+      <h4>${esc(name)}</h4>
+      <p class="fineprint">${lines.map((l) => esc(l)).join('<br>')}</p>
+      <div class="ml-shop-foot"><span></span>${btn}</div>
+    </div>`;
+  }).join('');
+  const ownsCat = (id) => ownedList.some((x) => !x.giftedBy && (x.catalogId === id || ML_LEGACY_CAR_MAP[x.catalogId] === id));
+  const stakeCards = (shopCat === 'all' || shopCat === 'investment') ? (hub.sponsors || []).filter((sp) => !sp.linkedBootDeal && (!sp.until || !simDate || sp.until > simDate) && !ownedList.some((x) => x.stakeSponsorId === sp.id)).map((sp) => {
+    const price = Math.max(150000, Math.round(((Number(sp.fee) || 0) * 3) / 10000) * 10000);
+    const imgUrl = mlResolveArtUrl('partner_stake', null, 'investment');
+    return `<div class="card ml-shop-card">
+      <div class="ml-card-media">${imgUrl ? `<img src="${esc(imgUrl)}" alt="">` : mlAssetArtSvg('partner_stake', 'investment')}</div>
+      <div class="ml-sp-head">${mlSponsorMedallionHtml(sp)}<span class="priv-tag">${esc(ML_ASSET_CAT_LABELS.investment())}</span></div>
+      <h4>${esc(tr('Parts de {brand}', { brand: sp.brand }))}</h4>
+      <p class="fineprint">${esc(tr('Investis dans ton partenaire : la valeur suit la santé du partenariat, avec un dividende chaque mois. Si le partenariat s’arrête, elle baisse.'))}</p>
       <div class="ml-shop-foot">
-        <span class="fineprint">${esc(tr('0 € · 0 €/mois'))}</span>
-        <button type="button" class="btn" data-mlsell="${esc(a.id)}">${tr('Restituer')}</button>
+        <span class="fineprint">${esc([tr('Prix : {p}', { p: euros(price) }), tr('Revenu : +{p}/mois', { p: euros(Math.round((price * 0.03) / 12)) }), riskLbl('medium'), tr('Bloqué {n} mois', { n: 12 })].join(' · '))}</span>
+        <button type="button" class="btn primary" data-mlstake="${esc(sp.id)}"${(hub.cash || 0) < price ? ' disabled' : ''}>${tr('Acheter')}</button>
       </div>
     </div>`;
-  }).join('') + catalogFiltered.map((a) => {
-    const owned = (hub.assets || []).find((x) => !x.giftedBy && (x.catalogId === a.id || ML_LEGACY_CAR_MAP[x.catalogId] === a.id));
-    const customImg = owned?.customImage || hub.catalogImages?.[a.id] || (owned?.catalogId ? hub.catalogImages?.[owned.catalogId] : null) || null;
+  }).join('') : '';
+  const catalogCards = stakeCards + catalogFiltered.filter((a) => a.category === 'charity' || !ownsCat(a.id)).map((a) => {
+    const customImg = hub.catalogImages?.[a.id] || null;
     const imgUrl = mlResolveArtUrl(a.id, customImg, a.category);
     const metaLines = [
       a.price > 0 ? tr('Prix : {p}', { p: euros(a.price) }) : tr('Gratuit'),
       a.monthlyCost > 0 ? tr('Entretien : {p}/mois', { p: euros(a.monthlyCost) }) : '',
       a.passiveReturn > 0 ? tr('Revenu : +{p}/mois', { p: euros(a.passiveReturn) }) : '',
+      a.risk ? riskLbl(a.risk) : '',
+      a.risk && a.yieldPct ? tr('Rendement attendu : {p} %/an', { p: a.yieldPct }) : '',
+      a.lockMonths ? tr('Bloqué {n} mois', { n: a.lockMonths }) : '',
     ].filter(Boolean).join(' · ');
-    return `<div class="card ml-shop-card${owned ? ' owned' : ''}">
+    return `<div class="card ml-shop-card">
       <div class="ml-card-media">
         ${imgUrl ? `<img src="${esc(imgUrl)}" alt="${esc(a.label())}">` : mlAssetArtSvg(a.id, a.category)}
-        <div class="ml-card-media-acts">
-          <button type="button" class="ml-media-btn" data-mlimg-target="asset" data-mlimg-id="${esc(a.id)}" title="${esc(tr('Photo personnalisée'))}">${hi('camera')}</button>
-          ${customImg ? `<button type="button" class="ml-media-btn" data-mlimg-clear="asset" data-mlimg-id="${esc(a.id)}" title="${esc(tr('Retirer la photo'))}">${hi('xmark')}</button>` : ''}
-        </div>
+        ${mediaActs(a.id, Boolean(customImg))}
       </div>
-      <div class="ml-sp-head"><span class="priv-tag">${esc(ML_ASSET_CAT_LABELS[a.category]())}</span>${owned ? `<span class="priv-badge on">${tr('Possédé')}</span>` : ''}</div>
+      <div class="ml-sp-head"><span class="priv-tag">${esc(ML_ASSET_CAT_LABELS[a.category]())}</span></div>
       <h4>${esc(a.label())}</h4>
       <p class="fineprint">${esc(a.desc())}</p>
       <div class="ml-shop-foot">
         <span class="fineprint">${esc(metaLines)}</span>
-        ${owned
-          ? (a.id !== 'rented_studio' && a.category !== 'charity'
-            ? `<button type="button" class="btn" data-mlsell="${esc(owned.id)}">${a.category === 'staff' ? tr('Licencier') : tr('Revendre')}</button>`
-            : '')
-          : `<button type="button" class="btn primary" data-mlbuy="${a.id}"${(hub.cash || 0) < a.price ? ' disabled' : ''}>${tr('Acheter')}</button>`}
-      </div>
-    </div>`;
-  }).join('') + ownedCustom.map((a) => {
-    const imgUrl = mlResolveArtUrl(a.id, a.customImage, a.category, a.name);
-    return `<div class="card ml-shop-card owned">
-      <div class="ml-card-media">
-        ${imgUrl ? `<img src="${esc(imgUrl)}" alt="${esc(a.name)}">` : mlAssetArtSvg(a.id, a.category)}
-        <div class="ml-card-media-acts">
-          <button type="button" class="ml-media-btn" data-mlimg-target="asset" data-mlimg-id="${esc(a.id)}" title="${esc(tr('Photo personnalisée'))}">${hi('camera')}</button>
-          ${a.customImage ? `<button type="button" class="ml-media-btn" data-mlimg-clear="asset" data-mlimg-id="${esc(a.id)}" title="${esc(tr('Retirer la photo'))}">${hi('xmark')}</button>` : ''}
-        </div>
-      </div>
-      <div class="ml-sp-head"><span class="priv-tag">${esc(a.customCategory || (ML_ASSET_CAT_LABELS[a.category] || ML_ASSET_CAT_LABELS.custom)())}</span><span class="priv-badge on">${tr('Possédé')}</span></div>
-      <h4>${esc(a.name)}</h4>
-      <div class="ml-shop-foot">
-        <span class="fineprint">${esc(euros(a.price))}${a.monthlyCost ? ` · ${esc(euros(a.monthlyCost))}/m` : ''}</span>
-        ${a.category !== 'charity' ? `<button type="button" class="btn" data-mlsell="${esc(a.id)}">${a.category === 'staff' ? tr('Licencier') : tr('Revendre')}</button>` : ''}
+        <button type="button" class="btn primary" data-mlbuy="${a.id}"${(hub.cash || 0) < a.price ? ' disabled' : ''}>${tr('Acheter')}</button>
       </div>
     </div>`;
   }).join('');
-
   const annualWage = Number(s.player?.salary) || 0;
   const annualSponsors = (hub.sponsors || []).reduce((sum, sp) => sum + (Number(sp.fee) || 0), 0);
   const annualPassive = (hub.assets || []).reduce((sum, a) => sum + (Number(a.passiveReturn) || 0) * 12, 0);
@@ -10973,6 +11017,10 @@ function renderMyLife(page) {
     </section>
 
     <section class="ml-panel"${tab === 'shop' ? '' : ' hidden'}>
+      ${ownedCards ? `<div class="card ml-card">
+        <div class="ml-sec-head"><h3>${tr('Ce que tu possèdes')}</h3><span class="fineprint">${esc(tr('Valeur totale : {v}', { v: euros(ownedTotal) }))}</span></div>
+        <div class="ml-shop-grid">${ownedCards}</div>
+      </div>` : ''}
       <div class="card ml-card">
         <div class="ml-sec-head"><h3>${tr('Patrimoine, staff & style de vie')}</h3><div class="ml-chips">${shopFilterBtns}</div></div>
         <div class="ml-shop-grid">${catalogCards}</div>
@@ -11352,6 +11400,11 @@ function renderMyLife(page) {
         await runAndOpenScene(() => live.buyLifeAsset({ catalogId: b.dataset.mlbuy, ...(carDeal ? { carDeal } : {}) }), tr('Achat confirmé.'));
         if (carDeal === 'rival') toast(tr('Ton partenaire automobile n’apprécie pas : sa confiance baisse.'), true);
       } catch (err) { toast(err.message, true); }
+    };
+  });
+  page.querySelectorAll('[data-mlstake]').forEach((b) => {
+    b.onclick = async () => {
+      try { await runAndOpenScene(() => live.buyLifeAsset({ partnerStake: b.dataset.mlstake }), tr('Achat confirmé.')); } catch (err) { toast(err.message, true); }
     };
   });
   page.querySelectorAll('[data-mlsell]').forEach((b) => {

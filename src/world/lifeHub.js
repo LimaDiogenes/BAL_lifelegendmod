@@ -43,7 +43,7 @@ const OFFER_PERSON_NAMES = [
   'Lucas Nogueira', 'Hannah Sterling',
 ];
 
-const ASSET_CATEGORIES = ['home', 'car', 'staff', 'investment', 'charity'];
+const ASSET_CATEGORIES = ['home', 'car', 'staff', 'investment', 'venture', 'collection', 'luxury', 'charity'];
 
 const ASSET_CATALOG = [
   { id: 'rented_studio', category: 'home', minStage: 'rookie', price: 0, monthlyCost: 1800, passiveReturn: 0, perks: {} },
@@ -62,10 +62,30 @@ const ASSET_CATALOG = [
   { id: 'personal_physio', category: 'staff', minStage: 'rising', price: 18000, monthlyCost: 5800, passiveReturn: 0, perks: { manager: 3 } },
   { id: 'pr_manager', category: 'staff', minStage: 'rising', price: 25000, monthlyCost: 7500, passiveReturn: 0, perks: { media: 3, sponsors: 3 } },
   { id: 'social_team', category: 'staff', minStage: 'established', price: 32000, monthlyCost: 8500, passiveReturn: 0, perks: { fans: 3, followerBoost: 0.01 } },
-  { id: 'youth_academy_fund', category: 'investment', minStage: 'rising', price: 180000, monthlyCost: 0, passiveReturn: 2400, perks: { fans: 3, manager: 1 } },
-  { id: 'brand_portfolio', category: 'investment', minStage: 'established', price: 600000, monthlyCost: 0, passiveReturn: 9500, perks: { sponsors: 3 } },
-  { id: 'real_estate_fund', category: 'investment', minStage: 'established', price: 1400000, monthlyCost: 0, passiveReturn: 21000, perks: {} },
+  { id: 'youth_academy_fund', category: 'investment', minStage: 'rising', price: 180000, monthlyCost: 0, passiveReturn: 2400, perks: { fans: 3, manager: 1 }, risk: 'low', yieldPct: 2, lockMonths: 12 },
+  { id: 'brand_portfolio', category: 'investment', minStage: 'established', price: 600000, monthlyCost: 0, passiveReturn: 9500, perks: { sponsors: 3 }, risk: 'medium', yieldPct: 6, lockMonths: 12 },
+  { id: 'real_estate_fund', category: 'investment', minStage: 'established', price: 1400000, monthlyCost: 0, passiveReturn: 21000, perks: {}, risk: 'low', yieldPct: 3, lockMonths: 12 },
   { id: 'local_clinic_gift', category: 'charity', minStage: 'rookie', price: 35000, monthlyCost: 0, passiveReturn: 0, perks: { fans: 5, media: 4 } },
+  { id: 'savings_bonds', category: 'investment', minStage: 'rookie', price: 50000, monthlyCost: 0, passiveReturn: 0, perks: {}, risk: 'low', yieldPct: 3, lockMonths: 12 },
+  { id: 'index_portfolio', category: 'investment', minStage: 'rising', price: 250000, monthlyCost: 0, passiveReturn: 0, perks: {}, risk: 'medium', yieldPct: 7, lockMonths: 6 },
+  { id: 'startup_fund', category: 'investment', minStage: 'established', price: 400000, monthlyCost: 0, passiveReturn: 0, perks: { media: 1 }, risk: 'high', yieldPct: 18, lockMonths: 24 },
+  { id: 'rental_property', category: 'investment', minStage: 'rising', price: 900000, monthlyCost: 1500, passiveReturn: 4200, perks: {}, risk: 'low', yieldPct: 2, lockMonths: 12 },
+  { id: 'restaurant_stake', category: 'venture', minStage: 'rising', price: 300000, monthlyCost: 0, passiveReturn: 2200, perks: { fans: 2, media: 1 }, risk: 'medium', yieldPct: 4, lockMonths: 12 },
+  { id: 'clothing_line', category: 'venture', minStage: 'established', price: 750000, monthlyCost: 2500, passiveReturn: 7500, perks: { fans: 3, media: 3 }, risk: 'high', yieldPct: 8, lockMonths: 18 },
+  { id: 'esports_team', category: 'venture', minStage: 'established', price: 1200000, monthlyCost: 6000, passiveReturn: 11000, perks: { fans: 4, media: 2 }, risk: 'high', yieldPct: 10, lockMonths: 18 },
+  { id: 'physio_clinic', category: 'venture', minStage: 'established', price: 900000, monthlyCost: 3000, passiveReturn: 7000, perks: { manager: 2 }, risk: 'medium', yieldPct: 5, lockMonths: 12 },
+  { id: 'watch_collection', category: 'collection', minStage: 'rising', price: 180000, monthlyCost: 300, passiveReturn: 0, perks: { media: 1 }, risk: 'low', yieldPct: 5, lockMonths: 0 },
+  { id: 'art_collection', category: 'collection', minStage: 'established', price: 1500000, monthlyCost: 2000, passiveReturn: 0, perks: { media: 2, sponsors: 1 }, risk: 'medium', yieldPct: 6, lockMonths: 0 },
+  { id: 'signed_shirts', category: 'collection', minStage: 'rookie', price: 40000, monthlyCost: 0, passiveReturn: 0, perks: { fans: 2 }, risk: 'low', yieldPct: 4, lockMonths: 0 },
+  { id: 'parents_house', category: 'home', minStage: 'rising', price: 650000, monthlyCost: 900, passiveReturn: 0, perks: { fans: 3, media: 2 } },
+  { id: 'hometown_foundation', category: 'charity', minStage: 'established', price: 400000, monthlyCost: 2500, passiveReturn: 0, perks: { fans: 8, media: 4 } },
+  { id: 'security_detail', category: 'staff', minStage: 'established', price: 15000, monthlyCost: 12000, passiveReturn: 0, perks: { media: 1, manager: 1 } },
+  { id: 'small_jet', category: 'luxury', minStage: 'superstar', price: 9500000, monthlyCost: 85000, passiveReturn: 0, perks: { media: 3, fans: 2 } },
+  { id: 'medium_jet', category: 'luxury', minStage: 'superstar', price: 28000000, monthlyCost: 170000, passiveReturn: 0, perks: { media: 4, fans: 3 } },
+  { id: 'big_jet', category: 'luxury', minStage: 'superstar', price: 72000000, monthlyCost: 330000, passiveReturn: 0, perks: { media: 6, fans: 4, sponsors: 2 } },
+  { id: 'small_yacht', category: 'luxury', minStage: 'established', price: 3200000, monthlyCost: 28000, passiveReturn: 0, perks: { media: 2, fans: 1 } },
+  { id: 'medium_yacht', category: 'luxury', minStage: 'superstar', price: 22000000, monthlyCost: 180000, passiveReturn: 0, perks: { media: 4, fans: 2 } },
+  { id: 'big_yacht', category: 'luxury', minStage: 'superstar', price: 110000000, monthlyCost: 900000, passiveReturn: 0, perks: { media: 6, fans: 3, sponsors: 2 } },
   { id: 'foundation_launch', category: 'charity', minStage: 'established', price: 220000, monthlyCost: 2000, passiveReturn: 0, perks: { fans: 8, sponsors: 5, media: 6 } },
 ];
 
@@ -1118,7 +1138,8 @@ function lifeHubTick(state, snapshot, { changes = {}, newId = () => `id_${Date.n
       addLedger(hub, { date: today, amount: sponsorRetainer, kind: 'sponsor', label: `retainers:${activeSponsors.length}` });
     }
 
-    const passive = (hub.assets || []).reduce((sum, a) => sum + Math.round(((Number(a.passiveReturn) || 0) * days) / 30), 0);
+    revalueAssets(hub, today);
+    const passive = (hub.assets || []).reduce((sum, a) => sum + (a.failed ? 0 : Math.round(((Number(a.passiveReturn) || 0) * days) / 30)), 0);
     if (passive > 0) {
       hub.cash += passive;
       addLedger(hub, { date: today, amount: passive, kind: 'investment', label: 'passive_yield' });
@@ -1259,6 +1280,50 @@ function lifeHubTick(state, snapshot, { changes = {}, newId = () => `id_${Date.n
   return hub;
 }
 
+// Valeur des placements (2.0) : chaque mois, un rendement attendu plus une variation selon le risque (tirage stable).
+// Une start-up peut faire faillite ; une part chez un partenaire suit la confiance du partenaire, et perd 15 % s'il part.
+const RISK_SWING = { low: 0.01, medium: 0.03, high: 0.07 };
+const monthKeyAdd = (key, n) => { const [y, m] = key.split('-').map(Number); const t = y * 12 + (m - 1) + n; return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}`; };
+const monthsApart = (a, b) => { const [ay, am] = a.split('-').map(Number); const [by, bm] = b.split('-').map(Number); return (by - ay) * 12 + (bm - am); };
+function lockedUntil(asset) {
+  if (!asset?.lockMonths || !asset.since) return '';
+  return `${monthKeyAdd(String(asset.since).slice(0, 7), asset.lockMonths)}${String(asset.since).slice(7, 10) || '-01'}`;
+}
+function partnerStakePrice(sp) {
+  return Math.max(150000, Math.round(((Number(sp?.fee) || 0) * 3) / 10000) * 10000);
+}
+function revalueAssets(hub, today) {
+  const mk = String(today || '').slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(mk)) return;
+  for (const a of hub.assets || []) {
+    if (!a.risk || a.failed) continue;
+    a.valuedMonth ||= String(a.since || today).slice(0, 7);
+    const months = Math.min(24, monthsApart(a.valuedMonth, mk));
+    if (months <= 0) continue;
+    let v = Number(a.resaleValue) || Number(a.price) || 0;
+    const sp = a.stakeSponsorId ? (hub.sponsors || []).find((x) => x.id === a.stakeSponsorId) : null;
+    if (a.stakeSponsorId && !sp && !a.partnerGone) {
+      a.partnerGone = true;
+      v *= 0.85;
+      pushRecent(hub, { date: today, kind: 'asset', text: `His stake in ${a.brand || 'a former partner'} lost value when the partnership ended` });
+    }
+    for (let i = 1; i <= months; i += 1) {
+      const key = monthKeyAdd(a.valuedMonth, i);
+      if (a.risk === 'high' && a.category === 'investment' && (hashStr(`${a.id}|${key}|fail`) % 1000) < 12) {
+        v *= 0.15;
+        a.failed = true;
+        pushRecent(hub, { date: today, kind: 'asset', text: `One of his start-up bets folded (${a.name})` });
+        break;
+      }
+      let rate = (Number(a.yieldPct) || 0) / 1200 + ((hashStr(`${a.id}|${key}`) % 1000) / 1000 - 0.5) * 2 * (RISK_SWING[a.risk] || 0);
+      if (sp) rate += ((hub.meters?.sponsors ?? 50) - 50) / 2000;
+      v *= 1 + rate;
+    }
+    a.resaleValue = Math.max(0, Math.round(v));
+    a.valuedMonth = mk;
+  }
+}
+
 function buyAsset(state, payload = {}, gameDate = '', newId = () => `id_${Date.now()}`) {
   const hub = ensureLifeHub(state, state.snapshot);
   const custom = Boolean(payload.custom);
@@ -1278,6 +1343,12 @@ function buyAsset(state, payload = {}, gameDate = '', newId = () => `id_${Date.n
     const monthlyCost = Math.max(0, Math.round(Number(payload.monthlyCost) || 0));
     const customImage = payload.customImage ? cleanText(payload.customImage, 120) : '';
     item = { id: newId(), catalogId: null, category, ...(customCategory ? { customCategory } : {}), ...(customImage ? { customImage } : {}), name, price, resaleValue: price, monthlyCost, passiveReturn: 0, perks: { fans: category === 'charity' ? 4 : 1, media: 1 }, custom: true };
+  } else if (payload.partnerStake) {
+    const sp = (hub.sponsors || []).find((x) => x.id === payload.partnerStake && !x.linkedBootDeal);
+    if (!sp) throw new Error('Élément introuvable.');
+    if (hub.assets.some((a) => a.stakeSponsorId === sp.id)) throw new Error('Élément déjà possédé.');
+    const price = partnerStakePrice(sp);
+    item = { id: newId(), catalogId: 'partner_stake', category: 'investment', name: `${sp.brand} stake`, brand: sp.brand, stakeSponsorId: sp.id, price, resaleValue: price, monthlyCost: 0, passiveReturn: Math.round((price * 0.03) / 12), perks: { sponsors: 3 }, risk: 'medium', yieldPct: 8, lockMonths: 12, custom: false };
   } else {
     const resolvedId = LEGACY_CAR_ALIAS[payload.catalogId] || payload.catalogId;
     const cat = ASSET_CATALOG.find((a) => a.id === resolvedId);
@@ -1287,6 +1358,7 @@ function buyAsset(state, payload = {}, gameDate = '', newId = () => `id_${Date.n
     }
     const savedImg = cleanText(payload.customImage || hub.catalogImages?.[cat.id] || hub.catalogImages?.[payload.catalogId], 120);
     item = { id: cat.category === 'charity' ? newId() : cat.id, catalogId: cat.id, category: cat.category, name: cat.id, price: cat.price, resaleValue: cat.price, monthlyCost: cat.monthlyCost, passiveReturn: cat.passiveReturn, perks: { ...cat.perks }, ...(savedImg ? { customImage: savedImg } : {}), custom: false };
+    if (cat.risk) Object.assign(item, { risk: cat.risk, yieldPct: cat.yieldPct || 0, lockMonths: cat.lockMonths || 0 });
   }
 
   let rivalOf = '';
@@ -1319,7 +1391,9 @@ function sellAsset(state, assetId, gameDate = '') {
   if (idx < 0) throw new Error('Élément introuvable.');
   const asset = hub.assets[idx];
   const isStaff = asset.category === 'staff';
-  const refund = isStaff || asset.category === 'charity' || asset.giftedBy ? 0 : Math.round((asset.resaleValue ?? asset.price ?? 0) * (asset.category === 'investment' ? 0.9 : 0.75));
+  const value = asset.resaleValue ?? asset.price ?? 0;
+  const placed = asset.risk ? (asset.category === 'collection' ? 0.9 : (lockedUntil(asset) && gameDate && gameDate < lockedUntil(asset) ? 0.85 : 0.97)) : null;
+  const refund = isStaff || asset.category === 'charity' || asset.giftedBy ? 0 : Math.round(value * (placed ?? (asset.category === 'investment' ? 0.9 : 0.75)));
   if (refund > 0) {
     hub.cash += refund;
     addLedger(hub, { date: gameDate, amount: refund, kind: 'asset_sell', label: asset.name });
@@ -1834,6 +1908,9 @@ module.exports = {
   isAutomotiveSponsor,
   grantSponsorCars,
   grantSponsorPerks,
+  partnerStakePrice,
+  revalueAssets,
+  lockedUntil,
   pushGiftedSponsorCar,
   carClauseFor,
   calibrateLifeHub,

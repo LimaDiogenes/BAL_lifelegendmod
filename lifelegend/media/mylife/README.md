@@ -130,3 +130,25 @@ If you buy custom assets in **Lifestyle & Net Worth › Buy a custom asset**, yo
 | `cat_investment.png` | Business & Investments (`investment`) |
 | `cat_charity.png` | Charity & Foundations (`charity`) |
 | `cat_custom.png` | Custom / Other (`custom`) |
+
+---
+
+## 2.0 additions (bundled)
+
+| Filename | Category | Item |
+| :--- | :--- | :--- |
+| `savings_bonds.jpg` | Investments | Bonds & safe savings |
+| `startup_fund.jpg` | Investments | Start-up fund |
+| `partner_stake.jpg` | Investments | Stake in a partner (any sponsor) |
+| `clothing_line.jpg` | Businesses (`venture`) | Your clothing line |
+| `esports_team.jpg` | Businesses (`venture`) | Esports team |
+| `watch_collection.jpg` | Collections | Watch collection |
+| `art_collection.jpg` | Collections | Art collection |
+| `signed_shirts.jpg` | Collections | Signed shirts |
+| `parents_house.jpg` | Housing | A house for your parents |
+| `small_jet.jpg`, `medium_jet.jpg`, `big_jet.jpg` | Jets & yachts (`luxury`) | Light / midsize / long-range jet |
+| `small_yacht.jpg`, `medium_yacht.jpg`, `big_yacht.jpg` | Jets & yachts (`luxury`) | Small yacht / 40-metre yacht / superyacht |
+| `sponsor_watch.jpg` | Gift | Watch from a watch partner |
+
+Also used by existing ids: `index_portfolio`, `rental_property`, `restaurant_stake`, `physio_clinic`, `security_detail`,
+`hometown_foundation`.

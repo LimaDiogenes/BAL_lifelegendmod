@@ -19,6 +19,13 @@ LifeLegend 2.0 est livré avec blue41 PES2021 Mod Studio (il peut aussi être ut
   les trois cases en icônes à droite, « Retirer cette personne » à côté du pseudo, lignes plus serrées.
 - Calibration de Ma vie en mode sponsors réaliste : les sponsors déjà en place sont gardés (avant : la liste repartait
   vide). Le mode réaliste ne fait que gérer la suite (offres, enchères).
+- Lifestyle & patrimoine : section « Ce que tu possèdes » en tête (tout le patrimoine, cadeaux compris, valeur totale) ;
+  la boutique ne montre que le reste. Nouveaux articles : placements (obligations, portefeuille indiciel, fonds
+  start-up, bien locatif), parts chez chaque partenaire, entreprises (restaurant, marque de vêtements, équipe esport,
+  clinique du sport), collections (montres, art, maillots signés), une maison pour tes parents, une fondation dans ta
+  ville natale, une équipe de sécurité, des jets et des yachts à prix réalistes. Les placements ont un risque, un
+  rendement attendu et une durée de blocage ; leur valeur bouge chaque mois, une start-up peut faire faillite, une part
+  chez un partenaire suit sa confiance.
 - Sponsors automobiles : la voiture offerte se choisit dans le calendrier parmi 2 ou 3 vrais modèles de la marque
   (gammes 2025-2026 des 20 marques du catalogue, src/world/carLineups.js), ou on garde la sienne. La rendre moins de
   90 jours après l'avoir reçue coûte un peu de confiance. Clause à l'achat : la même voiture chez le sponsor à −20 %,
