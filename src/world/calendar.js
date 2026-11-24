@@ -406,8 +406,8 @@ function addCustomCalendarEvent(state, { date, title, category = 'personal', cus
   const builtIn = CALENDAR_EVENT_CATEGORIES.includes(rawCat);
   const cat = builtIn ? rawCat : 'custom';
   const customCat = !builtIn ? (rawCustom || (rawCat && rawCat !== '__custom__' && rawCat !== 'custom' ? rawCat : '')) : '';
-  // proches du cercle invités (2.0) : au plus 4, nom et rôle
-  const guests = (Array.isArray(people) ? people : []).map((p) => ({ name: cleanStr(p?.name, 60), role: cleanStr(p?.role, 40) })).filter((p) => p.name).slice(0, 4);
+  // proches du cercle invités (2.0) : au plus 10, nom et rôle
+  const guests = (Array.isArray(people) ? people : []).map((p) => ({ name: cleanStr(p?.name, 60), role: cleanStr(p?.role, 40) })).filter((p) => p.name).slice(0, 10);
   const ev = { id: newId(), date: d, title: cleanTitle, category: cat, ...(customCat ? { customCategory: customCat } : {}), ...(guests.length ? { people: guests } : {}) };
   cal.customEvents.push(ev);
   cal.customEvents.sort((a, b) => a.date.localeCompare(b.date));

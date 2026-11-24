@@ -1964,10 +1964,10 @@ function shellNotifications(s) {
   if (warsN) items.push({ label: trn(warsN, '{n} enchère de sponsors en cours', '{n} enchères de sponsors en cours'), site: 'mylife', mlTab: 'sponsors', kind: 'war' });
   const otN = (hub.oneTimeOffers || []).length;
   if (otN) items.push({ label: trn(otN, '{n} proposition ponctuelle', '{n} propositions ponctuelles'), site: 'mylife', mlTab: 'sponsors', kind: 'onetime' });
-  const decN = (state.calendar?.pendingDecisions || []).length;
+  // ce qui est planifié ne compte que le jour venu (2.0) : une obligation devient alors une décision du calendrier
+  const dueToday = state.calendar?.simDate || state.snapshot?.gameDate || '';
+  const decN = (state.calendar?.pendingDecisions || []).filter((d) => !d.date || !dueToday || d.date <= dueToday).length;
   if (decN) items.push({ label: trn(decN, '{n} décision calendrier en attente', '{n} décisions calendrier en attente'), site: 'mylife', mlTab: 'calendar', kind: 'decision' });
-  const obN = (hub.obligations || []).filter((o) => o.status === 'pending').length;
-  if (obN) items.push({ label: trn(obN, '{n} obligation partenaire à planifier', '{n} obligations partenaires à planifier'), site: 'mylife', mlTab: 'sponsors', kind: 'ob' });
   if (hub.pendingDilemma) items.push({ label: tr('Un dilemme hors-terrain attend ta décision'), site: 'mylife', mlTab: 'overview', kind: 'dilemma' });
   return items;
 }
@@ -1997,7 +1997,7 @@ function paintShell() {
       const bounds = mlCalendarBounds(s, cal);
       const calModeFull = settings?.calendarMode === 'full';
       const canAdvance = calModeFull && bounds.canAdvance;
-      const pendingDecs = cal.pendingDecisions || [];
+      const pendingDecs = (cal.pendingDecisions || []).filter((d) => !d.date || !simDate || d.date <= simDate);
       const dayItems = mlAgendaItems(s, state.lifeHub, cal, simDate.slice(0, 7)).items.filter((x) => x.date === simDate);
       const unmatchedDecs = pendingDecs.filter((d) => !dayItems.some((it) => mlDecisionMatchesItem(d, it)));
       const popEntries = [
@@ -2138,7 +2138,7 @@ function render() {
   const mlDaysToMatch = mlToday && mlNext ? Math.round((Date.parse(mlNext) - Date.parse(mlToday)) / 86400000) : -1;
   const mlApReminder = mlHub?.calibrated && (mlHub.ap || 0) > 0 && mlDaysToMatch >= 0 && mlDaysToMatch <= 2 ? 1 : 0;
   const mlPending = mlHub?.calibrated
-    ? (mlApReminder + (mlHub.pendingDilemma ? 1 : 0) + (mlHub.offers?.length || 0) + (mlHub.biddingWars?.length || 0) + (mlHub.oneTimeOffers?.length || 0) + (state?.calendar?.pendingDecisions?.length || 0) + (mlHub.obligations || []).filter((o) => o.status === 'pending').length + mlSfxPending)
+    ? (mlApReminder + (mlHub.pendingDilemma ? 1 : 0) + (mlHub.offers?.length || 0) + (mlHub.biddingWars?.length || 0) + (mlHub.oneTimeOffers?.length || 0) + (state?.calendar?.pendingDecisions || []).filter((d) => !d.date || !mlToday || d.date <= mlToday).length + mlSfxPending)
     : (state?.snapshot ? 1 : 0);
   tabs.innerHTML = SITES.filter((s) => !s.hidden).map((s) => `
     <button class="tab${s.id === current ? ' active' : ''}" data-site="${s.id}" aria-label="${esc(s.label())}"${s.id === current ? ' aria-current="page"' : ''}>
@@ -10536,7 +10536,7 @@ function renderMyLife(page) {
     ['daysoff', tr('Journées libres'), hub.ap || 0],
     ['finances', tr('Finances'), 0],
   ];
-  const calTabBadge = pendingDecs.length;
+  const calTabBadge = pendingDecs.filter((d) => !d.date || !simDate || d.date <= simDate).length;
 
   const dilemmaDef = hub.pendingDilemma ? ML_DILEMMAS_UI[hub.pendingDilemma.dilemmaId] : null;
   const dilemmaHtml = dilemmaDef ? `<section class="card ml-dilemma">
@@ -11613,7 +11613,7 @@ function renderMyLife(page) {
         const date = $('#ml-calev-date').value;
         const cat = $('#ml-calev-cat').value;
         const circle = Object.values(state.persona?.circle || {}).flat().filter((p) => p?.name).slice(0, 24);
-        const people = [...page.querySelectorAll('.ml-calev-person:checked')].map((c) => circle[Number(c.value)]).filter(Boolean).slice(0, 4).map((p) => ({ name: p.name, role: p.role || '' }));
+        const people = [...page.querySelectorAll('.ml-calev-person:checked')].map((c) => circle[Number(c.value)]).filter(Boolean).slice(0, 10).map((p) => ({ name: p.name, role: p.role || '' }));
         if (people.length) toast(tr('Préparation des choix…'));
         $('#ml-calev-go').disabled = true;
         try {
