@@ -25,6 +25,15 @@ LifeLegend 2.0 est livré avec blue41 PES2021 Mod Studio (il peut aussi être ut
 - Variété : les réactions de tes proches sur Kop passent de 1-2 à 6-7 phrases par personnalité, les posts des marques
   de 4 à 8 (3 à la signature), et l'app se souvient des phrases déjà vues dans la carrière pour ne pas les reprendre
   tant qu'il en reste d'autres.
+- Tes événements vivent : après ton choix, une scène qui nomme tous ceux qui étaient là, les supporters qui réagissent
+  quand c'était public, jusqu'à trois proches présents sur Kop qui commentent (chacun avec sa personnalité), le vestiaire
+  si tes coéquipiers étaient là ; un ou deux jours plus tard, des messages privés de ceux qui étaient là (merci, photos,
+  « on remet ça ? »). Un proche que tu n'as pas vu depuis 60 jours finit par te le dire, gentiment (une fois par mois au
+  plus). Pareil pour les événements tirés de ton profil et les interviews. Corrigé : un événement apparaissait deux fois
+  le jour même en calendrier Complet.
+- Conférence d'après-match : la fenêtre demande d'abord (Y aller, Plus tard, Ne pas venir) ; les questions ne sont
+  écrites qu'après « Y aller », donc aucune requête si tu n'y vas pas. Nouveau réglage « Toujours décliner ». Pour un
+  joueur réservé, ses silences sont notés sans en faire un scandale.
 - Interviews personnelles par l'agent : podcasts, plateaux télé, chaîne du club, couvertures, documentaires et lives
   caritatifs, construits par l'app (aucune requête IA) et envoyés par ton agent par mail, environ une toutes les 9 à 16
   journées, jamais plus de deux en attente. Dans le mail : accepter, demander plus (une fois) ou refuser (sans

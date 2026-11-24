@@ -136,7 +136,7 @@ function normalizeAiChoices(raw) {
 function eventChoicesToDecision(ev) {
   return (ev.aiChoices || []).map((c) => {
     const k = AI_CHOICE_KINDS[c.kind] || AI_CHOICE_KINDS.warm;
-    return { id: c.id, ...(c.label ? { label: c.label } : {}), ...(c.who ? { who: c.who } : {}), cost: k.cost || 0, effects: { ...k.effects }, memory: `${ev.title}: ${c.label || `${c.kind} time with ${c.who || 'his circle'}`}` };
+    return { id: c.id, ...(c.label ? { label: c.label } : {}), ...(c.who ? { who: c.who } : {}), cost: k.cost || 0, effects: { ...k.effects }, memory: `${ev.title} with ${(ev.people || []).map((p) => p.name).join(', ') || 'his circle'}: ${c.label || `${c.kind} time`}` };
   });
 }
 

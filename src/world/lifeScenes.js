@@ -1925,6 +1925,88 @@ function renderObligationScene(ctx, brand, handleTag, event = {}, state = null) 
   return { templateId: picked.id, headline, narrative, kop, huddle, hudEmoji: [['😂', 3], ['🔥', 3]] };
 }
 
+// Événements du calendrier (2.0) : une scène après le choix, qui nomme tous ceux qui étaient là, et des réactions
+// (supporters, proches présents sur Kop, vestiaire). {E} événement, {W} les présents, {P} joueur, {C} club, {O} média, {H} pseudo.
+const CAL_NARRATIVES = {
+  people: [
+    { fr: "{E} avec {W} : {P} prend le temps, loin des caméras. Ce genre de moment compte autant qu’un bon match.", en: "{E} with {W}: {P} takes his time, away from the cameras. Moments like this matter as much as a good game.", pt: "{E} com {W}: {P} aproveita com calma, longe das câmeras. Momentos assim valem tanto quanto um bom jogo.", es: "{E} con {W}: {P} se toma su tiempo, lejos de las cámaras. Momentos así valen tanto como un buen partido.", it: "{E} con {W}: {P} si prende il suo tempo, lontano dalle telecamere. Momenti così contano quanto una bella partita.", de: "{E} mit {W}: {P} nimmt sich Zeit, fernab der Kameras. Solche Momente zählen genauso viel wie ein gutes Spiel." },
+    { fr: "Rires, souvenirs et quelques photos : {W} étaient là pour « {E} ». {P} repart le cœur léger.", en: "Laughs, memories and a few photos: {W} were there for \"{E}\". {P} leaves with a light heart.", pt: "Risadas, lembranças e algumas fotos: {W} estiveram em \"{E}\". {P} sai de coração leve.", es: "Risas, recuerdos y algunas fotos: {W} estuvieron en \"{E}\". {P} se va con el corazón ligero.", it: "Risate, ricordi e qualche foto: {W} c’erano per \"{E}\". {P} torna a casa col cuore leggero.", de: "Lachen, Erinnerungen und ein paar Fotos: {W} waren bei „{E}“ dabei. {P} geht mit leichtem Herzen nach Hause." },
+    { fr: "« {E} » se termine tard. {W} : chacun repart avec son moment avec {P}, et quelqu’un parle déjà de recommencer.", en: "\"{E}\" runs late. {W}: everyone takes home their own moment with {P}, and someone is already talking about doing it again.", pt: "\"{E}\" vai até tarde. {W}: cada um leva o seu momento com {P}, e alguém já fala em repetir.", es: "\"{E}\" se alarga. {W}: cada uno se lleva su momento con {P}, y alguien ya habla de repetir.", it: "\"{E}\" finisce tardi. {W}: ognuno si porta a casa il suo momento con {P}, e qualcuno parla già di rifarlo.", de: "„{E}“ geht bis spät. {W}: Jeder nimmt seinen Moment mit {P} mit, und jemand spricht schon von einer Wiederholung." },
+  ],
+  solo: [
+    { fr: "« {E} » : {P} s’accorde ce moment rien qu’à lui. Le genre de pause qui recharge pour la suite avec {C}.", en: "\"{E}\": {P} keeps this one for himself. The kind of break that recharges him for what comes next at {C}.", pt: "\"{E}\": {P} guarda esse momento só pra ele. O tipo de pausa que recarrega para o que vem no {C}.", es: "\"{E}\": {P} se guarda este momento para él. El tipo de pausa que recarga para lo que viene en el {C}.", it: "\"{E}\": {P} si tiene questo momento tutto per sé. Una pausa che ricarica per quello che verrà al {C}.", de: "„{E}“: {P} behält diesen Moment für sich. Eine Pause, die Kraft gibt für das, was bei {C} kommt." },
+    { fr: "Journée tranquille pour {P} : « {E} », sans téléphone ni pression.", en: "A quiet day for {P}: \"{E}\", no phone, no pressure.", pt: "Dia tranquilo para {P}: \"{E}\", sem celular nem pressão.", es: "Día tranquilo para {P}: \"{E}\", sin móvil ni presión.", it: "Giornata tranquilla per {P}: \"{E}\", niente telefono né pressioni.", de: "Ein ruhiger Tag für {P}: „{E}“, ohne Handy und ohne Druck." },
+  ],
+  persona: [
+    { fr: "{P} prend le temps de revenir à ce qui compte pour lui. Un moment simple, loin du bruit autour de {C}.", en: "{P} makes time for what really matters to him. A simple moment, away from the noise around {C}.", pt: "{P} reserva tempo para o que importa de verdade. Um momento simples, longe do barulho em volta do {C}.", es: "{P} se toma tiempo para lo que de verdad le importa. Un momento sencillo, lejos del ruido del {C}.", it: "{P} si prende del tempo per ciò che conta davvero. Un momento semplice, lontano dal rumore attorno al {C}.", de: "{P} nimmt sich Zeit für das, was ihm wirklich wichtig ist. Ein einfacher Moment, fernab vom Trubel um {C}." },
+    { fr: "Ceux qui connaissent {P} le disent : c’est dans ces moments-là qu’on le reconnaît vraiment.", en: "Those who know {P} say it: moments like this are when you really see who he is.", pt: "Quem conhece o {P} diz: é nesses momentos que se vê quem ele é de verdade.", es: "Quienes conocen a {P} lo dicen: es en estos momentos cuando se ve quién es de verdad.", it: "Chi conosce {P} lo dice: è in momenti così che si vede chi è davvero.", de: "Wer {P} kennt, sagt es: In solchen Momenten sieht man, wer er wirklich ist." },
+  ],
+  media: [
+    { fr: "{P} est l’invité de {O}. Les extraits circulent déjà, et les supporters de {C} les partagent.", en: "{P} is the guest on {O}. Clips are already doing the rounds and {C} fans are sharing them.", pt: "{P} é o convidado do {O}. Os trechos já circulam e a torcida do {C} compartilha.", es: "{P} es el invitado de {O}. Los fragmentos ya circulan y la afición del {C} los comparte.", it: "{P} è ospite di {O}. Gli estratti girano già e i tifosi del {C} li condividono.", de: "{P} ist zu Gast bei {O}. Ausschnitte machen schon die Runde, und die Fans von {C} teilen sie." },
+    { fr: "Une heure avec {O} : {P} se montre sous un autre jour, et ça plaît.", en: "An hour with {O}: {P} shows another side of himself, and people like it.", pt: "Uma hora com {O}: {P} mostra outro lado, e o pessoal curte.", es: "Una hora con {O}: {P} muestra otra cara, y gusta.", it: "Un’ora con {O}: {P} mostra un altro lato di sé, e piace.", de: "Eine Stunde bei {O}: {P} zeigt eine andere Seite, und das kommt an." },
+  ],
+};
+const CAL_KOP = {
+  media: [
+    { fr: "Vous avez vu {H} chez {O} ? Il gagne à être connu 👏", en: "Did you catch {H} on {O}? He gets better the more you know him 👏", pt: "Viram o {H} no {O}? Quanto mais se conhece, melhor 👏", es: "¿Visteis a {H} en {O}? Cuanto más lo conoces, mejor 👏", it: "Avete visto {H} a {O}? Più lo conosci, più ti piace 👏", de: "Habt ihr {H} bei {O} gesehen? Je mehr man ihn kennt, desto besser 👏" },
+    { fr: "{H} chez {O}, meilleur passage de la semaine 🎙️", en: "{H} on {O}, best appearance of the week 🎙️", pt: "{H} no {O}, melhor participação da semana 🎙️", es: "{H} en {O}, la mejor aparición de la semana 🎙️", it: "{H} a {O}, miglior ospitata della settimana 🎙️", de: "{H} bei {O}, bester Auftritt der Woche 🎙️" },
+  ],
+  public: [
+    { fr: "Joli moment partagé par {H} aujourd’hui ❤️", en: "Lovely moment shared by {H} today ❤️", pt: "Momento bonito compartilhado pelo {H} hoje ❤️", es: "Bonito momento compartido por {H} hoy ❤️", it: "Bel momento condiviso da {H} oggi ❤️", de: "Schöner Moment, den {H} heute geteilt hat ❤️" },
+    { fr: "On aime voir {H} comme ça, entouré des siens 🙌", en: "Love seeing {H} like this, surrounded by his people 🙌", pt: "Bom ver o {H} assim, cercado dos seus 🙌", es: "Da gusto ver a {H} así, rodeado de los suyos 🙌", it: "Bello vedere {H} così, circondato dai suoi 🙌", de: "Schön, {H} so zu sehen, umgeben von seinen Leuten 🙌" },
+  ],
+};
+const CAL_HUDDLE = [
+  { fr: "Merci pour hier, c’était top 🙌 On remet ça quand tu veux", en: "Thanks for yesterday, it was great 🙌 Let’s do it again anytime", pt: "Valeu por ontem, foi demais 🙌 Bora repetir quando quiser", es: "Gracias por lo de ayer, fue genial 🙌 Repetimos cuando quieras", it: "Grazie per ieri, è stato top 🙌 Rifacciamolo quando vuoi", de: "Danke für gestern, war super 🙌 Gerne jederzeit wieder" },
+  { fr: "« {E} », meilleure idée de la semaine 😂 Le groupe en parle encore", en: "\"{E}\", best idea of the week 😂 The lads are still talking about it", pt: "\"{E}\", melhor ideia da semana 😂 O grupo ainda comenta", es: "\"{E}\", la mejor idea de la semana 😂 El vestuario todavía habla de ello", it: "\"{E}\", miglior idea della settimana 😂 Il gruppo ne parla ancora", de: "„{E}“, beste Idee der Woche 😂 Die Jungs reden immer noch darüber" },
+];
+const CAL_PERSONA_HEAD = {
+  persona_hobby: { fr: "Journée passion : {X}", en: "Passion day: {X}", pt: "Dia de paixão: {X}", es: "Día de pasión: {X}", it: "Giornata di passione: {X}", de: "Tag der Leidenschaft: {X}" },
+  persona_hometown: { fr: "Retour à {X}", en: "Back to {X}", pt: "De volta a {X}", es: "De vuelta en {X}", it: "Ritorno a {X}", de: "Zurück in {X}" },
+  persona_idol: { fr: "Une rencontre : {X}", en: "A meeting: {X}", pt: "Um encontro: {X}", es: "Un encuentro: {X}", it: "Un incontro: {X}", de: "Eine Begegnung: {X}" },
+  persona_dream: { fr: "Ton rêve : {X}", en: "Your dream: {X}", pt: "Seu sonho: {X}", es: "Tu sueño: {X}", it: "Il tuo sogno: {X}", de: "Dein Traum: {X}" },
+  persona_turning: { fr: "Souvenir : {X}", en: "Looking back: {X}", pt: "Lembrança: {X}", es: "Recuerdo: {X}", it: "Ricordo: {X}", de: "Erinnerung: {X}" },
+  first_club_return: { fr: "Retrouvailles avec {X}", en: "Reunion with {X}", pt: "Reencontro com o {X}", es: "Reencuentro con el {X}", it: "Ritorno contro il {X}", de: "Wiedersehen mit {X}" },
+};
+const CAL_MEDIA_KIND = {
+  podcast: { fr: "Podcast", en: "Podcast", pt: "Podcast", es: "Podcast", it: "Podcast", de: "Podcast" },
+  tv_show: { fr: "Plateau télé", en: "TV show", pt: "Programa de TV", es: "Programa de televisión", it: "Programma TV", de: "TV-Sendung" },
+  club_channel: { fr: "Chaîne du club", en: "Club channel", pt: "Canal do clube", es: "Canal del club", it: "Canale del club", de: "Vereinskanal" },
+  magazine_cover: { fr: "Couverture de magazine", en: "Magazine cover", pt: "Capa de revista", es: "Portada de revista", it: "Copertina di rivista", de: "Magazin-Cover" },
+  documentary: { fr: "Documentaire", en: "Documentary", pt: "Documentário", es: "Documental", it: "Documentario", de: "Dokumentation" },
+  charity_stream: { fr: "Live caritatif", en: "Charity live stream", pt: "Live beneficente", es: "Directo benéfico", it: "Live di beneficenza", de: "Benefiz-Livestream" },
+};
+const CAL_AND = {"fr": "et", "en": "and", "pt": "e", "es": "y", "it": "e", "de": "und"};
+
+function joinNames(names, l) {
+  const list = names.filter(Boolean);
+  if (list.length <= 1) return list[0] || '';
+  return `${list.slice(0, -1).join(', ')} ${CAL_AND[l] || 'and'} ${list.at(-1)}`;
+}
+
+function renderCalendarEventScene(ctx, event, handleTag) {
+  const { l, player, club } = ctx;
+  const names = (event.people || []).map((p) => p.name).filter(Boolean);
+  const vars = { E: event.title || '', W: joinNames(names, l), P: player, C: club, O: event.title || '', H: handleTag, X: event.title || '' };
+  const fill = (t) => trScene(l, t, vars);
+  let headline = event.title || '';
+  let group = names.length ? 'people' : 'solo';
+  if (event.decKind === 'media_event') {
+    group = 'media';
+    headline = `${event.title} · ${trScene(l, CAL_MEDIA_KIND[event.mediaKind] || CAL_MEDIA_KIND.podcast)}`;
+  } else if (event.decKind === 'persona_event') {
+    group = 'persona';
+    headline = CAL_PERSONA_HEAD[event.eventKey] ? fill(CAL_PERSONA_HEAD[event.eventKey]) : headline;
+  }
+  const narrative = fill(pickFresh(ctx.state, `cal:${group}`, CAL_NARRATIVES[group], `${ctx.seed}|${event.refId}`));
+  const publicKind = ['public', 'generous', 'media_open', 'media_promo', 'media_bold', 'media_give', 'media_team', 'hobby_film', 'hobby_charity', 'home_kids', 'home_press', 'idol_photo', 'idol_thanks', 'dream_share', 'turn_post', 'fcr_tribute'].includes(event.choiceKind);
+  const kopSet = group === 'media' ? CAL_KOP.media : publicKind ? CAL_KOP.public : null;
+  const kop = kopSet ? fill(pickFresh(ctx.state, `calkop:${group}`, kopSet, `${ctx.seed}|${event.refId}|k`)) : null;
+  const withTeam = (event.people || []).some((p) => p.role === 'teammates');
+  const huddle = withTeam ? fill(pickFresh(ctx.state, 'cal:huddle', CAL_HUDDLE, `${ctx.seed}|${event.refId}|h`)) : null;
+  return { headline, narrative, kop, huddle, hudEmoji: [['🙌', 3], ['😂', 2]] };
+}
+
 function buildSceneAndReactions(state, snapshot, event = {}, { language = 'en', newId = () => `sc_${Date.now()}` } = {}) {
   const hub = state?.lifeHub;
   if (!hub) return null;
@@ -1939,11 +2021,26 @@ function buildSceneAndReactions(state, snapshot, event = {}, { language = 'en', 
   else if (event.kind === 'action') built = renderActionScene(ctx, event.refId, event.customTitle, event.focus, myHandle);
   else if (event.kind === 'dilemma') built = renderDilemmaScene(ctx, event.dilemmaId, event.choiceId, myHandle);
   else if (event.kind === 'obligation') built = renderObligationScene(ctx, event.brand || 'Partner', myHandle, event, state);
+  else if (event.kind === 'calendar') built = renderCalendarEventScene(ctx, event, myHandle);
   else return null;
 
   const reactions = [];
   const kopCirclePerson = pickKopInnerCircle(state, ctx.seed);
-  if (event.kind === 'obligation' && event.brand) {
+  if (event.kind === 'calendar') {
+    // les supporters (si c'était public), puis jusqu'à 3 proches présents qui sont sur Kop, chacun avec sa personnalité
+    if (built.kop) {
+      const k = pushKopReaction(state, { club: ctx.club, gameDate, language: ctx.l, newId }, built.kop);
+      if (k) reactions.push(k);
+    }
+    const circle = Object.values(state.persona?.circle || {}).flat().filter((p) => p?.name);
+    const present = (event.people || []).map((p) => circle.find((c) => c.name === p.name)).filter((p) => p?.kopPersonality).slice(0, 3);
+    for (const person of present) {
+      const text = buildCircleKopReaction(person, myHandle, 'calendar', ctx.l, `${ctx.seed}|${person.name}`, state);
+      if (!text) continue;
+      const kc = pushKopReaction(state, { club: ctx.club, gameDate, language: ctx.l, newId, customAuthor: ensureCircleKopAccount(state, person) }, text);
+      if (kc) reactions.push(kc);
+    }
+  } else if (event.kind === 'obligation' && event.brand) {
     const spObj = (state?.lifeHub?.sponsors || []).find((s) => String(s?.brand || '').toLowerCase() === String(event.brand).toLowerCase());
     const spCat = String(event?.sponsorCategory || spObj?.categories?.[0] || spObj?.category || '').toLowerCase();
     const brandAuthor = ensureBrandKopAccount(state, event.brand, spCat);

@@ -17,6 +17,7 @@ const { buildSceneAndReactions } = require('./lifeScenes');
 const { ensureCalendar, buildVisibleSnapshot, maskCareerForDate, ingestSyncCalendar, advanceCalendar, flushCalendarToSave, addCustomCalendarEvent, removeCustomCalendarEvent, daysBetween, calendarAgenda } = require('./calendar');
 const { normalizeAiChoices, fallbackEventChoices } = require('./personaEvents');
 const { tickMediaOffers, answerMediaOffer } = require('./mediaOffers');
+const { deliverFollowUps } = require('./eventAftermath');
 const { seedSystemEvents, collectDueDecisions, collectObligationDecisions, resolveCalendarDecision, flipBirthdayShift, birthdaysOnDate, birthdaysInMonth, squadBirthdayRoster, scheduleOffPitchActivity } = require('./calendarEvents');
 const { applyLifeEffects } = require('../save/lifeEffectsWrite');
 const { DEFAULT_PAPER_ID, normalizePaperOverride, resolveNationalPaper, paperDeskTemplate } = require('./nationalPaper');
@@ -2554,6 +2555,7 @@ async function syncInner({ store, settings, log, t }) {
     lifeHubTick(state, snapshot, { changes, newId, sponsorMode: settings?.sponsorMode || 'realistic' });
     collectObligationDecisions(state, state.calendar?.simDate || snapshot?.gameDate || '');
     tickMediaOffers(state, state.calendar?.simDate || snapshot?.gameDate || '', newId);
+    deliverFollowUps(state, state.calendar?.simDate || snapshot?.gameDate || '', { language: settings?.language || 'en', newId });
     syncCommercialMailThreads(state, settings?.language || 'en');
     ensureBootDealMedia(state, store, career, settings);
   } catch (err) { log(`Ma vie : ${err.message}`); }
@@ -3546,7 +3548,19 @@ function emitInterviewSilenceReactions(state, snapshot = state?.snapshot, narrat
       hubEvent: `Media silence (${skips}x): journalists complain while supporters rally to defend you`,
     },
   };
-  const L = texts[language] || texts.en;
+  const L = { ...(texts[language] || texts.en) };
+  // Un joueur réservé (2.0) : son silence fait partie de son image, la presse le note sans en faire un scandale.
+  if (['media_shy', 'guarded_tactical', 'calm_humble'].includes(state.persona?.traits?.media)) {
+    const soft = {
+      fr: `${playerName} a encore laissé passer la salle de presse${matchLabel ? ` après ${matchLabel}` : ''}. Fidèle à lui-même : discret, il laisse parler le terrain.`,
+      en: `${playerName} skipped the press room again${matchLabel ? ` after ${matchLabel}` : ''}. True to form: a quiet one who lets his football talk.`,
+      pt: `${playerName} de novo passou pela sala de imprensa sem falar${matchLabel ? ` após ${matchLabel}` : ''}. Fiel ao seu estilo: discreto, deixa o futebol falar.`,
+      es: `${playerName} volvió a pasar de la sala de prensa${matchLabel ? ` tras ${matchLabel}` : ''}. Fiel a sí mismo: discreto, deja que hable el fútbol.`,
+      it: `${playerName} ha di nuovo saltato la sala stampa${matchLabel ? ` dopo ${matchLabel}` : ''}. Fedele a sé stesso: riservato, lascia parlare il campo.`,
+      de: `${playerName} hat den Presseraum wieder ausgelassen${matchLabel ? ` nach ${matchLabel}` : ''}. Typisch für ihn: zurückhaltend, er lässt den Fußball sprechen.`,
+    };
+    L.complainPost = soft[language] || soft.en;
+  }
   const now = Date.now();
   state.feed ||= [];
 
@@ -4021,6 +4035,7 @@ function calendarAdvance({ store, mode = 'day', targetDate = null }) {
       newId,
       sponsorMode,
     });
+    try { deliverFollowUps(state, state.calendar?.simDate || state.snapshot?.gameDate || '', { language: stg.language || 'en', newId }); } catch { /* jamais bloquant */ }
     syncCommercialMailThreads(state, stg.language || 'en');
   } catch { /* ignore */ }
 

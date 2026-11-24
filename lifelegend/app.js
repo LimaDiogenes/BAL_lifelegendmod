@@ -3359,8 +3359,13 @@ function autoPressModal() {
   const p = pressNow();
   if (!p || pressBox || view.pressSeen === p.id || setupActive()) return;
   view.pressSeen = p.id;
+  // Toujours décliner (réglage) : aucune question écrite, aucune requête. Sinon on demande d'abord (2.0) : les questions
+  // ne sont écrites qu'après « Y aller ».
+  if (settings?.pressMode === 'skip' && !p.questions?.length) {
+    live.skipPress().then((st) => { state = st; render(); toast(tr('Conférence de presse déclinée (réglage).')); }).catch(() => {});
+    return;
+  }
   openPressModal();
-  if (!p.questions?.length) startPressQuestions();
 }
 
 function paintPressModal() {
@@ -11813,7 +11818,7 @@ const RG_TABS = [
   ['about', 'À propos', ''],
 ];
 // L'onglet de chaque section qu'ouvrent les autres pages (« Réglages de l'IA », « Ajouter ma clé… »).
-const RG_SECTION_TAB = { 'rg-save': 'save', 'rg-transfer': 'save', 'rg-names': 'save', 'rg-reset': 'save', 'rg-ai': 'ai', 'rg-lang': 'look', 'rg-theme': 'look', 'rg-tone': 'world', 'rg-sponsormode': 'world', 'rg-eventmode': 'world', 'rg-calmode': 'world', 'rg-replays': 'world', 'rg-about': 'about', 'rg-credits': 'about', 'rg-update': 'about' };
+const RG_SECTION_TAB = { 'rg-save': 'save', 'rg-transfer': 'save', 'rg-names': 'save', 'rg-reset': 'save', 'rg-ai': 'ai', 'rg-lang': 'look', 'rg-theme': 'look', 'rg-tone': 'world', 'rg-press': 'world', 'rg-sponsormode': 'world', 'rg-eventmode': 'world', 'rg-calmode': 'world', 'rg-replays': 'world', 'rg-about': 'about', 'rg-credits': 'about', 'rg-update': 'about' };
 // Réglages compacts (2.0) : des cartes sur deux colonnes, les explications derrière un petit « i ».
 const rgInfo = (note) => (note ? `<details class="rg-info"><summary title="${tr('Plus d’infos')}" aria-label="${tr('Plus d’infos')}">i</summary><p>${note}</p></details>` : '');
 const rgRow = (id, label, control, note = '') => `<div class="rg-row"${id ? ` id="${id}"` : ''}><div class="rg-label"><h3>${label}</h3>${rgInfo(note)}</div><div class="rg-ctl">${control}</div></div>`;
@@ -12260,6 +12265,10 @@ async function renderSettings(page) {
       <option value="tabloid"${settings.mediaDrama === 'tabloid' ? ' selected' : ''}>${tr('Tabloïd : gros titres, polémiques, tout devient une histoire')}</option>
     </select>${rgSwitch('inventedrumours', settings.inventedRumours !== false, tr('Rumeurs inventées les jours calmes'), tr('Comme les vrais médias et supporters, ils inventent parfois des ragots quand il ne se passe rien. Toujours présentés comme des rumeurs, jamais sur les personnes ou lieux protégés.'))}`,
       tr('La pression médiatique suit la taille de ton club et de son championnat (et l’Europe, la sélection, ta notoriété), et le drame suit l’enjeu du moment. Ce réglage la décale vers le calme ou vers le tabloïd.')),
+    rgRow('rg-press', tr('Conférences d’après-match'), `<select id="pressmode" aria-label="${tr('Conférences d’après-match')}">
+      <option value="ask"${settings.pressMode !== 'skip' ? ' selected' : ''}>${tr('Me demander après chaque match')}</option>
+      <option value="skip"${settings.pressMode === 'skip' ? ' selected' : ''}>${tr('Toujours décliner (aucune requête à l’IA)')}</option>
+    </select>`, tr('Les questions ne sont écrites que si tu choisis d’y aller. Les silences répétés font réagir journalistes et supporters ; pour un joueur réservé, ils le notent sans en faire un scandale.')),
     rgRow('rg-sponsormode', tr('Système de sponsors'), `<select id="sponsormode" aria-label="${tr('Système de sponsors')}">
       <option value="realistic"${sponsorMode === 'realistic' ? ' selected' : ''}>${tr('Réaliste (offres, enchères, exclusivités & rachats)')}</option>
       <option value="custom"${sponsorMode === 'custom' ? ' selected' : ''}>${tr('Personnalisé (édition libre & sélection dans le catalogue)')}</option>
@@ -12518,6 +12527,7 @@ async function saveSettings() {
     colors: rgFormColors(),
     fanVulgarity: $('#fanvulgarity').checked,
     mediaDrama: $('#mediadrama')?.value || settings.mediaDrama || 'realistic',
+    pressMode: $('#pressmode')?.value || settings.pressMode || 'ask',
     inventedRumours: $('#inventedrumours') ? $('#inventedrumours').checked : settings.inventedRumours !== false,
   };
   const key = $('#apikey').value.trim();

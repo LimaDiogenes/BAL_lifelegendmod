@@ -3060,4 +3060,9 @@ window.LL_I18N.it = {
   "Je peux essayer d’obtenir un meilleur cachet.": "Posso provare a ottenere un compenso migliore.",
   "Pas obligatoire, mais ça entretient ton image.": "Non è obbligatorio, ma cura la tua immagine.",
   "Le genre d’invitation qu’on ne refuse pas souvent.": "Il tipo di invito che raramente si rifiuta.",
+  "Conférence de presse déclinée (réglage).": "Conferenza stampa declinata (impostazione).",
+  "Conférences d’après-match": "Conferenze stampa post-partita",
+  "Me demander après chaque match": "Chiedimi dopo ogni partita",
+  "Toujours décliner (aucune requête à l’IA)": "Declina sempre (nessuna richiesta all’IA)",
+  "Les questions ne sont écrites que si tu choisis d’y aller. Les silences répétés font réagir journalistes et supporters ; pour un joueur réservé, ils le notent sans en faire un scandale.": "Le domande vengono scritte solo se scegli di andare. I silenzi ripetuti fanno reagire giornalisti e tifosi; per un giocatore riservato, lo notano senza farne uno scandalo.",
 };

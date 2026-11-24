@@ -3060,4 +3060,9 @@ window.LL_I18N.en = {
   "Je peux essayer d’obtenir un meilleur cachet.": "I can try to get you a better fee.",
   "Pas obligatoire, mais ça entretient ton image.": "Not essential, but it keeps your image fresh.",
   "Le genre d’invitation qu’on ne refuse pas souvent.": "The kind of invitation people rarely turn down.",
+  "Conférence de presse déclinée (réglage).": "Press conference declined (setting).",
+  "Conférences d’après-match": "Post-match press conferences",
+  "Me demander après chaque match": "Ask me after each match",
+  "Toujours décliner (aucune requête à l’IA)": "Always decline (no AI request)",
+  "Les questions ne sont écrites que si tu choisis d’y aller. Les silences répétés font réagir journalistes et supporters ; pour un joueur réservé, ils le notent sans en faire un scandale.": "The questions are only written if you choose to go. Repeated silences get journalists and fans talking; for a reserved player, they note it without making a scandal of it.",
 };

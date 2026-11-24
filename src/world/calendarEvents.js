@@ -8,6 +8,7 @@ const { buildSceneAndReactions } = require('./lifeScenes');
 const { activeHuddle, addMessage: addHuddleMessage } = require('./huddle');
 const { seedPersonaEvents, personaDecision, eventChoicesToDecision } = require('./personaEvents');
 const { mediaDecision } = require('./mediaOffers');
+const { queueFollowUps } = require('./eventAftermath');
 
 const isIsoDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || '').trim());
 
@@ -467,7 +468,9 @@ function collectDueDecisions(state, snapshot, targetDate, { eventMode = 'realist
   }
 
   // 2b. Partner obligations due (or overdue) today
-  added.push(...collectObligationDecisions(state, targetDate));
+  const dueOwn = collectObligationDecisions(state, targetDate);
+  for (const d of dueOwn) existing.add(d.id); // sinon la section 3 l'ajoutait une deuxième fois
+  added.push(...dueOwn);
 
   // 3. Custom / scheduled activities / one-time shoots due today
   for (const ev of cal.customEvents || []) {
@@ -539,6 +542,7 @@ function collectObligationDecisions(state, targetDate) {
   const cal = (state.calendar ||= {});
   cal.pendingDecisions ||= [];
   cal.resolvedDecisionIds ||= [];
+  cal.pendingDecisions = cal.pendingDecisions.filter((d, i, all) => all.findIndex((x) => x.id === d.id) === i); // doublons d'avant 2.0
   // une obligation réglée autrement (expirée, partenaire parti) n'attend plus de réponse
   const live = new Set((hub.obligations || []).filter((o) => o.status === 'pending').map((o) => o.id));
   cal.pendingDecisions = cal.pendingDecisions.filter((d) => d.kind !== 'obligation' || live.has(d.obligationId));
@@ -662,6 +666,17 @@ function resolveCalendarDecision(state, decisionId, choiceId, gameDate = '', { l
   }
   state.lastDecisionOutcome = backfire ? { decisionId, backfire: true, text: backfire.text } : { decisionId, backfire: false };
   if (dec.kind === 'obligation') Object.assign(state.lastDecisionOutcome, applyObligationChoice(state, hub, dec, choice, today, { language, newId }));
+  // ses événements, ceux tirés de son profil et les interviews : une scène et des réactions tout de suite, des messages
+  // de ceux qui étaient là un ou deux jours après (2.0)
+  if (['scheduled', 'persona_event', 'media_event'].includes(dec.kind) && choiceId !== 'reschedule_skip') {
+    const ev = (cal.customEvents || []).find((e) => `dec_cust_${e.id}` === decisionId);
+    const people = ev?.people || [];
+    const choiceKind = (ev?.aiChoices || []).find((c) => c.id === choiceId)?.kind || choiceId;
+    try {
+      buildSceneAndReactions(state, state.snapshot, { kind: 'calendar', decKind: dec.kind, refId: decisionId, title: dec.title, eventKey: dec.eventKey, mediaKind: dec.mediaKind, category: dec.category || 'life', people, choiceKind, date: today }, { language, newId });
+    } catch { /* la scène est un bonus */ }
+    try { queueFollowUps(state, { title: dec.title, people, decisionId }, today); } catch { /* idem */ }
+  }
   if (dec.kind === 'car_gift' && choice.catId) {
     const sp = (hub.sponsors || []).find((s) => s.id === dec.sponsorId) || { id: dec.sponsorId, brand: dec.brand };
     pushGiftedSponsorCar(state, hub, sp, choice.catId, dec.reason || 'annual', today, newId, choice.label || '');
