@@ -420,6 +420,9 @@ function collectDueDecisions(state, snapshot, targetDate, { eventMode = 'realist
     existing.add(id);
   }
 
+  // 2b. Partner obligations due (or overdue) today
+  added.push(...collectObligationDecisions(state, targetDate));
+
   // 3. Custom / scheduled activities / one-time shoots due today
   for (const ev of cal.customEvents || []) {
     if (ev.date !== targetDate) continue;
@@ -498,6 +501,91 @@ function applyMeters(hub, effects) {
   }
 }
 
+// Obligations des partenaires (2.0) : à leur date, elles deviennent une décision du calendrier, avec de vrais choix
+// (au lieu d'un bouton « Honorer »). Y aller n'est jamais puni ; décaler coûte un peu de confiance (une fois) ; ne pas
+// y aller en coûte davantage, et trois absences font partir le partenaire. Valable dans tous les modes de calendrier.
+function obligationDecision(ob) {
+  const what = String(ob.kind || 'brand_appearance').replace(/_/g, ' ');
+  const reward = Math.max(0, Math.round(Number(ob.rewardCash) || 0));
+  const choices = [
+    { id: 'ob_all_in', cost: 0, bonusCash: Math.round((reward * 1.25) / 500) * 500, effects: { sponsors: 6, media: 3, fans: 2 }, followerDelta: 0.006, memory: `Went all in at the ${ob.brand} ${what}` },
+    { id: 'ob_standard', cost: 0, bonusCash: reward, effects: { sponsors: 3, media: 1 }, memory: `Did the ${ob.brand} ${what}, professional and on time` },
+  ];
+  if (!ob.rescheduled) choices.push({ id: 'ob_reschedule', cost: 0, effects: { sponsors: -1 }, memory: `Asked ${ob.brand} to move the ${what} to another day` });
+  choices.push({ id: 'ob_skip', cost: 0, effects: { sponsors: -5 }, memory: `Did not show up at the ${ob.brand} ${what}` });
+  return { id: `dec_ob_${ob.id}_${ob.dueDate}`, kind: 'obligation', obligationId: ob.id, obligationKind: ob.kind, brand: ob.brand, category: 'sponsor', date: ob.dueDate, title: ob.brand, choices };
+}
+
+function collectObligationDecisions(state, targetDate) {
+  const hub = state?.lifeHub;
+  if (!hub || !isIsoDate(targetDate)) return [];
+  const cal = (state.calendar ||= {});
+  cal.pendingDecisions ||= [];
+  cal.resolvedDecisionIds ||= [];
+  // une obligation réglée autrement (expirée, partenaire parti) n'attend plus de réponse
+  const live = new Set((hub.obligations || []).filter((o) => o.status === 'pending').map((o) => o.id));
+  cal.pendingDecisions = cal.pendingDecisions.filter((d) => d.kind !== 'obligation' || live.has(d.obligationId));
+  const resolved = new Set(cal.resolvedDecisionIds);
+  const existing = new Set(cal.pendingDecisions.map((d) => d.id));
+  const added = [];
+  for (const ob of hub.obligations || []) {
+    if (ob.status !== 'pending' || !isIsoDate(ob.dueDate) || ob.dueDate > targetDate) continue;
+    const dec = obligationDecision(ob);
+    if (resolved.has(dec.id) || existing.has(dec.id)) continue;
+    cal.pendingDecisions.push(dec);
+    added.push(dec);
+    existing.add(dec.id);
+  }
+  return added;
+}
+
+function firstFreeDate(fromIso, minOff, maxOff, blocked, notAfter) {
+  for (let i = minOff; i <= maxOff; i += 1) {
+    const d = addDaysIso(fromIso, i);
+    if (notAfter && d > notAfter) break;
+    if (!blocked.has(d)) return d;
+  }
+  return null;
+}
+
+function applyObligationChoice(state, hub, dec, choice, today, { language = 'en', newId } = {}) {
+  const ob = (hub.obligations || []).find((o) => o.id === dec.obligationId);
+  if (!ob || ob.status !== 'pending') return {};
+  if (choice.id === 'ob_all_in' || choice.id === 'ob_standard') {
+    ob.status = 'done';
+    ob.doneHow = choice.id;
+    try {
+      buildSceneAndReactions(state, state.snapshot, {
+        kind: 'obligation', refId: ob.id, obligationKind: ob.kind, sponsorCategory: ob.category || '', category: 'sponsor', brand: ob.brand,
+        deltas: { meters: choice.effects || {}, bonusCash: choice.bonusCash || 0 },
+      }, { language, newId });
+    } catch { /* la scène est un bonus */ }
+    return {};
+  }
+  if (choice.id === 'ob_reschedule') {
+    ob.originalDue ||= ob.dueDate;
+    const next = firstFreeDate(today || ob.dueDate, 3, 10, collectAllMatchDates(state), addDaysIso(ob.originalDue, 14)) || addDaysIso(today || ob.dueDate, 3);
+    ob.dueDate = next;
+    ob.rescheduled = true;
+    return { rescheduledTo: next };
+  }
+  if (choice.id === 'ob_skip') {
+    ob.status = 'skipped';
+    const sp = (hub.sponsors || []).find((s) => s.id === ob.sponsorId);
+    if (sp && !sp.linkedBootDeal) {
+      sp.skippedObligations = (Number(sp.skippedObligations) || 0) + 1;
+      if (sp.skippedObligations >= 3) {
+        hub.sponsors = hub.sponsors.filter((s) => s !== sp);
+        hub.obligations = hub.obligations.filter((o) => o.sponsorId !== sp.id || o.status !== 'pending');
+        hub.recentEvents ||= [];
+        hub.recentEvents.unshift({ date: today, kind: 'sponsor', text: `${sp.brand} ended the partnership after three missed commitments` });
+        return { contractEnded: sp.brand };
+      }
+    }
+  }
+  return {};
+}
+
 function resolveCalendarDecision(state, decisionId, choiceId, gameDate = '', { language = 'en', newId = () => `res_${Date.now()}` } = {}) {
   const cal = state?.calendar;
   if (!cal || !Array.isArray(cal.pendingDecisions)) throw new Error('Décision introuvable.');
@@ -544,6 +632,7 @@ function resolveCalendarDecision(state, decisionId, choiceId, gameDate = '', { l
     }
   }
   state.lastDecisionOutcome = backfire ? { decisionId, backfire: true, text: backfire.text } : { decisionId, backfire: false };
+  if (dec.kind === 'obligation') Object.assign(state.lastDecisionOutcome, applyObligationChoice(state, hub, dec, choice, today, { language, newId }));
   if (choice.saveEffects) {
     const p = (hub.pendingSaveEffects ||= { affectionDelta: 0, formArrowDelta: 0, reasons: [] });
     if (choice.saveEffects.affectionDelta) p.affectionDelta = Math.max(-8, Math.min(8, (p.affectionDelta || 0) + choice.saveEffects.affectionDelta));
@@ -652,6 +741,7 @@ module.exports = {
   flipBirthdayShift,
   seedSystemEvents,
   collectDueDecisions,
+  collectObligationDecisions,
   resolveCalendarDecision,
   scheduleOffPitchActivity,
 };

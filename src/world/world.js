@@ -15,7 +15,7 @@ const { catalogForUi } = require('./sponsorCatalog');
 const { saveLifeImage, removeLifeImage } = require('./lifeMedia');
 const { buildSceneAndReactions } = require('./lifeScenes');
 const { ensureCalendar, buildVisibleSnapshot, maskCareerForDate, ingestSyncCalendar, advanceCalendar, flushCalendarToSave, addCustomCalendarEvent, removeCustomCalendarEvent, daysBetween, calendarAgenda } = require('./calendar');
-const { seedSystemEvents, collectDueDecisions, resolveCalendarDecision, flipBirthdayShift, birthdaysOnDate, birthdaysInMonth, squadBirthdayRoster, scheduleOffPitchActivity } = require('./calendarEvents');
+const { seedSystemEvents, collectDueDecisions, collectObligationDecisions, resolveCalendarDecision, flipBirthdayShift, birthdaysOnDate, birthdaysInMonth, squadBirthdayRoster, scheduleOffPitchActivity } = require('./calendarEvents');
 const { applyLifeEffects } = require('../save/lifeEffectsWrite');
 const { DEFAULT_PAPER_ID, normalizePaperOverride, resolveNationalPaper, paperDeskTemplate } = require('./nationalPaper');
 const { updateRival, rivalFacts, rivalInNews } = require('./rival');
@@ -2546,6 +2546,7 @@ async function syncInner({ store, settings, log, t }) {
   // Hub "Ma vie" (src/world/lifeHub.js) : salaires, sponsors multi-slots, patrimoine, jauges et dilemmes hors terrain.
   try {
     lifeHubTick(state, snapshot, { changes, newId, sponsorMode: settings?.sponsorMode || 'realistic' });
+    collectObligationDecisions(state, state.calendar?.simDate || snapshot?.gameDate || '');
     syncCommercialMailThreads(state, settings?.language || 'en');
     ensureBootDealMedia(state, store, career, settings);
   } catch (err) { log(`Ma vie : ${err.message}`); }
@@ -4084,6 +4085,9 @@ function getCalendarAgenda({ store, month = null }) {
   if (eventMode === 'realistic' && stg.calendarMode === 'full') {
     const today = state.calendar?.simDate || state.snapshot?.gameDate;
     if (today && collectDueDecisions(state, state.snapshot, today, { eventMode, newId }).length) store.saveCareer(state);
+  } else {
+    const today = state.calendar?.simDate || state.snapshot?.gameDate;
+    if (today && collectObligationDecisions(state, today).length) store.saveCareer(state);
   }
   const ag = calendarAgenda(state, month);
   return {

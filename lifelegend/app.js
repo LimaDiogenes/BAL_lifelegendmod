@@ -9198,6 +9198,10 @@ const ML_SYSEV_LABELS = {
 };
 
 const ML_DECISION_CHOICE_LABELS = {
+  ob_all_in: () => tr('Tout donner'),
+  ob_standard: () => tr('Faire le job, sans plus'),
+  ob_reschedule: () => tr('Demander un autre jour'),
+  ob_skip: () => tr('Ne pas y aller'),
   fu_apologise: () => tr('Présenter des excuses'),
   fu_laugh_off: () => tr('En rire sur les réseaux'),
   fu_stay_silent: () => tr('Ne rien dire'),
@@ -10086,6 +10090,9 @@ function mlDecisionHeader(dec) {
   if (dec.kind === 'match_eve') {
     return { title: tr('Veille de match : {match}', { match: dec.title || '' }), sub: dec.competition || fmtDate(dec.date) };
   }
+  if (dec.kind === 'obligation') {
+    return { title: `${dec.brand || ''} · ${(ML_OBLIGATION_LABELS[dec.obligationKind] || ML_OBLIGATION_LABELS.brand_appearance)()}`, sub: `${tr('Obligation partenaire')} · ${fmtDate(dec.date)}` };
+  }
   if (dec.kind === 'onetime') {
     const kFn = ML_ONETIME_DEAL_LABELS[dec.dealKey];
     return { title: `${dec.brand || ''} · ${kFn ? kFn() : (dec.title || '')}`, sub: fmtDate(dec.date) };
@@ -10095,6 +10102,15 @@ function mlDecisionHeader(dec) {
   }
   const sFn = ML_SYSEV_LABELS[dec.eventKey] || ML_SYSEV_LABELS[String(dec.title || '').toLowerCase().replace(/\s+/g, '_')];
   return { title: sFn ? sFn() : mlResolveScheduledActivityTitle(dec.title, dec.eventKey), sub: fmtDate(dec.date) };
+}
+
+function mlDecChoicesHtml(dec) {
+  return (dec.choices || []).map((ch) => {
+    const chLblFn = ML_DECISION_CHOICE_LABELS[ch.id];
+    const chLbl = chLblFn ? chLblFn() : ch.id;
+    const tags = mlDecisionChoiceTags(ch);
+    return `<button type="button" class="ml-dil-btn" data-caldec="${esc(dec.id)}" data-calchoice="${esc(ch.id)}"><b>${esc(chLbl)}</b>${tags.length ? `<small>${esc(tags.join(' · '))}</small>` : ''}</button>`;
+  }).join('');
 }
 
 function mlDecisionChoiceTags(ch) {
@@ -10619,16 +10635,13 @@ function renderMyLife(page) {
     </div>`;
   }).join('') : `<p class="fineprint">${tr('Aucun sponsor actif pour l’instant.')}</p>`;
 
-  const obligationsHtml = pendingObs.length ? pendingObs.map((ob) => {
-    const maxObDate = mlAddDays(ob.dueDate || simDate, 14);
-    return `<div class="card ml-ob" data-obid="${esc(ob.id)}">
-      <div><b>${esc(ob.brand)}</b><div class="fineprint">${esc((ML_OBLIGATION_LABELS[ob.kind] || ML_OBLIGATION_LABELS.brand_appearance)())} · ${esc(tr('Avant le {d}', { d: shortDate(ob.dueDate) }))} · +${esc(euros(ob.rewardCash))}</div></div>
-      <div class="ml-offer-acts">
-        <input type="date" class="ml-ob-date" value="${esc(ob.dueDate || simDate)}"${simDate ? ` min="${esc(simDate)}"` : ''} max="${esc(maxObDate)}" aria-label="${esc(tr('Reporter l’échéance'))}">
-        <button type="button" class="btn" data-mlob-move="${esc(ob.id)}">${tr('Décaler')}</button>
-        <button type="button" class="btn primary" data-mlob="${esc(ob.id)}" data-obskip="0">${tr('Honorer')}</button>
-        <button type="button" class="btn" data-mlob="${esc(ob.id)}" data-obskip="1">${tr('Passer')}</button>
-      </div>
+  // Obligations (2.0) : à leur date, une décision du calendrier ; ses choix s'affichent ici aussi.
+  const obligationsHtml = pendingObs.length ? [...pendingObs].sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate))).map((ob) => {
+    const dec = pendingDecs.find((d) => d.kind === 'obligation' && d.obligationId === ob.id);
+    const when = dec ? tr('Aujourd’hui') : tr('Au calendrier le {d}', { d: shortDate(ob.dueDate) });
+    return `<div class="card ml-ob${dec ? ' is-due' : ''}" data-obid="${esc(ob.id)}">
+      <div><b>${esc(ob.brand)}</b><div class="fineprint">${esc((ML_OBLIGATION_LABELS[ob.kind] || ML_OBLIGATION_LABELS.brand_appearance)())} · ${esc(when)} · +${esc(euros(ob.rewardCash))}${ob.rescheduled ? ` · ${esc(tr('Déjà décalée une fois'))}` : ''}</div></div>
+      ${dec ? `<div class="ml-dec-choices">${mlDecChoicesHtml(dec)}</div>` : ''}
     </div>`;
   }).join('') : `<p class="fineprint">${tr('Aucune obligation en cours.')}</p>`;
 
@@ -10794,12 +10807,7 @@ function renderMyLife(page) {
       const hdr = mlDecisionHeader(dec);
       return `<div class="ml-dec-item">
         <div><h4>${esc(hdr.title)}</h4><p class="fineprint">${esc(hdr.sub)}</p></div>
-        <div class="ml-dec-choices">${(dec.choices || []).map((ch) => {
-          const chLblFn = ML_DECISION_CHOICE_LABELS[ch.id];
-          const chLbl = chLblFn ? chLblFn() : ch.id;
-          const tags = mlDecisionChoiceTags(ch);
-          return `<button type="button" class="ml-dil-btn" data-caldec="${esc(dec.id)}" data-calchoice="${esc(ch.id)}"><b>${esc(chLbl)}</b>${tags.length ? `<small>${esc(tags.join(' · '))}</small>` : ''}</button>`;
-        }).join('')}</div>
+        <div class="ml-dec-choices">${mlDecChoicesHtml(dec)}</div>
       </div>`;
     }).join('')}
   </div>` : '';
@@ -10903,6 +10911,11 @@ function renderMyLife(page) {
     </section>
 
     <section class="ml-panel"${tab === 'sponsors' ? '' : ' hidden'}>
+      <div class="card ml-card">
+        <h3>${tr('Obligations partenaires')}</h3>
+        <p class="fineprint">${tr('Chaque obligation arrive dans ton calendrier à sa date, avec tes choix : y aller ne te coûte jamais rien ; la décaler (une fois) ou ne pas y aller entame la confiance du partenaire, et trois absences le font partir.')}</p>
+        <div class="ml-list">${obligationsHtml}</div>
+      </div>
       ${spModeBannerHtml}
       ${warsHtml ? `<div class="card ml-card"><h3>${tr('Enchères & sollicitations rivales')}</h3>${warsHtml}</div>` : ''}
       ${oneTimeHtml ? `<div class="card ml-card"><h3>${tr('Opérations & contrats ponctuels')}</h3>${oneTimeHtml}</div>` : ''}
@@ -10934,10 +10947,6 @@ function renderMyLife(page) {
             <button type="button" class="btn primary" id="ml-newsp-go"${slotCap !== null && hub.sponsors.length >= slotCap ? ' disabled' : ''}>${tr('Ajouter')}</button>
           </div>
         </details>` : `<p class="fineprint">${tr('En mode Réaliste, l’ajout ou l’édition manuelle est verrouillé pour préserver les enchères et exclusivités.')}</p>`}
-      </div>
-      <div class="card ml-card">
-        <h3>${tr('Obligations partenaires')}</h3>
-        <div class="ml-list">${obligationsHtml}</div>
       </div>
     </section>
 
@@ -11282,28 +11291,6 @@ function renderMyLife(page) {
       }
     };
   }
-  page.querySelectorAll('[data-mlob-move]').forEach((b) => {
-    b.onclick = async () => {
-      const card = b.closest('.ml-ob');
-      const nextDate = card?.querySelector('.ml-ob-date')?.value;
-      if (!nextDate) return;
-      try {
-        state = await live.rescheduleLifeObligation(b.dataset.mlobMove, nextDate);
-        view.mlCalAgendaKey = null;
-        toast(tr('Échéance reportée au {d}.', { d: shortDate(nextDate) }));
-        render();
-      } catch (err) { toast(err.message, true); }
-    };
-  });
-  page.querySelectorAll('[data-mlob]').forEach((b) => {
-    b.onclick = async () => {
-      const skip = b.dataset.obskip === '1';
-      try {
-        if (skip) { state = await live.completeLifeObligation(b.dataset.mlob, true); render(); }
-        else await runAndOpenScene(() => live.completeLifeObligation(b.dataset.mlob, false));
-      } catch (err) { toast(err.message, true); }
-    };
-  });
   page.querySelectorAll('[data-mlbuy]').forEach((b) => {
     b.onclick = async () => {
       try { await runAndOpenScene(() => live.buyLifeAsset({ catalogId: b.dataset.mlbuy }), tr('Achat confirmé.')); } catch (err) { toast(err.message, true); }
@@ -11410,7 +11397,10 @@ function renderMyLife(page) {
     b.onclick = async () => {
       try {
         await runAndOpenScene(() => live.resolveCalendarDecision(b.dataset.caldec, b.dataset.calchoice), tr('Décision enregistrée.'));
-        if (state?.lastDecisionOutcome?.decisionId === b.dataset.caldec && state.lastDecisionOutcome.backfire) toast(tr('Ça s’est retourné contre toi : la presse et les supporters vont en parler.'), true);
+        const out = state?.lastDecisionOutcome?.decisionId === b.dataset.caldec ? state.lastDecisionOutcome : null;
+        if (out?.backfire) toast(tr('Ça s’est retourné contre toi : la presse et les supporters vont en parler.'), true);
+        else if (out?.contractEnded) toast(tr('{brand} met fin au partenariat après trois absences.', { brand: out.contractEnded }), true);
+        else if (out?.rescheduledTo) toast(tr('Décalé au {d}.', { d: shortDate(out.rescheduledTo) }));
       } catch (err) { toast(err.message, true); }
     };
   });
