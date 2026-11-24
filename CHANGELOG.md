@@ -22,6 +22,9 @@ LifeLegend 2.0 est livré avec blue41 PES2021 Mod Studio (il peut aussi être ut
 - Ton calendrier vit de ce que tu as écrit : ta passion, ta ville natale, ton idole, ton rêve et ton tournant amènent
   un événement tous les 18 à 30 jours (jamais un jour de match), et un match contre ton premier club amène des
   retrouvailles la veille. Choix tirés au sort parmi plusieurs, souvenirs variés, toujours positifs.
+- Variété : les réactions de tes proches sur Kop passent de 1-2 à 6-7 phrases par personnalité, les posts des marques
+  de 4 à 8 (3 à la signature), et l'app se souvient des phrases déjà vues dans la carrière pour ne pas les reprendre
+  tant qu'il en reste d'autres.
 - Pastilles (Ma vie, calendrier, cloche) : ce qui est déjà planifié ne compte que le jour venu ; plus d'« obligation à
   planifier » dans la cloche (une obligation devient une décision du calendrier à sa date).
 - Événements à toi : tu peux y inviter jusqu'à 10 proches de ton cercle ; une courte requête à l'IA écrit alors trois choix
