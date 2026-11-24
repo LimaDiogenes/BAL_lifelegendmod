@@ -2899,4 +2899,5 @@ window.LL_I18N.en = {
   "Décalé au {d}.": "Moved to {d}.",
   "{brand} met fin au partenariat après trois absences.": "{brand} ends the partnership after three no-shows.",
   "Chaque obligation arrive dans ton calendrier à sa date, avec tes choix : y aller ne te coûte jamais rien ; la décaler (une fois) ou ne pas y aller entame la confiance du partenaire, et trois absences le font partir.": "Each commitment lands on your calendar on its date, with your choices: going never costs you anything; moving it (once) or not going dents the partner’s trust, and three no-shows make them leave.",
+  "Journées libres": "Days off",
 };

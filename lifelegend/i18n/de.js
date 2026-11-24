@@ -2899,4 +2899,5 @@ window.LL_I18N.de = {
   "Décalé au {d}.": "Verschoben auf {d}.",
   "{brand} met fin au partenariat après trois absences.": "{brand} beendet die Partnerschaft nach dreimaligem Fehlen.",
   "Chaque obligation arrive dans ton calendrier à sa date, avec tes choix : y aller ne te coûte jamais rien ; la décaler (une fois) ou ne pas y aller entame la confiance du partenaire, et trois absences le font partir.": "Jeder Termin landet an seinem Datum in deinem Kalender, mit deinen Optionen: Hingehen kostet dich nie etwas; Verschieben (einmal) oder Fernbleiben schadet dem Vertrauen des Partners, und nach dreimaligem Fehlen ist er weg.",
+  "Journées libres": "Freie Tage",
 };

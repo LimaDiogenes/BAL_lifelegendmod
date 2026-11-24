@@ -2114,8 +2114,12 @@ function render() {
   const unread = state?.mail?.filter((m) => m.unread).length || 0;
   const mlHub = state?.lifeHub;
   const mlSfxPending = (settings?.lifeSaveEffects && ((mlHub?.pendingSaveEffects?.affectionDelta || 0) !== 0 || (mlHub?.pendingSaveEffects?.formArrowDelta || 0) !== 0)) ? 1 : 0;
+  const mlToday = state?.calendar?.simDate || state?.snapshot?.gameDate || '';
+  const mlNext = state?.snapshot?.next?.date || '';
+  const mlDaysToMatch = mlToday && mlNext ? Math.round((Date.parse(mlNext) - Date.parse(mlToday)) / 86400000) : -1;
+  const mlApReminder = mlHub?.calibrated && (mlHub.ap || 0) > 0 && mlDaysToMatch >= 0 && mlDaysToMatch <= 2 ? 1 : 0;
   const mlPending = mlHub?.calibrated
-    ? ((mlHub.pendingDilemma ? 1 : 0) + (mlHub.offers?.length || 0) + (mlHub.biddingWars?.length || 0) + (mlHub.oneTimeOffers?.length || 0) + (state?.calendar?.pendingDecisions?.length || 0) + (mlHub.obligations || []).filter((o) => o.status === 'pending').length + mlSfxPending)
+    ? (mlApReminder + (mlHub.pendingDilemma ? 1 : 0) + (mlHub.offers?.length || 0) + (mlHub.biddingWars?.length || 0) + (mlHub.oneTimeOffers?.length || 0) + (state?.calendar?.pendingDecisions?.length || 0) + (mlHub.obligations || []).filter((o) => o.status === 'pending').length + mlSfxPending)
     : (state?.snapshot ? 1 : 0);
   tabs.innerHTML = SITES.filter((s) => !s.hidden).map((s) => `
     <button class="tab${s.id === current ? ' active' : ''}" data-site="${s.id}" aria-label="${esc(s.label())}"${s.id === current ? ' aria-current="page"' : ''}>
@@ -10421,6 +10425,8 @@ function renderMyLife(page) {
     ['overview', tr('Tableau de bord'), (hub.pendingDilemma ? 1 : 0) + (sfxEnabled && hasPendingSfx ? 1 : 0)],
     ['sponsors', tr('Sponsors'), 0],
     ['shop', tr('Lifestyle & Patrimoine'), 0],
+    // Journées libres (2.0) : leur propre onglet, avec les PA restants en pastille pour ne pas les oublier.
+    ['daysoff', tr('Journées libres'), hub.ap || 0],
     ['finances', tr('Finances'), 0],
   ];
   const calTabBadge = pendingDecs.length;
@@ -10891,19 +10897,6 @@ function renderMyLife(page) {
       </div>
       ${showcaseHtml}
       <div class="card ml-card">
-        <div class="ml-sec-head"><h3>${tr('Journées libres ({ap} PA restants)', { ap: hub.ap || 0 })}</h3><span class="fineprint">${tr('Se recharge après chaque match ou tous les 4 jours.')}</span></div>
-        <div class="ml-actions">${actionsHtml}</div>
-        <details class="ml-custom-box">
-          <summary>${tr('+ Activité personnalisée (1 PA)')}</summary>
-          <div class="ml-custom-form">
-            <label class="per-field"><span>${tr('Activité')}</span><input id="ml-cact-title" placeholder="${esc(tr('ex. Séance vidéo avec le coach, dîner en famille…'))}" maxlength="80"></label>
-            <label class="per-field"><span>${tr('Relation visée')}</span><select id="ml-cact-focus">${meterOpts}</select></label>
-            <label class="per-field"><span>${tr('Coût (€)')}</span><input id="ml-cact-cost" type="number" min="0" step="500" value="0" placeholder="${esc(tr('Coût (€)'))}"></label>
-            <button type="button" class="btn primary" id="ml-cact-go"${(hub.ap || 0) < 1 ? ' disabled' : ''}>${tr('Valider')}</button>
-          </div>
-        </details>
-      </div>
-      <div class="card ml-card">
         <h3>${tr('Scènes & temps forts récents')}</h3>
         ${scenesHtml}
         ${recentHtml ? `<ul class="ml-feed">${recentHtml}</ul>` : ''}
@@ -10971,6 +10964,22 @@ function renderMyLife(page) {
               </div>
             </div>
             <button type="button" class="btn primary" id="ml-casset-go">${tr('Acheter')}</button>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section class="ml-panel"${tab === 'daysoff' ? '' : ' hidden'}>
+      <div class="card ml-card">
+        <div class="ml-sec-head"><h3>${tr('Journées libres ({ap} PA restants)', { ap: hub.ap || 0 })}</h3><span class="fineprint">${tr('Se recharge après chaque match ou tous les 4 jours.')}</span></div>
+        <div class="ml-actions">${actionsHtml}</div>
+        <details class="ml-custom-box">
+          <summary>${tr('+ Activité personnalisée (1 PA)')}</summary>
+          <div class="ml-custom-form">
+            <label class="per-field"><span>${tr('Activité')}</span><input id="ml-cact-title" placeholder="${esc(tr('ex. Séance vidéo avec le coach, dîner en famille…'))}" maxlength="80"></label>
+            <label class="per-field"><span>${tr('Relation visée')}</span><select id="ml-cact-focus">${meterOpts}</select></label>
+            <label class="per-field"><span>${tr('Coût (€)')}</span><input id="ml-cact-cost" type="number" min="0" step="500" value="0" placeholder="${esc(tr('Coût (€)'))}"></label>
+            <button type="button" class="btn primary" id="ml-cact-go"${(hub.ap || 0) < 1 ? ' disabled' : ''}>${tr('Valider')}</button>
           </div>
         </details>
       </div>

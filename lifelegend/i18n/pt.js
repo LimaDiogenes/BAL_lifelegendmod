@@ -2899,4 +2899,5 @@ window.LL_I18N.pt = {
   "Décalé au {d}.": "Remarcado para {d}.",
   "{brand} met fin au partenariat après trois absences.": "{brand} encerra a parceria depois de três ausências.",
   "Chaque obligation arrive dans ton calendrier à sa date, avec tes choix : y aller ne te coûte jamais rien ; la décaler (une fois) ou ne pas y aller entame la confiance du partenaire, et trois absences le font partir.": "Cada compromisso chega ao seu calendário na data dele, com as suas escolhas: ir nunca custa nada; remarcar (uma vez) ou não ir abala a confiança do parceiro, e três ausências fazem ele ir embora.",
+  "Journées libres": "Dias de folga",
 };
