@@ -10773,7 +10773,7 @@ function renderMyLife(page) {
       </div>
     </div>`;
   }).join('') : '';
-  const catalogCards = stakeCards + catalogFiltered.filter((a) => a.category === 'charity' || !ownsCat(a.id)).map((a) => {
+  const catalogCards = catalogFiltered.filter((a) => a.category === 'charity' || !ownsCat(a.id)).map((a) => {
     const customImg = hub.catalogImages?.[a.id] || null;
     const imgUrl = mlResolveArtUrl(a.id, customImg, a.category);
     const metaLines = [
@@ -10797,7 +10797,7 @@ function renderMyLife(page) {
         <button type="button" class="btn primary" data-mlbuy="${a.id}"${(hub.cash || 0) < a.price ? ' disabled' : ''}>${tr('Acheter')}</button>
       </div>
     </div>`;
-  }).join('');
+  }).join('') + stakeCards; // parts chez les partenaires : en fin de liste (une par partenaire)
   const annualWage = Number(s.player?.salary) || 0;
   const annualSponsors = (hub.sponsors || []).reduce((sum, sp) => sum + (Number(sp.fee) || 0), 0);
   const annualPassive = (hub.assets || []).reduce((sum, a) => sum + (Number(a.passiveReturn) || 0) * 12, 0);
