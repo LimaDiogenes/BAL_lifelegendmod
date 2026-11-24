@@ -7,6 +7,7 @@ const { normalizeDob } = require('./persona');
 const { buildSceneAndReactions } = require('./lifeScenes');
 const { activeHuddle, addMessage: addHuddleMessage } = require('./huddle');
 const { seedPersonaEvents, personaDecision, eventChoicesToDecision } = require('./personaEvents');
+const { mediaDecision } = require('./mediaOffers');
 
 const isIsoDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || '').trim());
 
@@ -363,8 +364,9 @@ function decisionForBirthday(b, newId) {
 }
 
 // La décision d'un événement à soi, d'une activité planifiée ou d'un tournage ponctuel.
-function customEventDecision(ev) {
+function customEventDecision(ev, state = null) {
   const id = `dec_cust_${ev.id}`;
+  if (ev.kind === 'media') return mediaDecision(ev, state);
   let dec;
   if (ev.kind === 'onetime' && ev.oneTimeDeal) {
     dec = {
@@ -472,7 +474,7 @@ function collectDueDecisions(state, snapshot, targetDate, { eventMode = 'realist
     if (ev.date !== targetDate) continue;
     const id = `dec_cust_${ev.id}`;
     if (resolved.has(id) || existing.has(id)) continue;
-    const dec = customEventDecision(ev);
+    const dec = customEventDecision(ev, state);
     if (dec) {
       cal.pendingDecisions.push(dec);
       added.push(dec);
@@ -557,7 +559,7 @@ function collectObligationDecisions(state, targetDate) {
     if (!isIsoDate(ev.date) || ev.date > targetDate || ev.date < oldest) continue;
     const id = `dec_cust_${ev.id}`;
     if (resolved.has(id) || existing.has(id)) continue;
-    const dec = customEventDecision(ev);
+    const dec = customEventDecision(ev, state);
     if (!dec) continue;
     cal.pendingDecisions.push(dec);
     added.push(dec);

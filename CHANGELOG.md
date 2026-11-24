@@ -25,6 +25,12 @@ LifeLegend 2.0 est livré avec blue41 PES2021 Mod Studio (il peut aussi être ut
 - Variété : les réactions de tes proches sur Kop passent de 1-2 à 6-7 phrases par personnalité, les posts des marques
   de 4 à 8 (3 à la signature), et l'app se souvient des phrases déjà vues dans la carrière pour ne pas les reprendre
   tant qu'il en reste d'autres.
+- Interviews personnelles par l'agent : podcasts, plateaux télé, chaîne du club, couvertures, documentaires et lives
+  caritatifs, construits par l'app (aucune requête IA) et envoyés par ton agent par mail, environ une toutes les 9 à 16
+  journées, jamais plus de deux en attente. Dans le mail : accepter, demander plus (une fois) ou refuser (sans
+  conséquence). Acceptée, l'interview arrive au calendrier un jour sans match ; le jour venu, trois choix tirés au sort
+  (parler de ta vie, rester sur le football, citer tes partenaires, une phrase choc risquée, mettre le groupe en avant…),
+  cachet compris. Les nouvelles offres de sponsors arrivent aussi par l'agent, avec son avis et les boutons.
 - Conférence d'après-match : plus de questions sur tes sponsors personnels (c'est l'événement du club, devant ses
   sponsors) ; ces sujets iront aux interviews personnelles.
 - Calendrier, « Planifier à l'avance » : un seul formulaire pour une activité des journées libres ou ton propre

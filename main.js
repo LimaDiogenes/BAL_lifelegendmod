@@ -463,6 +463,7 @@ app.whenReady().then(() => {
   handle('bio:generate', (payload) => world.generateBackstory({ store, settings: store.getSettings(), ...(payload || {}) }));
   handle('lifeHub:calibrate', (payload) => world.calibrateCareerLifeHub({ store, payload }));
   handle('lifeHub:buyAsset', (payload) => world.buyLifeAsset({ store, payload }));
+  handle('media:answer', ({ offerId, choice } = {}) => world.answerLifeMediaOffer({ store, offerId, choice }));
   handle('lifeHub:carClause', (catalogId) => { const st = store.activeCareer(); return st ? carClauseFor(st, String(catalogId || '')) : null; });
   handle('lifeHub:sellAsset', (assetId) => world.sellLifeAsset({ store, assetId }));
   handle('lifeHub:catalog', () => world.getSponsorCatalog({ store }));

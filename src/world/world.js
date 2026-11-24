@@ -16,6 +16,7 @@ const { saveLifeImage, removeLifeImage } = require('./lifeMedia');
 const { buildSceneAndReactions } = require('./lifeScenes');
 const { ensureCalendar, buildVisibleSnapshot, maskCareerForDate, ingestSyncCalendar, advanceCalendar, flushCalendarToSave, addCustomCalendarEvent, removeCustomCalendarEvent, daysBetween, calendarAgenda } = require('./calendar');
 const { normalizeAiChoices, fallbackEventChoices } = require('./personaEvents');
+const { tickMediaOffers, answerMediaOffer } = require('./mediaOffers');
 const { seedSystemEvents, collectDueDecisions, collectObligationDecisions, resolveCalendarDecision, flipBirthdayShift, birthdaysOnDate, birthdaysInMonth, squadBirthdayRoster, scheduleOffPitchActivity } = require('./calendarEvents');
 const { applyLifeEffects } = require('../save/lifeEffectsWrite');
 const { DEFAULT_PAPER_ID, normalizePaperOverride, resolveNationalPaper, paperDeskTemplate } = require('./nationalPaper');
@@ -363,6 +364,10 @@ const rescheduleLifeObligation = ({ store, obligationId, date }) => withCareer(s
   }
   for (const pm of state.calendar?.pendingMatches || []) if (pm?.date) matchDates.add(pm.date);
   rescheduleObligation(state, obligationId, date, matchDates);
+});
+
+const answerLifeMediaOffer = ({ store, offerId, choice }) => withCareer(store, (state) => {
+  answerMediaOffer(state, offerId, choice, state.calendar?.simDate || state.snapshot?.gameDate || '', newId);
 });
 
 const completeLifeObligation = ({ store, obligationId, skip }) => withCareer(store, (state) => {
@@ -2548,6 +2553,7 @@ async function syncInner({ store, settings, log, t }) {
   try {
     lifeHubTick(state, snapshot, { changes, newId, sponsorMode: settings?.sponsorMode || 'realistic' });
     collectObligationDecisions(state, state.calendar?.simDate || snapshot?.gameDate || '');
+    tickMediaOffers(state, state.calendar?.simDate || snapshot?.gameDate || '', newId);
     syncCommercialMailThreads(state, settings?.language || 'en');
     ensureBootDealMedia(state, store, career, settings);
   } catch (err) { log(`Ma vie : ${err.message}`); }
@@ -4300,6 +4306,20 @@ const syncCommercialMailThreads = (state, language = 'en') => {
       messages: [{ who: 'them', body: msgText(w), gameDate: w.createdOn || today }],
     });
   }
+  // Interviews perso et offres de sponsors (2.0) : c'est l'agent qui les envoie ; la carte du mail porte les boutons.
+  const AGENT_BODY = {
+    media: { fr: 'Une proposition pour toi, les détails sont ci-dessous.', en: 'An offer for you, details below.', pt: 'Uma proposta pra você, detalhes abaixo.', es: 'Una propuesta para ti, detalles abajo.', it: 'Una proposta per te, dettagli qui sotto.', de: 'Ein Angebot für dich, Details unten.' },
+    sponsor: { fr: 'Une marque veut travailler avec toi. Mon avis est ci-dessous.', en: 'A brand wants to work with you. My take is below.', pt: 'Uma marca quer trabalhar com você. Minha opinião está abaixo.', es: 'Una marca quiere trabajar contigo. Mi opinión, abajo.', it: 'Un marchio vuole lavorare con te. Il mio parere è qui sotto.', de: 'Eine Marke will mit dir arbeiten. Meine Einschätzung steht unten.' },
+  };
+  const agentMail = (key, extra, subject, on) => state.mail.push({ id: newId(), ...extra, from: agentName, role: 'agent', org: state.agent?.agency || 'Agency', club: state.snapshot?.club?.name, subject, unread: true, closed: false, messages: [{ who: 'them', body: AGENT_BODY[key][language] || AGENT_BODY[key].en, gameDate: on || today }] });
+  for (const mo of hub.mediaOffers || []) {
+    if (mo.status !== 'open' || state.mail.some((m) => m.mediaOfferId === mo.id)) continue;
+    agentMail('media', { mediaOfferId: mo.id }, mo.outlet, mo.on);
+  }
+  for (const so of hub.offers || []) {
+    if (state.mail.some((m) => m.lifeOfferId === so.id)) continue;
+    agentMail('sponsor', { lifeOfferId: so.id }, so.brand, so.on);
+  }
   for (const ot of hub.oneTimeOffers || []) {
     if (state.mail.some((m) => m.oneTimeId === ot.id)) continue;
     const body = language === 'fr'
@@ -4413,4 +4433,4 @@ Rules:
   };
 }
 
-module.exports = { diffBio, addHooks, getNarrativeMemory, dismissNarrativeArc, clearNarrativeQuestions, savePrivacy, savePersona, updateAgent, generateBackstory, saveSquadBirthdays, resetCareer, saveNationalPaper, saveClubAlias, saveLifeEvents, calibrateCareerLifeHub, buyLifeAsset, sellLifeAsset, getSponsorCatalog, addLifeSponsor, updateLifeSponsor, removeLifeSponsor, answerLifeSponsorOffer, answerLifeBiddingWar, answerLifeOneTimeDeal, completeLifeObligation, rescheduleLifeObligation, doLifeAction, answerLifeDilemma, setLifeMedia, ensureLifeHub, calendarAdvance, getCalendarAgenda, resolveLifeCalendarDecision, flipCalendarBirthdayShift, scheduleCalendarActivity, runDailyAiPulse, calendarSetMode, calendarAddEvent, calendarRemoveEvent, applyLifeSaveEffects, dismissLifeSaveEffects, noteKeyMemory, privacyMapFor, previewMasked, getAiAuditLog, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, emitInterviewSilenceReactions, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };
+module.exports = { answerLifeMediaOffer, diffBio, addHooks, getNarrativeMemory, dismissNarrativeArc, clearNarrativeQuestions, savePrivacy, savePersona, updateAgent, generateBackstory, saveSquadBirthdays, resetCareer, saveNationalPaper, saveClubAlias, saveLifeEvents, calibrateCareerLifeHub, buyLifeAsset, sellLifeAsset, getSponsorCatalog, addLifeSponsor, updateLifeSponsor, removeLifeSponsor, answerLifeSponsorOffer, answerLifeBiddingWar, answerLifeOneTimeDeal, completeLifeObligation, rescheduleLifeObligation, doLifeAction, answerLifeDilemma, setLifeMedia, ensureLifeHub, calendarAdvance, getCalendarAgenda, resolveLifeCalendarDecision, flipCalendarBirthdayShift, scheduleCalendarActivity, runDailyAiPulse, calendarSetMode, calendarAddEvent, calendarRemoveEvent, applyLifeSaveEffects, dismissLifeSaveEffects, noteKeyMemory, privacyMapFor, previewMasked, getAiAuditLog, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, emitInterviewSilenceReactions, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };

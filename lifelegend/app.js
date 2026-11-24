@@ -7219,6 +7219,59 @@ function spTerms(o) {
   return `<div class="sp-terms"><div><small>${tr('Par saison')}</small><b>${esc(spMoney(o.fee))}</b></div><div><small>${tr('Prime par but ou passe D.')}</small><b>${esc(spMoney(o.bonus))}</b></div><div><small>${tr('Fin du contrat')}</small><b>${esc(spLongDate(o.until))}</b></div></div>`;
 }
 const SP_FICTION = () => `<p class="sp-fine">${tr('Offre fictive de LifeLegend : ni la marque ni le jeu n’y sont associés.')}</p>`;
+const ML_MEDIA_KIND_LABELS = {
+  podcast: () => tr('Podcast'),
+  tv_show: () => tr('Plateau télé'),
+  club_channel: () => tr('Chaîne du club'),
+  magazine_cover: () => tr('Couverture de magazine'),
+  documentary: () => tr('Documentaire'),
+  charity_stream: () => tr('Live caritatif'),
+};
+const ML_AGENT_NOTES = [
+  () => tr('Belle vitrine pour toi, je recommande.'),
+  () => tr('Ils te veulent toi, personne d’autre. À toi de voir.'),
+  () => tr('Bonne audience, ambiance détendue. Je dirais oui.'),
+  () => tr('Format exigeant, mais ça peut beaucoup t’apporter.'),
+  () => tr('Ils sont souples sur la date si besoin.'),
+  () => tr('Je peux essayer d’obtenir un meilleur cachet.'),
+  () => tr('Pas obligatoire, mais ça entretient ton image.'),
+  () => tr('Le genre d’invitation qu’on ne refuse pas souvent.'),
+];
+
+// Carte d'une proposition envoyée par l'agent (2.0) : interview perso ou offre de sponsor, avec ses boutons.
+function agentOfferCard(t) {
+  const hub = state?.lifeHub;
+  if (t.mediaOfferId) {
+    const o = (hub?.mediaOffers || []).find((m) => m.id === t.mediaOfferId);
+    if (!o) return '';
+    const kind = (ML_MEDIA_KIND_LABELS[o.kind] || ML_MEDIA_KIND_LABELS.podcast)();
+    const note = ML_AGENT_NOTES[o.note % ML_AGENT_NOTES.length]();
+    const nego = o.negotiation === 'up' ? tr('Ils montent le cachet à {p}.', { p: euros(o.fee) }) : o.negotiation === 'firm' ? tr('Ils ne bougeront pas sur le cachet.') : '';
+    const foot = o.status === 'open'
+      ? `<div class="sp-btns"><button class="sm-btn sm-btn-primary" data-media="accept" data-mid="${esc(o.id)}">${tr('Accepter')}</button>${o.fee && !o.negotiated ? `<button class="sm-btn sm-btn-ghost" data-media="negotiate" data-mid="${esc(o.id)}">${tr('Demander plus')}</button>` : ''}<button class="sm-btn sm-btn-ghost" data-media="decline" data-mid="${esc(o.id)}">${tr('Refuser')}</button></div>`
+      : `<span class="sm-chip ${o.status === 'accepted' ? 'sm-chip--yes' : 'sm-chip--closed'}">${esc(o.status === 'accepted' ? tr('Au calendrier le {d}', { d: shortDate(o.date) }) : o.status === 'declined' ? tr('Refusée') : tr('Expirée'))}</span>`;
+    return `<div class="sm-msg"><article class="sp-offer"><div class="sp-main"><span class="sp-eyebrow">${esc(tr('Interview personnelle'))} · ${esc(kind)}</span>
+      <h3>${esc(o.outlet)}</h3>
+      <p>${esc(tr('Le {d}', { d: fmtDate(o.date, { weekday: 'long', day: 'numeric', month: 'long' }) }))} · ${esc(o.fee ? tr('Cachet : {p}', { p: euros(o.fee) }) : tr('Sans cachet'))}</p>
+      <p class="sp-fine">${esc(note)}${nego ? ` ${esc(nego)}` : ''}</p>${foot}</div></article></div>`;
+  }
+  if (t.lifeOfferId) {
+    const o = (hub?.offers || []).find((x) => x.id === t.lifeOfferId);
+    if (!o) return `<div class="sm-msg"><span class="sm-chip sm-chip--closed">${esc(tr('Réglée dans Sponsors.'))}</span></div>`;
+    const mine = hub?.sponsors || [];
+    const avg = mine.length ? mine.reduce((sum, sp) => sum + (Number(sp.fee) || 0), 0) / mine.length : 0;
+    const cats = new Set((o.categories || [o.category]).map((c) => String(c).toLowerCase()));
+    const clash = mine.some((sp) => (sp.categories || [sp.category]).some((c) => cats.has(String(c).toLowerCase())));
+    const advice = clash ? tr('Attention : tu as déjà un partenaire dans cette catégorie.') : (!avg || o.fee >= avg * 1.2) ? tr('Très bonne offre : je signerais.') : tr('Offre correcte : on peut négocier.');
+    return `<div class="sm-msg"><article class="sp-offer"><div class="sp-main"><span class="sp-eyebrow">${esc(tr('Offre de sponsor'))}</span>
+      <h3>${esc(o.brand)}</h3>
+      <p>${esc(tr('{p}/an jusqu’au {d}', { p: euros(o.fee), d: shortDate(o.until) }))}</p>
+      <p class="sp-fine">${esc(advice)}</p>
+      <div class="sp-btns"><button class="sm-btn sm-btn-primary" data-lifeoffer="accept" data-oid="${esc(o.id)}">${tr('Accepter')}</button>${o.negotiated ? '' : `<button class="sm-btn sm-btn-ghost" data-lifeoffer="negotiate" data-oid="${esc(o.id)}">${tr('Négocier')}</button>`}<button class="sm-btn sm-btn-ghost" data-lifeoffer="decline" data-oid="${esc(o.id)}">${tr('Refuser')}</button><button class="sm-btn sm-btn-ghost" data-lifeoffer-open>${tr('Voir dans Sponsors')}</button></div></div></article></div>`;
+  }
+  return '';
+}
+
 function sponsorCard(t) {
   if (!t.sponsorOffer) return '';
   const sp = state.sponsor, id = t.sponsorOffer;
@@ -7549,7 +7602,7 @@ function renderMail(page) {
       <div class="sm-bar"><a class="sm-tool sm-back" data-smback title="${tr('Retour')}">${ri('back')}</a>
         <div class="sm-pager">${step(-1, 'prev', tr('Message précédent'))}<span>${esc(tr('{a} sur {n}', { a: pos + 1, n: threads.length }))}</span>${step(1, 'next', tr('Message suivant'))}</div>
         <div class="sm-chips">${label ? `<span class="sm-chip">${esc(label)}</span>` : ''}${formerClub ? `<span class="sm-chip sm-chip--former">${tr('Ancien club')} · ${esc(formerClub)}</span>` : ''}${open.closed && open.role !== 'newsletter' ? `<span class="sm-chip sm-chip--closed">${tr('Conversation close')}</span>` : ''}</div></div>
-      <div class="sm-thread">${open.request ? requestCard(open.request) : ''}${open.messages.map(msgHtml).join('')}${open.sponsorOffer ? sponsorCard(open) : attach}${adviceCard(open)}${conductCard(open)}
+      <div class="sm-thread">${open.request ? requestCard(open.request) : ''}${open.messages.map(msgHtml).join('')}${open.sponsorOffer ? sponsorCard(open) : attach}${agentOfferCard(open)}${adviceCard(open)}${conductCard(open)}
         ${open.closed ? `<p class="sm-closed">${open.role === 'newsletter' ? tr('Envoyé automatiquement par {paper} : on ne peut pas répondre à ce brief. Pour l’arrêter, {link} en bas de la une.', { paper: esc(open.from || natPaper().name), link: quote(tr('Se désabonner')) }) : esc(tr('{name} ne répond plus à tes messages.', { name: open.from }))}</p>` : `
         <div class="sm-msg sm-reply"><div class="sm-msg-body"><label class="sm-reply-label" for="mail-reply">${ri('reply')} ${esc(tr('Répondre à {name}', { name: open.from }))}</label>
           ${open.interview?.status === 'open' ? `<p class="fineprint sm-interview">${tr('Réponds à ses questions dans un seul message : ta réponse deviendra un long entretien dans {paper}, tes mots tels quels.', { paper: esc(natPaper().name) })}</p>` : ''}${open.role === 'agent' ? agentQuickReplies() : ''}<textarea id="mail-reply" placeholder="${tr('Écris ta réponse…')}">${esc(drafts.mail[open.id] || '')}</textarea></div>
@@ -7654,6 +7707,21 @@ function renderMail(page) {
       render();
     };
   });
+  page.querySelectorAll('[data-media]').forEach((b) => {
+    b.onclick = async () => {
+      page.querySelectorAll('[data-media]').forEach((x) => { x.disabled = true; });
+      try { state = await live.answerMediaOffer(b.dataset.mid, b.dataset.media); } catch (err) { toast(err.message, true); }
+      render();
+    };
+  });
+  page.querySelectorAll('[data-lifeoffer]').forEach((b) => {
+    b.onclick = async () => {
+      page.querySelectorAll('[data-lifeoffer]').forEach((x) => { x.disabled = true; });
+      try { state = await live.answerLifeSponsorOffer(b.dataset.oid, b.dataset.lifeoffer); } catch (err) { toast(err.message, true); }
+      render();
+    };
+  });
+  page.querySelectorAll('[data-lifeoffer-open]').forEach((b) => { b.onclick = () => { view.mlTab = 'sponsors'; go('mylife'); }; });
   page.querySelectorAll('[data-sponsor]').forEach((b) => {
     b.onclick = async () => {
       const choice = b.dataset.sponsor;
@@ -9222,6 +9290,12 @@ const ML_SYSEV_LABELS = {
 };
 
 const ML_DECISION_CHOICE_LABELS = {
+  media_open: () => tr('Parler de ta vie'),
+  media_safe: () => tr('Rester sur le football'),
+  media_promo: () => tr('Glisser un mot pour tes partenaires'),
+  media_bold: () => tr('Une phrase choc'),
+  media_give: () => tr('Tout donner pour la cause'),
+  media_team: () => tr('Mettre le groupe en avant'),
   hobby_friends: () => tr('Avec les amis de toujours'),
   hobby_solo: () => tr('Seul, pour souffler'),
   hobby_charity: () => tr('En faire une journée caritative'),
@@ -10189,6 +10263,9 @@ function mlDecisionHeader(dec) {
   }
   if (dec.kind === 'match_eve') {
     return { title: tr('Veille de match : {match}', { match: dec.title || '' }), sub: dec.competition || fmtDate(dec.date) };
+  }
+  if (dec.kind === 'media_event') {
+    return { title: `${dec.title} · ${(ML_MEDIA_KIND_LABELS[dec.mediaKind] || ML_MEDIA_KIND_LABELS.podcast)()}`, sub: `${tr('Interview personnelle')} · ${fmtDate(dec.date)}` };
   }
   if (dec.kind === 'persona_event') {
     return { title: mlPersonaEventTitle(dec.eventKey, dec.title), sub: fmtDate(dec.date) };
