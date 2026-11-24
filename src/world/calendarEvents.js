@@ -6,6 +6,7 @@ const { OFF_PITCH_ACTIONS, ensureLifeHub, addLedger, pushGiftedSponsorCar } = re
 const { normalizeDob } = require('./persona');
 const { buildSceneAndReactions } = require('./lifeScenes');
 const { activeHuddle, addMessage: addHuddleMessage } = require('./huddle');
+const { seedPersonaEvents, personaDecision, eventChoicesToDecision } = require('./personaEvents');
 
 const isIsoDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || '').trim());
 
@@ -304,6 +305,9 @@ function seedSystemEvents(state, snapshot, simDate, { eventMode = 'realistic', n
     }
   }
 
+  // 3. Ce que le joueur a écrit : passion, ville natale, idole, rêve, tournant, premier club (2.0)
+  try { added.push(...seedPersonaEvents(state, snapshot, simDate, occupied, newId)); } catch { /* jamais bloquant */ }
+
   state.calendar.systemEvents.sort((a, b) => a.date.localeCompare(b.date));
   return added;
 }
@@ -385,6 +389,8 @@ function collectDueDecisions(state, snapshot, targetDate, { eventMode = 'realist
     let dec;
     if (FOLLOW_UPS[sys.eventKey]) {
       dec = { id, kind: 'follow_up', eventKey: sys.eventKey, category: 'media', date: sys.date, title: sys.title, choices: FOLLOW_UPS[sys.eventKey](sys.title) };
+    } else if (sys.eventKey === 'first_club_return' || String(sys.eventKey || '').startsWith('persona_')) {
+      dec = personaDecision(sys);
     } else if (sys.eventKey === 'match_eve') {
       dec = {
         id,
@@ -442,6 +448,8 @@ function collectDueDecisions(state, snapshot, targetDate, { eventMode = 'realist
           { id: 'quick_cut', cost: 0, bonusCash: Math.round((ev.oneTimeDeal.remainderFee || 0) * 0.7), effects: { media: 3, sponsors: 2, manager: 1 }, followerDelta: 0.008, memory: `Completed streamlined shoot with ${ev.oneTimeDeal.brand}` },
         ],
       };
+    } else if (ev.aiChoices?.length) {
+      dec = { id, kind: 'scheduled', category: ev.category || 'personal', date: ev.date, title: ev.title, people: (ev.people || []).map((p) => p.name), choices: eventChoicesToDecision(ev) };
     } else if (ev.kind === 'scheduled' || ev.category) {
       const tpl = ev.activityId ? OFF_PITCH_ACTIONS.find((a) => a.id === ev.activityId) : null;
       dec = {

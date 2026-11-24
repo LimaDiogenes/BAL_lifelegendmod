@@ -19,6 +19,12 @@ LifeLegend 2.0 est livré avec blue41 PES2021 Mod Studio (il peut aussi être ut
   les trois cases en icônes à droite, « Retirer cette personne » à côté du pseudo, lignes plus serrées.
 - Calibration de Ma vie en mode sponsors réaliste : les sponsors déjà en place sont gardés (avant : la liste repartait
   vide). Le mode réaliste ne fait que gérer la suite (offres, enchères).
+- Ton calendrier vit de ce que tu as écrit : ta passion, ta ville natale, ton idole, ton rêve et ton tournant amènent
+  un événement tous les 18 à 30 jours (jamais un jour de match), et un match contre ton premier club amène des
+  retrouvailles la veille. Choix tirés au sort parmi plusieurs, souvenirs variés, toujours positifs.
+- Événements à toi : tu peux y inviter des proches de ton cercle ; une courte requête à l'IA écrit alors trois choix
+  qui les nomment (effets fixés par l'app, jamais négatifs ; noms masqués par le bouclier). Sans IA, des choix variés
+  et traduits prennent le relais.
 - Lifestyle & patrimoine : section « Ce que tu possèdes » en tête (tout le patrimoine, cadeaux compris, valeur totale) ;
   la boutique ne montre que le reste. Nouveaux articles : placements (obligations, portefeuille indiciel, fonds
   start-up, bien locatif), parts chez chaque partenaire, entreprises (restaurant, marque de vêtements, équipe esport,

@@ -15,6 +15,7 @@ const { catalogForUi } = require('./sponsorCatalog');
 const { saveLifeImage, removeLifeImage } = require('./lifeMedia');
 const { buildSceneAndReactions } = require('./lifeScenes');
 const { ensureCalendar, buildVisibleSnapshot, maskCareerForDate, ingestSyncCalendar, advanceCalendar, flushCalendarToSave, addCustomCalendarEvent, removeCustomCalendarEvent, daysBetween, calendarAgenda } = require('./calendar');
+const { normalizeAiChoices, fallbackEventChoices } = require('./personaEvents');
 const { seedSystemEvents, collectDueDecisions, collectObligationDecisions, resolveCalendarDecision, flipBirthdayShift, birthdaysOnDate, birthdaysInMonth, squadBirthdayRoster, scheduleOffPitchActivity } = require('./calendarEvents');
 const { applyLifeEffects } = require('../save/lifeEffectsWrite');
 const { DEFAULT_PAPER_ID, normalizePaperOverride, resolveNationalPaper, paperDeskTemplate } = require('./nationalPaper');
@@ -4130,13 +4131,33 @@ function calendarSetMode({ store, mode }) {
   return { settings: nextSettings, state, flushed: Boolean(fl?.flushed), revealedCount: fl?.revealedFixtures?.length || 0 };
 }
 
-const calendarAddEvent = ({ store, payload }) => withCareer(store, (state) => {
-  if (payload?.kind === 'scheduled' || payload?.activityId) {
-    scheduleOffPitchActivity(state, payload, newId);
-  } else {
-    addCustomCalendarEvent(state, payload, newId);
-  }
-});
+// Un événement à soi ; avec des proches (2.0), une courte requête à l'IA écrit 3 choix (effets fixés par le code). Sans
+// IA (pas de clé, erreur), des choix variés et traduits prennent le relais.
+async function calendarAddEvent({ store, payload, completeFn = complete }) {
+  let added = null;
+  const state = withCareer(store, (st) => {
+    if (payload?.kind === 'scheduled' || payload?.activityId) scheduleOffPitchActivity(st, payload, newId);
+    else added = addCustomCalendarEvent(st, payload, newId);
+  });
+  if (!added?.people?.length) return state;
+  let choices = null;
+  try {
+    const stg = store.getSettings?.() || {};
+    const lang = ({ fr: 'French', en: 'English', es: 'Spanish', it: 'Italian', pt: 'Portuguese', de: 'German' })[stg.language] || 'English';
+    const privacyMap = buildPrivacyMap(normalizePrivacy(state.privacy || { enabled: true }), { careerId: state.careerId, playerName: state.snapshot?.player?.name || '', handle: state.profile?.handle || '', persona: normalizePersona(state.persona) });
+    const system = `Write 3 short choices (max 60 characters each, in ${lang}) for how a professional footballer spends a personal event with people close to him. Use 3 different kinds from: warm, generous, quiet, public, focused. All positive and realistic; name the people. Output only JSON: {"choices":[{"kind":"...","label":"..."}]}`;
+    const user = JSON.stringify({ event: added.title, category: added.category, people: added.people });
+    const raw = await completeFn(stg, store.getKey?.(stg.provider) || '', { light: true, maxTokens: 300, privacyMap, system, user });
+    choices = normalizeAiChoices(parseJson(raw));
+  } catch { /* pas d'IA : choix de secours */ }
+  const fresh = store.activeCareer();
+  const ev = fresh?.calendar?.customEvents?.find((e) => e.id === added.id);
+  if (!ev) return fresh;
+  ev.aiChoices = choices || fallbackEventChoices(ev);
+  ev.aiChoicesBy = choices ? 'ai' : 'fallback';
+  store.saveCareer(fresh);
+  return fresh;
+}
 
 const calendarRemoveEvent = ({ store, id }) => withCareer(store, (state) => {
   removeCustomCalendarEvent(state, id);

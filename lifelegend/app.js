@@ -9221,6 +9221,40 @@ const ML_SYSEV_LABELS = {
 };
 
 const ML_DECISION_CHOICE_LABELS = {
+  hobby_friends: () => tr('Avec les amis de toujours'),
+  hobby_solo: () => tr('Seul, pour souffler'),
+  hobby_charity: () => tr('En faire une journée caritative'),
+  hobby_film: () => tr('Le partager avec tes fans'),
+  hobby_teammate: () => tr('Y emmener un coéquipier'),
+  home_family: () => tr('Un long repas en famille'),
+  home_kids: () => tr('Passer voir les jeunes du club'),
+  home_quiet: () => tr('Une visite discrète'),
+  home_press: () => tr('Une interview à la presse locale'),
+  home_old_friends: () => tr('Retrouver les copains d’enfance'),
+  idol_meet: () => tr('Aller à sa rencontre'),
+  idol_advice: () => tr('Lui demander conseil'),
+  idol_photo: () => tr('Une photo souvenir'),
+  idol_thanks: () => tr('Le remercier publiquement'),
+  dream_step: () => tr('Faire un vrai pas vers ce rêve'),
+  dream_share: () => tr('En parler à tes fans'),
+  dream_plan: () => tr('Préparer la suite'),
+  turn_reflect: () => tr('Prendre un moment pour y repenser'),
+  turn_post: () => tr('Raconter l’histoire à tes fans'),
+  turn_visit: () => tr('Retourner sur les lieux'),
+  fcr_tribute: () => tr('Rendre hommage à ton premier club'),
+  fcr_focus: () => tr('Rester concentré sur le match'),
+  fcr_visit: () => tr('Passer voir ton ancien centre'),
+  fcr_quiet_word: () => tr('Raconter ces années au vestiaire'),
+  fb_warm_0: (ch) => tr('Un vrai moment avec {who}', { who: ch?.who || '' }),
+  fb_warm_1: (ch) => tr('Être pleinement là pour {who}', { who: ch?.who || '' }),
+  fb_generous_0: (ch) => tr('Gâter {who}', { who: ch?.who || '' }),
+  fb_generous_1: (ch) => tr('Rendre ce moment inoubliable pour {who}', { who: ch?.who || '' }),
+  fb_quiet_0: (ch) => tr('Rester simple et discret avec {who}', { who: ch?.who || '' }),
+  fb_quiet_1: (ch) => tr('Un moment au calme avec {who}', { who: ch?.who || '' }),
+  fb_public_0: (ch) => tr('Partager le moment avec tes fans', { who: ch?.who || '' }),
+  fb_public_1: (ch) => tr('Poster une photo avec {who}', { who: ch?.who || '' }),
+  fb_focused_0: (ch) => tr('Y passer, puis rentrer tôt', { who: ch?.who || '' }),
+  fb_focused_1: (ch) => tr('En profiter sans casser ta routine', { who: ch?.who || '' }),
   ob_all_in: () => tr('Tout donner'),
   car_decline: () => tr('Garder ma voiture actuelle'),
   perk_family: () => tr('En faire profiter la famille'),
@@ -9808,6 +9842,19 @@ function mlResolveScheduledActivityTitle(rawTitle, activityId = null) {
   return clean || act?.label() || tr('Activité planifiée');
 }
 
+// Événements tirés de ce que le joueur a écrit (2.0) : passion, ville natale, idole, rêve, tournant, premier club.
+function mlPersonaEventTitle(eventKey, x) {
+  const key = {
+    persona_hobby: 'Journée passion : {x}',
+    persona_hometown: 'Retour à {x}',
+    persona_idol: 'Une rencontre : {x}',
+    persona_dream: 'Ton rêve : {x}',
+    persona_turning: 'Souvenir : {x}',
+    first_club_return: 'Retrouvailles avec {x}',
+  }[eventKey];
+  return key ? tr(key, { x: x || '' }) : '';
+}
+
 function mlFormatCalendarItemTitle(it) {
   if (!it) return '';
   if (it.kind === 'scheduled' || it.kind === 'custom' || it.activityId) {
@@ -9815,6 +9862,8 @@ function mlFormatCalendarItemTitle(it) {
   }
   if (it.kind === 'system_event') {
     if (it.eventKey === 'match_eve') return tr('Veille de match : {match}', { match: it.title || '' });
+    const personaTitle = mlPersonaEventTitle(it.eventKey, it.title);
+    if (personaTitle) return personaTitle;
     const fn = ML_SYSEV_LABELS[it.eventKey];
     if (fn) return fn();
     return mlResolveScheduledActivityTitle(it.title, it.eventKey);
@@ -10140,6 +10189,12 @@ function mlDecisionHeader(dec) {
   if (dec.kind === 'match_eve') {
     return { title: tr('Veille de match : {match}', { match: dec.title || '' }), sub: dec.competition || fmtDate(dec.date) };
   }
+  if (dec.kind === 'persona_event') {
+    return { title: mlPersonaEventTitle(dec.eventKey, dec.title), sub: fmtDate(dec.date) };
+  }
+  if (dec.kind === 'scheduled' && dec.people?.length) {
+    return { title: mlResolveScheduledActivityTitle(dec.title, dec.activityId), sub: `${tr('Avec {who}', { who: dec.people.join(', ') })} · ${fmtDate(dec.date)}` };
+  }
   if (dec.kind === 'car_gift') {
     return { title: tr('{brand} t’offre une voiture', { brand: dec.brand || '' }), sub: `${tr('Choisis ton modèle')} · ${fmtDate(dec.date)}` };
   }
@@ -10163,7 +10218,7 @@ function mlDecisionHeader(dec) {
 function mlDecChoicesHtml(dec) {
   return (dec.choices || []).map((ch) => {
     const chLblFn = ML_DECISION_CHOICE_LABELS[ch.id];
-    const chLbl = ch.catId ? [ch.label, mlFormatAssetName(ch.catId)].filter(Boolean).join(' · ') : (chLblFn ? chLblFn() : ch.id);
+    const chLbl = ch.catId ? [ch.label, mlFormatAssetName(ch.catId)].filter(Boolean).join(' · ') : (ch.label || (chLblFn ? chLblFn(ch) : ch.id));
     const tags = mlDecisionChoiceTags(ch);
     return `<button type="button" class="ml-dil-btn" data-caldec="${esc(dec.id)}" data-calchoice="${esc(ch.id)}"><b>${esc(chLbl)}</b>${tags.length ? `<small>${esc(tags.join(' · '))}</small>` : ''}</button>`;
   }).join('');
@@ -10875,6 +10930,7 @@ function renderMyLife(page) {
         </div>
       </li>`).join('')}</ul>`
     : `<p class="fineprint">${tr('Journée calme : tu peux ajouter un événement personnel ou avancer dans le calendrier.')}</p>`;
+  const circlePeople = Object.values(state.persona?.circle || {}).flat().filter((p) => p?.name).slice(0, 24);
   const calCatOpts = `${Object.entries(ML_CAL_CAT_LABELS).map(([k, fn]) => `<option value="${k}">${esc(fn())}</option>`).join('')}<option value="__custom__">${esc(tr('Personnalisé…'))}</option>`;
   const calActOpts = ML_ACTIONS_UI.map((a) => `<option value="${esc(a.id)}">${esc(a.label())} (${esc(a.tags().join(' · '))})</option>`).join('');
   // ce qui se passe aujourd'hui, en tête de la carte « Aujourd'hui »
@@ -11148,6 +11204,7 @@ function renderMyLife(page) {
                   <label class="per-field"><span>${tr('Date')}</span><input id="ml-calev-date" type="date" value="${esc(calDay)}"></label>
                   <label class="per-field"><span>${tr('Titre')}</span><input id="ml-calev-title" placeholder="${esc(tr('ex. Dîner famille, séance photo, visite fondation…'))}" maxlength="100"></label>
                   <label class="per-field"><span>${tr('Catégorie')}</span><select id="ml-calev-cat">${calCatOpts}</select></label>
+                  ${circlePeople.length ? `<div class="per-field"><span>${tr('Avec (optionnel)')}</span><div class="ml-calev-people">${circlePeople.map((p, i) => `<label class="ml-chip"><input type="checkbox" class="ml-calev-person" value="${i}"> ${esc(p.name)}${p.role ? ` · ${esc(p.role)}` : ''}</label>`).join('')}</div><small class="fineprint">${tr('Avec des proches, l’IA prépare des choix pour cet événement (une courte requête).')}</small></div>` : ''}
                   <label class="per-field" id="ml-calev-cat-custom-wrap" hidden><span>${tr('Catégorie personnalisée')}</span><input id="ml-calev-cat-custom" placeholder="${esc(tr('ex. Gala, Entraînement perso…'))}" maxlength="40"></label>
                   <button type="button" class="btn primary" id="ml-calev-go">${tr('Planifier')}</button>
                 </div>`}
@@ -11555,12 +11612,19 @@ function renderMyLife(page) {
       try {
         const date = $('#ml-calev-date').value;
         const cat = $('#ml-calev-cat').value;
-        state = await live.addCalendarEvent({
-          date,
-          title: $('#ml-calev-title').value,
-          category: cat,
-          customCategory: cat === '__custom__' ? $('#ml-calev-cat-custom')?.value || '' : '',
-        });
+        const circle = Object.values(state.persona?.circle || {}).flat().filter((p) => p?.name).slice(0, 24);
+        const people = [...page.querySelectorAll('.ml-calev-person:checked')].map((c) => circle[Number(c.value)]).filter(Boolean).slice(0, 4).map((p) => ({ name: p.name, role: p.role || '' }));
+        if (people.length) toast(tr('Préparation des choix…'));
+        $('#ml-calev-go').disabled = true;
+        try {
+          state = await live.addCalendarEvent({
+            date,
+            title: $('#ml-calev-title').value,
+            category: cat,
+            customCategory: cat === '__custom__' ? $('#ml-calev-cat-custom')?.value || '' : '',
+            people,
+          });
+        } finally { if ($('#ml-calev-go')) $('#ml-calev-go').disabled = false; }
         view.mlCalAgendaKey = null;
         if (date) { view.mlCalMonth = date.slice(0, 7); view.mlCalDay = date; }
         toast(tr('Événement ajouté au calendrier.'));
