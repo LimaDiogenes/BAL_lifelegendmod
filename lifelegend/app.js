@@ -11186,28 +11186,19 @@ function renderMyLife(page) {
           ${selItemsHtml}
           <details class="ml-scheduler"${view.mlSchedOpen ? ' open' : ''}>
             <summary><h4>${tr('Planifier à l’avance')}</h4></summary>
-            <div class="ml-sec-head">
-              <div class="ml-chips">
-                <button type="button" class="ml-chip${(view.mlSchedMode || 'activity') === 'activity' ? ' on' : ''}" data-schedmode="activity">${tr('Activité hors terrain')}</button>
-                <button type="button" class="ml-chip${view.mlSchedMode === 'event' ? ' on' : ''}" data-schedmode="event">${tr('Événement personnalisé')}</button>
+            <div class="ml-custom-form">
+              <label class="per-field"><span>${tr('Date')}</span><input id="ml-plan-date" type="date" value="${esc(calDay)}"></label>
+              <label class="per-field"><span>${tr('Quoi ?')}</span><select id="ml-plan-what"><optgroup label="${esc(tr('Activités des journées libres'))}">${calActOpts}</optgroup><option value="__event__">${esc(tr('Ton propre événement…'))}</option></select></label>
+              <label class="per-field"><span>${tr('Titre ou note')}</span><input id="ml-plan-title" maxlength="100"></label>
+              <label class="per-field" id="ml-plan-cat-wrap" hidden><span>${tr('Catégorie')}</span><select id="ml-calev-cat">${calCatOpts}</select></label>
+              <label class="per-field" id="ml-calev-cat-custom-wrap" hidden><span>${tr('Catégorie personnalisée')}</span><input id="ml-calev-cat-custom" placeholder="${esc(tr('ex. Gala, Entraînement perso…'))}" maxlength="40"></label>
+              <div class="per-field ml-plan-people"><span>${tr('Avec (optionnel)')}</span>
+                <select id="ml-plan-person"><option value="">${esc(tr('Ajouter quelqu’un…'))}</option><option value="__team__">${esc(tr('Coéquipiers'))}</option>${circlePeople.map((p, i) => `<option value="${i}">${esc(p.name)}${p.role ? ` · ${esc(p.role)}` : ''}</option>`).join('')}</select>
+                <div class="ml-plan-chips" id="ml-plan-chips"></div>
+                <small class="fineprint">${tr('Avec des proches, l’IA prépare des choix pour cet événement (une courte requête).')}</small>
               </div>
+              <button type="button" class="btn primary" id="ml-plan-go">${tr('Planifier')}</button>
             </div>
-            ${(view.mlSchedMode || 'activity') === 'activity'
-              ? `<div class="ml-custom-form">
-                  <label class="per-field"><span>${tr('Date')}</span><input id="ml-sched-date" type="date" value="${esc(calDay)}"></label>
-                  <label class="per-field"><span>${tr('Activité')}</span><select id="ml-sched-act">${calActOpts}</select></label>
-                  <label class="per-field"><span>${tr('Avec qui ? (optionnel)')}</span><input id="ml-sched-comp" placeholder="${esc(tr('ex. Capitaine, famille, agent…'))}" maxlength="60"></label>
-                  <label class="per-field"><span>${tr('Note (optionnel)')}</span><input id="ml-sched-title" placeholder="${esc(tr('Libellé personnalisé…'))}" maxlength="100"></label>
-                  <button type="button" class="btn primary" id="ml-sched-act-go">${tr('Planifier')}</button>
-                </div>`
-              : `<div class="ml-custom-form">
-                  <label class="per-field"><span>${tr('Date')}</span><input id="ml-calev-date" type="date" value="${esc(calDay)}"></label>
-                  <label class="per-field"><span>${tr('Titre')}</span><input id="ml-calev-title" placeholder="${esc(tr('ex. Dîner famille, séance photo, visite fondation…'))}" maxlength="100"></label>
-                  <label class="per-field"><span>${tr('Catégorie')}</span><select id="ml-calev-cat">${calCatOpts}</select></label>
-                  ${circlePeople.length ? `<div class="per-field"><span>${tr('Avec (optionnel)')}</span><div class="ml-calev-people">${circlePeople.map((p, i) => `<label class="ml-chip"><input type="checkbox" class="ml-calev-person" value="${i}"> ${esc(p.name)}${p.role ? ` · ${esc(p.role)}` : ''}</label>`).join('')}</div><small class="fineprint">${tr('Avec des proches, l’IA prépare des choix pour cet événement (une courte requête).')}</small></div>` : ''}
-                  <label class="per-field" id="ml-calev-cat-custom-wrap" hidden><span>${tr('Catégorie personnalisée')}</span><input id="ml-calev-cat-custom" placeholder="${esc(tr('ex. Gala, Entraînement perso…'))}" maxlength="40"></label>
-                  <button type="button" class="btn primary" id="ml-calev-go">${tr('Planifier')}</button>
-                </div>`}
           </details>
           ${calHistHtml ? `<details class="ml-cal-hist"><summary><h4>${tr('Journal du calendrier')}</h4></summary><ul class="ml-feed">${calHistHtml}</ul></details>` : ''}
         </div>
@@ -11582,54 +11573,59 @@ function renderMyLife(page) {
       } catch (err) { toast(err.message, true); }
     };
   });
-  page.querySelectorAll('[data-schedmode]').forEach((b) => {
-    b.onclick = () => { view.mlSchedMode = b.dataset.schedmode; renderMyLife(page); };
-  });
-  if ($('#ml-sched-act-go')) {
-    $('#ml-sched-act-go').onclick = async () => {
-      try {
-        const date = $('#ml-sched-date').value;
-        state = await live.scheduleCalendarActivity({
-          date,
-          activityId: $('#ml-sched-act').value,
-          title: $('#ml-sched-title')?.value || '',
-          companion: $('#ml-sched-comp')?.value || '',
-        });
-        view.mlCalAgendaKey = null;
-        if (date) { view.mlCalMonth = date.slice(0, 7); view.mlCalDay = date; }
-        toast(tr('Activité planifiée au calendrier.'));
-        render();
-      } catch (err) { toast(err.message, true); }
+  // Planifier (2.0) : un seul formulaire, une activité des journées libres ou un événement à soi, avec des proches.
+  const planSched = page.querySelector('.ml-scheduler');
+  if (planSched) planSched.addEventListener('toggle', () => { view.mlSchedOpen = planSched.open; });
+  const planPeopleList = () => Object.values(state.persona?.circle || {}).flat().filter((p) => p?.name).slice(0, 24);
+  view.mlPlanPeople ||= [];
+  const paintPlanChips = () => {
+    const box = $('#ml-plan-chips');
+    if (!box) return;
+    const circle = planPeopleList();
+    box.innerHTML = view.mlPlanPeople.map((k, i) => {
+      const label = k === '__team__' ? tr('Coéquipiers') : (circle[Number(k)]?.name || '');
+      return label ? `<span class="ml-plan-chip">${esc(label)}<button type="button" data-plan-rm="${i}" aria-label="${esc(tr('Retirer'))}">×</button></span>` : '';
+    }).join('');
+    box.querySelectorAll('[data-plan-rm]').forEach((b) => { b.onclick = () => { view.mlPlanPeople.splice(Number(b.dataset.planRm), 1); paintPlanChips(); }; });
+  };
+  paintPlanChips();
+  if ($('#ml-plan-person')) {
+    $('#ml-plan-person').onchange = (ev) => {
+      const v = ev.target.value;
+      ev.target.value = '';
+      if (v && !view.mlPlanPeople.includes(v) && view.mlPlanPeople.length < 10) { view.mlPlanPeople.push(v); paintPlanChips(); }
     };
   }
-  if ($('#ml-calev-cat')) {
-    $('#ml-calev-cat').onchange = () => {
-      if ($('#ml-calev-cat-custom-wrap')) $('#ml-calev-cat-custom-wrap').hidden = $('#ml-calev-cat').value !== '__custom__';
-    };
-  }
-  if ($('#ml-calev-go')) {
-    $('#ml-calev-go').onclick = async () => {
+  const syncPlanWhat = () => {
+    const isEvent = $('#ml-plan-what')?.value === '__event__';
+    if ($('#ml-plan-cat-wrap')) $('#ml-plan-cat-wrap').hidden = !isEvent;
+    if ($('#ml-calev-cat-custom-wrap')) $('#ml-calev-cat-custom-wrap').hidden = !isEvent || $('#ml-calev-cat')?.value !== '__custom__';
+    if ($('#ml-plan-title')) $('#ml-plan-title').placeholder = isEvent ? tr('ex. Dîner famille, séance photo, visite fondation…') : tr('Libellé personnalisé…');
+  };
+  if ($('#ml-plan-what')) { $('#ml-plan-what').onchange = syncPlanWhat; syncPlanWhat(); }
+  if ($('#ml-calev-cat')) $('#ml-calev-cat').onchange = syncPlanWhat;
+  if ($('#ml-plan-go')) {
+    $('#ml-plan-go').onclick = async () => {
+      const date = $('#ml-plan-date').value;
+      const what = $('#ml-plan-what').value;
+      const title = $('#ml-plan-title').value.trim();
+      if (what === '__event__' && !title) { toast(tr('Donne un titre à ton événement.'), true); return; }
+      const circle = planPeopleList();
+      const people = view.mlPlanPeople.map((k) => (k === '__team__' ? { name: tr('Coéquipiers'), role: 'teammates' } : circle[Number(k)] ? { name: circle[Number(k)].name, role: circle[Number(k)].role || '' } : null)).filter(Boolean);
+      const cat = $('#ml-calev-cat')?.value || 'personal';
+      const payload = what === '__event__'
+        ? { date, title, category: cat, customCategory: cat === '__custom__' ? $('#ml-calev-cat-custom')?.value || '' : '', people }
+        : { kind: 'scheduled', date, activityId: what, title, people };
+      if (people.length) toast(tr('Préparation des choix…'));
+      $('#ml-plan-go').disabled = true;
       try {
-        const date = $('#ml-calev-date').value;
-        const cat = $('#ml-calev-cat').value;
-        const circle = Object.values(state.persona?.circle || {}).flat().filter((p) => p?.name).slice(0, 24);
-        const people = [...page.querySelectorAll('.ml-calev-person:checked')].map((c) => circle[Number(c.value)]).filter(Boolean).slice(0, 10).map((p) => ({ name: p.name, role: p.role || '' }));
-        if (people.length) toast(tr('Préparation des choix…'));
-        $('#ml-calev-go').disabled = true;
-        try {
-          state = await live.addCalendarEvent({
-            date,
-            title: $('#ml-calev-title').value,
-            category: cat,
-            customCategory: cat === '__custom__' ? $('#ml-calev-cat-custom')?.value || '' : '',
-            people,
-          });
-        } finally { if ($('#ml-calev-go')) $('#ml-calev-go').disabled = false; }
+        state = await live.addCalendarEvent(payload);
+        view.mlPlanPeople = [];
         view.mlCalAgendaKey = null;
         if (date) { view.mlCalMonth = date.slice(0, 7); view.mlCalDay = date; }
-        toast(tr('Événement ajouté au calendrier.'));
+        toast(tr('Planifié : la décision t’attend le {d}.', { d: shortDate(date) }));
         render();
-      } catch (err) { toast(err.message, true); }
+      } catch (err) { toast(err.message, true); } finally { if ($('#ml-plan-go')) $('#ml-plan-go').disabled = false; }
     };
   }
   page.querySelectorAll('[data-caldel]').forEach((b) => {

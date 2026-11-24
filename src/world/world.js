@@ -4136,7 +4136,7 @@ function calendarSetMode({ store, mode }) {
 async function calendarAddEvent({ store, payload, completeFn = complete }) {
   let added = null;
   const state = withCareer(store, (st) => {
-    if (payload?.kind === 'scheduled' || payload?.activityId) scheduleOffPitchActivity(st, payload, newId);
+    if (payload?.kind === 'scheduled' || payload?.activityId) added = scheduleOffPitchActivity(st, payload, newId);
     else added = addCustomCalendarEvent(st, payload, newId);
   });
   if (!added?.people?.length) return state;
@@ -4146,7 +4146,8 @@ async function calendarAddEvent({ store, payload, completeFn = complete }) {
     const lang = ({ fr: 'French', en: 'English', es: 'Spanish', it: 'Italian', pt: 'Portuguese', de: 'German' })[stg.language] || 'English';
     const privacyMap = buildPrivacyMap(normalizePrivacy(state.privacy || { enabled: true }), { careerId: state.careerId, playerName: state.snapshot?.player?.name || '', handle: state.profile?.handle || '', persona: normalizePersona(state.persona) });
     const system = `Write 3 short choices (max 60 characters each, in ${lang}) for how a professional footballer spends a personal event with people close to him. Use 3 different kinds from: warm, generous, quiet, public, focused. All positive and realistic; name the people. Output only JSON: {"choices":[{"kind":"...","label":"..."}]}`;
-    const user = JSON.stringify({ event: added.title, category: added.category, people: added.people });
+    // « Coéquipiers » est un groupe : aucun nom de joueur n'est envoyé ; les proches passent par le bouclier.
+    const user = JSON.stringify({ event: added.title, category: added.category, people: added.people.map((p) => (p.role === 'teammates' ? { group: 'teammates' } : p)) });
     const raw = await completeFn(stg, store.getKey?.(stg.provider) || '', { light: true, maxTokens: 300, privacyMap, system, user });
     choices = normalizeAiChoices(parseJson(raw));
   } catch { /* pas d'IA : choix de secours */ }

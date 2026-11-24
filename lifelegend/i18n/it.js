@@ -3018,4 +3018,11 @@ window.LL_I18N.it = {
   "Avec des proches, l’IA prépare des choix pour cet événement (une courte requête).": "Con persone della tua cerchia, l’IA scrive le scelte per questo evento (una richiesta breve).",
   "Préparation des choix…": "Preparazione delle scelte…",
   "Avec {who}": "Con {who}",
+  "Quoi ?": "Cosa?",
+  "Activités des journées libres": "Attività dei giorni liberi",
+  "Ton propre événement…": "Un tuo evento…",
+  "Titre ou note": "Titolo o nota",
+  "Ajouter quelqu’un…": "Aggiungi qualcuno…",
+  "Donne un titre à ton événement.": "Dai un titolo al tuo evento.",
+  "Planifié : la décision t’attend le {d}.": "Pianificato: la decisione ti aspetta il {d}.",
 };

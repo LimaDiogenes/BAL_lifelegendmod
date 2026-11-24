@@ -611,6 +611,8 @@ At least one or two questions are sharper (criticism, a spotlight narrative, a c
 
 FAN MOOD: if FACTS.fan_mood.level is 2 or 3, one of the questions is about the fans' anger on Kop (their criticism, the hashtag if any); at level 3 with the anger aimed at him (target "player" or "both"), that question asks him straight about his future and the calls to sell him. If FACTS.fan_mood.rebound is true, one question is about having silenced his critics.
 
+CLUB SETTING: this is the club's own post-match press conference, in front of the club's sponsor board. Never ask about his personal sponsors, brand deals, commercial partners or endorsement contracts; those belong to his personal interviews.
+
 OUTPUT: ONE JSON object: {"questions": [ {"journalist": string, "outlet": string, "question": string} ]}  // exactly one question per CONFERENCE.panel entry (5 to 7 questions)`;
 }
 

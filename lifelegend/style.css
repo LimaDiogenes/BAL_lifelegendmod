@@ -4772,3 +4772,11 @@ html, body { height: 100%; overflow: hidden; background: var(--sh-back); }
 
 /* Boîte à plusieurs réponses (2.0) : boutons empilés. */
 .k-modal-actions--stack { flex-direction: column; align-items: stretch; }
+
+/* Planifier (2.0) : proches choisis dans une liste, affichés en pastilles qui passent à la ligne proprement. */
+.ml-plan-people { grid-column: 1 / -1; }
+.ml-plan-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ml-plan-chips:empty { display: none; }
+.ml-plan-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 10px; border: 1px solid var(--line-2); border-radius: var(--r-pill); background: var(--surface-2); color: var(--ink); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.ml-plan-chip button { padding: 0 6px; border: 0; background: none; color: var(--ink-2); font-size: 14px; line-height: 1; cursor: pointer; }
+.ml-plan-chip button:hover { color: var(--ink); }

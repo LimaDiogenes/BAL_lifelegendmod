@@ -362,6 +362,44 @@ function decisionForBirthday(b, newId) {
   };
 }
 
+// La décision d'un événement à soi, d'une activité planifiée ou d'un tournage ponctuel.
+function customEventDecision(ev) {
+  const id = `dec_cust_${ev.id}`;
+  let dec;
+  if (ev.kind === 'onetime' && ev.oneTimeDeal) {
+    dec = {
+      id,
+      kind: 'onetime',
+      date: ev.date,
+      title: ev.title,
+      brand: ev.oneTimeDeal.brand,
+      dealKey: ev.oneTimeDeal.dealKey,
+      choices: [
+        { id: 'complete_shoot', cost: 0, bonusCash: ev.oneTimeDeal.remainderFee || 0, effects: { media: ev.oneTimeDeal.mediaBoost || 5, fans: ev.oneTimeDeal.fanBoost || 4, sponsors: 4 }, followerDelta: ev.oneTimeDeal.followerBoost || 0.015, memory: `Completed headline campaign with ${ev.oneTimeDeal.brand}` },
+        { id: 'quick_cut', cost: 0, bonusCash: Math.round((ev.oneTimeDeal.remainderFee || 0) * 0.7), effects: { media: 3, sponsors: 2, manager: 1 }, followerDelta: 0.008, memory: `Completed streamlined shoot with ${ev.oneTimeDeal.brand}` },
+      ],
+    };
+  } else if (ev.aiChoices?.length) {
+    dec = { id, kind: 'scheduled', activityId: ev.activityId || null, category: ev.category || 'personal', date: ev.date, title: ev.title, people: (ev.people || []).map((p) => p.name), choices: eventChoicesToDecision(ev) };
+  } else if (ev.kind === 'scheduled' || ev.category) {
+    const tpl = ev.activityId ? OFF_PITCH_ACTIONS.find((a) => a.id === ev.activityId) : null;
+    dec = {
+      id,
+      kind: 'scheduled',
+      activityId: ev.activityId || null,
+      category: ev.category || 'personal',
+      date: ev.date,
+      title: ev.title,
+      choices: [
+        { id: 'do_planned', cost: tpl?.cost || ev.cost || 0, effects: tpl?.effects ? { ...tpl.effects } : { fans: 3, media: 2, squad: 2 }, saveEffects: tpl?.saveEffects || null, memory: `Completed scheduled plan: ${ev.title}` },
+        { id: 'keep_light', cost: 0, effects: { manager: 1, squad: 1 }, memory: `Kept scheduled ${ev.title} short and returned early` },
+        { id: 'reschedule_skip', cost: 0, effects: { manager: 2, fans: -1 }, memory: `Postponed ${ev.title} to prioritize training` },
+      ],
+    };
+  }
+  return dec || null;
+}
+
 function collectDueDecisions(state, snapshot, targetDate, { eventMode = 'realistic', newId = () => `dec_${Date.now()}` } = {}) {
   if (eventMode === 'games_only' || !isIsoDate(targetDate) || !state?.calendar) return [];
   const cal = state.calendar;
@@ -434,38 +472,7 @@ function collectDueDecisions(state, snapshot, targetDate, { eventMode = 'realist
     if (ev.date !== targetDate) continue;
     const id = `dec_cust_${ev.id}`;
     if (resolved.has(id) || existing.has(id)) continue;
-    let dec;
-    if (ev.kind === 'onetime' && ev.oneTimeDeal) {
-      dec = {
-        id,
-        kind: 'onetime',
-        date: ev.date,
-        title: ev.title,
-        brand: ev.oneTimeDeal.brand,
-        dealKey: ev.oneTimeDeal.dealKey,
-        choices: [
-          { id: 'complete_shoot', cost: 0, bonusCash: ev.oneTimeDeal.remainderFee || 0, effects: { media: ev.oneTimeDeal.mediaBoost || 5, fans: ev.oneTimeDeal.fanBoost || 4, sponsors: 4 }, followerDelta: ev.oneTimeDeal.followerBoost || 0.015, memory: `Completed headline campaign with ${ev.oneTimeDeal.brand}` },
-          { id: 'quick_cut', cost: 0, bonusCash: Math.round((ev.oneTimeDeal.remainderFee || 0) * 0.7), effects: { media: 3, sponsors: 2, manager: 1 }, followerDelta: 0.008, memory: `Completed streamlined shoot with ${ev.oneTimeDeal.brand}` },
-        ],
-      };
-    } else if (ev.aiChoices?.length) {
-      dec = { id, kind: 'scheduled', category: ev.category || 'personal', date: ev.date, title: ev.title, people: (ev.people || []).map((p) => p.name), choices: eventChoicesToDecision(ev) };
-    } else if (ev.kind === 'scheduled' || ev.category) {
-      const tpl = ev.activityId ? OFF_PITCH_ACTIONS.find((a) => a.id === ev.activityId) : null;
-      dec = {
-        id,
-        kind: 'scheduled',
-        activityId: ev.activityId || null,
-        category: ev.category || 'personal',
-        date: ev.date,
-        title: ev.title,
-        choices: [
-          { id: 'do_planned', cost: tpl?.cost || ev.cost || 0, effects: tpl?.effects ? { ...tpl.effects } : { fans: 3, media: 2, squad: 2 }, saveEffects: tpl?.saveEffects || null, memory: `Completed scheduled plan: ${ev.title}` },
-          { id: 'keep_light', cost: 0, effects: { manager: 1, squad: 1 }, memory: `Kept scheduled ${ev.title} short and returned early` },
-          { id: 'reschedule_skip', cost: 0, effects: { manager: 2, fans: -1 }, memory: `Postponed ${ev.title} to prioritize training` },
-        ],
-      };
-    }
+    const dec = customEventDecision(ev);
     if (dec) {
       cal.pendingDecisions.push(dec);
       added.push(dec);
@@ -543,6 +550,18 @@ function collectObligationDecisions(state, targetDate) {
     cal.pendingDecisions.push(dec);
     added.push(dec);
     existing.add(dec.id);
+  }
+  // ses propres événements et activités planifiées aussi (2.0), dans tous les modes : à leur date, ou jusqu'à 7 jours après
+  const oldest = addDaysIso(targetDate, -7);
+  for (const ev of cal.customEvents || []) {
+    if (!isIsoDate(ev.date) || ev.date > targetDate || ev.date < oldest) continue;
+    const id = `dec_cust_${ev.id}`;
+    if (resolved.has(id) || existing.has(id)) continue;
+    const dec = customEventDecision(ev);
+    if (!dec) continue;
+    cal.pendingDecisions.push(dec);
+    added.push(dec);
+    existing.add(id);
   }
   return added;
 }
@@ -721,7 +740,7 @@ function resolveCalendarDecision(state, decisionId, choiceId, gameDate = '', { l
   return { decision: dec, choice, memoryLine: choice.memory, backfire };
 }
 
-function scheduleOffPitchActivity(state, { date, activityId, title = '', companion = '' } = {}, newId = () => `ev_${Date.now()}`) {
+function scheduleOffPitchActivity(state, { date, activityId, title = '', companion = '', people = [] } = {}, newId = () => `ev_${Date.now()}`) {
   const cleanDate = String(date || '').trim();
   if (!isIsoDate(cleanDate)) throw new Error('Date et titre requis.');
   const act = OFF_PITCH_ACTIONS.find((a) => a.id === activityId);
@@ -737,6 +756,8 @@ function scheduleOffPitchActivity(state, { date, activityId, title = '', compani
     ...(act ? { activityId: act.id, cost: act.cost || 0 } : {}),
     ...(companion ? { companion: String(companion).trim().slice(0, 60) } : {}),
   };
+  const guests = (Array.isArray(people) ? people : []).map((p) => ({ name: String(p?.name || '').trim().slice(0, 60), role: String(p?.role || '').trim().slice(0, 40) })).filter((p) => p.name).slice(0, 10);
+  if (guests.length) ev.people = guests;
   state.calendar.customEvents.push(ev);
   state.calendar.customEvents.sort((a, b) => a.date.localeCompare(b.date));
   return ev;

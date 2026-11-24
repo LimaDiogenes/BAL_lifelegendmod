@@ -3018,4 +3018,11 @@ window.LL_I18N.de = {
   "Avec des proches, l’IA prépare des choix pour cet événement (une courte requête).": "Mit Leuten aus deinem Umfeld schreibt die KI die Optionen für diesen Termin (eine kurze Anfrage).",
   "Préparation des choix…": "Optionen werden vorbereitet…",
   "Avec {who}": "Mit {who}",
+  "Quoi ?": "Was?",
+  "Activités des journées libres": "Aktivitäten an freien Tagen",
+  "Ton propre événement…": "Dein eigener Termin…",
+  "Titre ou note": "Titel oder Notiz",
+  "Ajouter quelqu’un…": "Jemanden hinzufügen…",
+  "Donne un titre à ton événement.": "Gib deinem Termin einen Titel.",
+  "Planifié : la décision t’attend le {d}.": "Geplant: Die Entscheidung wartet am {d} auf dich.",
 };

@@ -63,3 +63,15 @@ test('trois absences : le partenaire s’en va', () => {
   assert.strictEqual(s.lifeHub.sponsors.length, 0);
   assert.strictEqual(s.lastDecisionOutcome.contractEnded, 'Acme');
 });
+
+test('ses propres événements deviennent une décision dans tous les modes (à leur date, pas avant, au plus 7 jours après)', () => {
+  const s = career();
+  const { scheduleOffPitchActivity } = require(path.join(__dirname, '..', 'src/world/calendarEvents.js'));
+  s.calendar.customEvents.push({ id: 'ev1', date: '2027-09-12', title: 'Dinner with family', category: 'family' });
+  scheduleOffPitchActivity(s, { date: '2027-09-12', activityId: 'team_dinner', people: [{ name: 'Teammates', role: 'teammates' }, { name: 'Ana', role: 'Sister' }] }, () => 'ev2');
+  assert.strictEqual(s.calendar.customEvents.find((e) => e.id === 'ev2').people.length, 2);
+  assert.strictEqual(collectObligationDecisions(s, '2027-09-11').length, 0);
+  const due = collectObligationDecisions(s, '2027-09-12');
+  assert.deepStrictEqual(due.map((d) => d.id).sort(), ['dec_cust_ev1', 'dec_cust_ev2']);
+  assert.strictEqual(collectObligationDecisions(s, '2027-09-25').length, 0, 'trop ancien : plus proposé');
+});

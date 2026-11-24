@@ -553,15 +553,8 @@ function pickPressBeats({ state = {}, snapshot = {}, mem = {}, activeArcs = [], 
   }
   const hub = state?.lifeHub;
   if (hub?.calibrated) {
-    for (const sp of (hub.sponsors || []).slice(0, 6)) {
-      if (!sp?.brand) continue;
-      personaHooks.push({
-        beat: 'off_pitch_sponsor',
-        focusLabel: 'off_pitch',
-        personaKey: `sponsor:${sp.brand}`,
-        angle: `Challenge or ask him about balancing elite football focus with major commercial partnerships like ${sp.brand} (FACTS.off_pitch_hub).`,
-      });
-    }
+    // Pas de questions sur ses sponsors perso en conférence d'après-match (les sponsors du club sont sur le panneau) :
+    // ces sujets vont aux interviews personnelles (2.0).
     for (const as of (hub.assets || []).filter((a) => a.catalogId !== 'rented_studio').slice(0, 5)) {
       const label = as.name || as.catalogId;
       if (!label) continue;
@@ -572,12 +565,13 @@ function pickPressBeats({ state = {}, snapshot = {}, mem = {}, activeArcs = [], 
         angle: `Ask an off-pitch lifestyle question referencing "${label}" from FACTS.off_pitch_hub.notable_lifestyle (tabloid curiosity or grounded perspective).`,
       });
     }
-    if (hub.recentEvents?.length) {
+    const recentNonSponsor = (hub.recentEvents || []).find((e) => e?.text && e.kind !== 'sponsor' && e.kind !== 'obligation' && e.kind !== 'onetime' && !/sponsor|partner|brand|commitment|appearance/i.test(e.text));
+    if (recentNonSponsor) {
       personaHooks.push({
         beat: 'off_pitch_recent',
         focusLabel: 'off_pitch',
-        personaKey: `hub:${hub.recentEvents[0].text.slice(0, 40)}`,
-        angle: `Ask about his recent off-pitch focus ("${hub.recentEvents[0].text}" from FACTS.off_pitch_hub.recent_off_pitch).`,
+        personaKey: `hub:${recentNonSponsor.text.slice(0, 40)}`,
+        angle: `Ask about his recent off-pitch focus ("${recentNonSponsor.text}" from FACTS.off_pitch_hub.recent_off_pitch).`,
       });
     }
   }

@@ -3018,4 +3018,11 @@ window.LL_I18N.en = {
   "Avec des proches, l’IA prépare des choix pour cet événement (une courte requête).": "With people from your circle, the AI writes the choices for this event (one short request).",
   "Préparation des choix…": "Preparing the choices…",
   "Avec {who}": "With {who}",
+  "Quoi ?": "What?",
+  "Activités des journées libres": "Day-off activities",
+  "Ton propre événement…": "Your own event…",
+  "Titre ou note": "Title or note",
+  "Ajouter quelqu’un…": "Add someone…",
+  "Donne un titre à ton événement.": "Give your event a title.",
+  "Planifié : la décision t’attend le {d}.": "Planned: the decision will be waiting on {d}.",
 };
