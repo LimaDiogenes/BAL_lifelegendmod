@@ -19,6 +19,8 @@ LifeLegend 2.0 est livré avec blue41 PES2021 Mod Studio (il peut aussi être ut
   les trois cases en icônes à droite, « Retirer cette personne » à côté du pseudo, lignes plus serrées.
 - Calibration de Ma vie en mode sponsors réaliste : les sponsors déjà en place sont gardés (avant : la liste repartait
   vide). Le mode réaliste ne fait que gérer la suite (offres, enchères).
+- Profil : « Protégé » (racines) et « Synchronisé Mails » (agent) deviennent des icônes, le texte au survol ; les champs
+  restent alignés même quand un intitulé passe sur deux lignes.
 - Kop : une pastille sur l'onglet (Pour toi, Abonnements, Officiels, Supporters) qui a de nouveaux posts.
 - Réglages › Sauvegarde › Transférer le profil : exporte le joueur (entourage, traits, racines, biographie, profil Kop,
   confidentialité) dans un fichier et l'importe dans une autre carrière ; réglages (sans clés d'IA ni dossiers),

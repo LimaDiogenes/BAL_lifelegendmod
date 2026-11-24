@@ -1195,7 +1195,7 @@ function personaPersonRowHtml(person = {}, groupKey = '') {
   const kopVal = person.kopPersonality || '';
   const kopOpts = PERSONA_KOP_OPTIONS.map(([id, fn]) => `<option value="${id}"${kopVal === id ? ' selected' : ''}>${esc(fn())}</option>`).join('');
   return `<div class="per-person-row">
-    <div class="per-p-role-wrap"><input class="per-p-role" value="${esc(person.role || '')}" placeholder="${esc(tr('Rôle (ex. Tante, Kiné)'))}" maxlength="60">${isAgentRow ? `<span class="per-sync-pill" title="${esc(tr('Synchronisé avec l’agent dans Mails'))}">${esc(tr('Synchronisé Mails'))}</span>` : ''}</div>
+    <div class="per-p-role-wrap"><input class="per-p-role" value="${esc(person.role || '')}" placeholder="${esc(tr('Rôle (ex. Tante, Kiné)'))}" maxlength="60">${isAgentRow ? `<span class="per-sync-pill" title="${esc(tr('Synchronisé avec l’agent dans Mails'))}" aria-label="${esc(tr('Synchronisé Mails'))}" role="img">${hi('envelope')}</span>` : ''}</div>
     <input class="per-p-name" value="${esc(person.name || '')}" placeholder="${esc(tr('Nom réel'))}" maxlength="120">
     ${dobPickerHtml(person.dob || '', { inputClass: 'per-p-dob' })}
     <select class="per-p-kop" title="${esc(tr('Profil & personnalité sur Kop (optionnel)'))}" aria-label="${esc(tr('Profil & personnalité sur Kop (optionnel)'))}">${kopOpts}</select>
@@ -1233,7 +1233,7 @@ function personaFormHtml(prefix, rawPersona, rawPriv = null) {
   const rootsHtml = PERSONA_ROOTS_UI.map((r) => {
     const checked = d.rootProtect?.[r.key] !== false;
     return `<label class="per-field">
-      <span class="per-field-head"><span>${esc(r.label())}</span>${r.shield ? `<label class="per-root-shield" title="${esc(tr('Masquer dans le bouclier de confidentialité'))}"><input type="checkbox" id="${prefix}-per-rprot-${r.key}"${checked ? ' checked' : ''}><span>${hi('shieldCheck')} ${esc(tr('Masqué par le bouclier'))}</span></label>` : ''}</span>
+      <span class="per-field-head"><span>${esc(r.label())}</span>${r.shield ? `<label class="per-root-shield" title="${esc(tr('Masqué par le bouclier'))}"><input type="checkbox" id="${prefix}-per-rprot-${r.key}"${checked ? ' checked' : ''} aria-label="${esc(tr('Masquer dans le bouclier de confidentialité'))}"><span>${hi('shieldCheck')}</span></label>` : ''}</span>
       <input id="${prefix}-per-root-${r.key}" value="${esc(d.roots[r.key] || '')}" placeholder="${esc(r.hint())}" maxlength="120">
     </label>`;
   }).join('');

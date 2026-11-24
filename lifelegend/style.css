@@ -4761,3 +4761,11 @@ html, body { height: 100%; overflow: hidden; background: var(--sh-back); }
 .tw-tab-dot { width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--gold-hi); }
 
 .rg-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+
+/* 2.0 : « Protégé » et « Synchronisé Mails » en icônes (texte au survol) : les champs restent alignés. */
+.per-grid > .per-field { align-content: end; }
+.per-p-role-wrap { position: relative; }
+.per-p-role-wrap:has(.per-sync-pill) .per-p-role { padding-right: 30px; }
+.per-sync-pill { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); display: inline-flex; padding: 3px; border-radius: var(--r-pill); }
+.per-sync-pill .hi, .per-sync-pill svg { width: 14px; height: 14px; }
+.per-root-shield { padding: 3px 6px; }
