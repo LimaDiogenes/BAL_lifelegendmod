@@ -5,6 +5,7 @@
 
 const { PERSONA_PRESETS } = require('./persona');
 const { CATALOG_ENGLISH_NAMES } = require('./lifeScenes');
+const { lineupFor, brandMakes, modelFor } = require('./carLineups');
 const {
   EXCLUSIVE_CATEGORIES,
   MULTI_BRAND_CATEGORIES,
@@ -666,14 +667,15 @@ function isAutomotiveSponsor(sp) {
   return Array.isArray(sp.categories) && sp.categories.some((c) => String(c || '').toLowerCase() === 'automotive');
 }
 
-function pushGiftedSponsorCar(state, hub, sp, catId, reason, today, newId) {
+function pushGiftedSponsorCar(state, hub, sp, catId, reason, today, newId, model = '') {
   const cat = ASSET_CATALOG.find((a) => a.id === catId) || ASSET_CATALOG.find((a) => a.id === 'car_sports');
   if (!cat) return null;
   const asset = {
     id: newId(),
     catalogId: cat.id,
     category: 'car',
-    name: `${sp.brand} — ${cat.id}`,
+    name: model ? `${sp.brand} ${model}` : `${sp.brand} — ${cat.id}`,
+    ...(model ? { model } : {}),
     price: 0,
     resaleValue: 0,
     monthlyCost: 0,
@@ -689,6 +691,80 @@ function pushGiftedSponsorCar(state, hub, sp, catId, reason, today, newId) {
   if (cat.perks) applyEffects(state, hub, cat.perks, {}, today, `sponsor_car:${sp.brand}`);
   pushRecent(hub, { date: today, kind: 'asset', text: `Received sponsor vehicle from ${sp.brand}` });
   return asset;
+}
+
+// Une décision de Ma vie mise dans le calendrier (voiture offerte, cadeau de partenaire), sans doublon.
+function queueLifeDecision(state, dec) {
+  const { ensureCalendar } = require('./calendar'); // chargé ici : calendar.js dépend de ce fichier
+  const cal = ensureCalendar(state, state.snapshot);
+  cal.pendingDecisions ||= [];
+  cal.resolvedDecisionIds ||= [];
+  if (cal.resolvedDecisionIds.includes(dec.id) || cal.pendingDecisions.some((d) => d.id === dec.id)) return null;
+  cal.pendingDecisions.push(dec);
+  return dec;
+}
+
+// Voiture offerte (2.0) : le sponsor propose 2 ou 3 modèles de sa gamme, adaptés au statut ; le joueur choisit (ou garde
+// la sienne) dans le calendrier. Le type prévu passe en premier s'il existe chez la marque.
+function offerSponsorCar(state, hub, sp, stage, preferredCat, reason, today) {
+  const pool = AUTO_STAGE_CARS[stage] || AUTO_STAGE_CARS.rising;
+  let types = [...new Set([preferredCat, ...pool])].filter((t) => t !== 'car_classic' && brandMakes(sp.brand, t));
+  if (!types.length) types = Object.keys(lineupFor(sp.brand) || {}).filter((t) => t !== 'car_classic');
+  if (!types.length) types = pool.filter((t) => t !== 'car_classic');
+  const n = Number(sp.carGiftsCount) || 0;
+  const choices = types.slice(0, 3).map((t) => {
+    const model = modelFor(sp.brand, t, n);
+    return { id: `car_${t}`, catId: t, label: model, cost: 0, effects: { sponsors: 2 }, memory: `Picked the ${sp.brand} ${model || t.replace('car_', '')} as his ${reason === 'annual' ? 'company' : 'bonus'} car` };
+  });
+  choices.push({ id: 'car_decline', cost: 0, effects: {}, memory: `Kept his current car rather than a new ${sp.brand}` });
+  return queueLifeDecision(state, { id: `dec_car_${sp.id}_${reason}_${today}`, kind: 'car_gift', sponsorId: sp.id, brand: sp.brand, reason, date: today, title: sp.brand, choices });
+}
+
+// La clause des sponsors automobiles (2.0) : un sponsor actif qui fabrique ce type de voiture. Pas pour une voiture de
+// collection ; une voiture pour un proche est réglée à l'achat.
+function carClauseFor(state, catId, today = '') {
+  const hub = state?.lifeHub;
+  if (!hub || !catId || catId === 'car_classic') return null;
+  const t = today || state.snapshot?.gameDate || '';
+  for (const sp of hub.sponsors || []) {
+    if (!isAutomotiveSponsor(sp) || (sp.until && t && sp.until <= t) || !brandMakes(sp.brand, catId)) continue;
+    return { brand: sp.brand, sponsorId: sp.id, model: modelFor(sp.brand, catId, 0) };
+  }
+  return null;
+}
+
+// Cadeaux d'autres partenaires (2.0), une fois par saison : une montre (horlogers), des vols (compagnies aériennes),
+// un séjour (hôtels). La montre va dans le patrimoine ; vols et séjour sont un choix dans le calendrier.
+function grantSponsorPerks(state, hub, snapshot, today, newId = () => `id_${Date.now()}`) {
+  if (!hub || !today) return [];
+  const season = String(snapshot?.season || today.slice(0, 4));
+  const out = [];
+  for (const sp of hub.sponsors || []) {
+    if (sp.until && sp.until <= today) continue;
+    const cats = normalizeSponsorCategories(sp).map((c) => String(c).toLowerCase());
+    sp.perksGranted = Array.isArray(sp.perksGranted) ? sp.perksGranted : [];
+    const once = (key) => { const k = `${season}:${key}`; if (sp.perksGranted.includes(k)) return false; sp.perksGranted.push(k); return true; };
+    if (cats.includes('watches') && once('watch')) {
+      const asset = { id: newId(), catalogId: 'sponsor_watch', category: 'collection', name: `${sp.brand} watch`, price: 0, resaleValue: 0, monthlyCost: 0, passiveReturn: 0, perks: {}, since: today, custom: false, giftedBy: sp.brand, giftSponsorId: sp.id, giftReason: 'season_watch' };
+      hub.assets.push(asset);
+      pushRecent(hub, { date: today, kind: 'asset', text: `Received a ${sp.brand} watch from the partnership` });
+      out.push(asset);
+    }
+    for (const [cat, key] of [['airlines', 'flight'], ['hospitality', 'hotel']]) {
+      if (!cats.includes(cat) || !once(key)) continue;
+      const fly = key === 'flight';
+      const dec = queueLifeDecision(state, {
+        id: `dec_perk_${sp.id}_${key}_${season}`, kind: 'sponsor_perk', perkKey: key, brand: sp.brand, date: today, title: sp.brand,
+        choices: [
+          { id: 'perk_family', cost: 0, effects: { fans: 1, squad: 1 }, memory: fly ? `Flew his family over on ${sp.brand}, courtesy of the partnership` : `Took his family for a weekend at a ${sp.brand} hotel` },
+          { id: 'perk_recovery', cost: 0, effects: { manager: 1 }, saveEffects: { formArrowDelta: 1 }, memory: fly ? `Used his ${sp.brand} flights for a quiet recovery trip` : `Spent a recovery stay at a ${sp.brand} hotel` },
+          { id: 'perk_content', cost: 0, effects: { sponsors: 3, media: 2 }, memory: fly ? `Turned his ${sp.brand} trip into content for the brand` : `Shot content for ${sp.brand} during his stay` },
+        ],
+      });
+      if (dec) out.push(dec);
+    }
+  }
+  return out;
 }
 
 function grantSponsorCars(state, hub, snapshot, today, newId = () => `id_${Date.now()}`) {
@@ -714,7 +790,7 @@ function grantSponsorCars(state, hub, snapshot, today, newId = () => `id_${Date.
       const catId = pool[count % pool.length];
       sp.lastCarGiftOn = today;
       sp.carGiftsCount = count + 1;
-      const gift = pushGiftedSponsorCar(state, hub, sp, catId, 'annual', today, newId);
+      const gift = offerSponsorCar(state, hub, sp, stage, catId, 'annual', today);
       if (gift) granted.push(gift);
     }
 
@@ -729,7 +805,7 @@ function grantSponsorCars(state, hub, snapshot, today, newId = () => `id_${Date.
         const trackKey = `${season}:${mKey}`;
         if (sp.carMilestonesGranted.includes(trackKey)) continue;
         sp.carMilestonesGranted.push(trackKey);
-        const gift = pushGiftedSponsorCar(state, hub, sp, mCat, mKey, today, newId);
+        const gift = offerSponsorCar(state, hub, sp, stage, mCat, mKey, today);
         if (gift) granted.push(gift);
       }
     }
@@ -797,6 +873,7 @@ function calibrateLifeHub(state, snapshot, payload = {}, newId = () => `id_${Dat
   if (hub.sponsors.length) {
     scheduleNextObligation(hub, today, newId);
     grantSponsorCars(state, hub, snapshot, today, newId);
+    grantSponsorPerks(state, hub, snapshot, today, newId);
   }
   return hub;
 }
@@ -1167,6 +1244,7 @@ function lifeHubTick(state, snapshot, { changes = {}, newId = () => `id_${Date.n
   }
   if (hub.sponsors.length > 0) {
     grantSponsorCars(state, hub, snapshot, today, newId);
+    grantSponsorPerks(state, hub, snapshot, today, newId);
   }
 
   // Déclenche un dilemme hors-terrain périodique (au plus un en attente).
@@ -1211,12 +1289,27 @@ function buyAsset(state, payload = {}, gameDate = '', newId = () => `id_${Date.n
     item = { id: cat.category === 'charity' ? newId() : cat.id, catalogId: cat.id, category: cat.category, name: cat.id, price: cat.price, resaleValue: cat.price, monthlyCost: cat.monthlyCost, passiveReturn: cat.passiveReturn, perks: { ...cat.perks }, ...(savedImg ? { customImage: savedImg } : {}), custom: false };
   }
 
+  let rivalOf = '';
+  if (!custom && item.category === 'car') {
+    const clause = carClauseFor(state, item.catalogId, gameDate);
+    if (clause) {
+      const deal = payload.carDeal;
+      if (!['sponsor', 'family', 'rival'].includes(deal)) throw new Error('Choisis comment acheter cette voiture.');
+      if (deal === 'sponsor') Object.assign(item, { price: Math.round(item.price * 0.8), resaleValue: Math.round(item.price * 0.8), brand: clause.brand, model: clause.model });
+      else if (deal === 'family') item.forFamily = true;
+      else rivalOf = clause.brand;
+    }
+  }
   if (hub.cash < item.price) throw new Error('Fonds insuffisants.');
   hub.cash -= item.price;
   if (item.price > 0) addLedger(hub, { date: gameDate, amount: -item.price, kind: 'asset_buy', label: item.name });
   if (item.perks) applyEffects(state, hub, item.perks, {}, gameDate, '');
   hub.assets.push({ ...item, since: gameDate });
   pushRecent(hub, { date: gameDate, kind: 'asset', text: `Acquired ${item.custom ? item.name : item.id}` });
+  if (rivalOf) {
+    hub.meters.sponsors = clamp(hub.meters.sponsors - 6, 0, 100);
+    pushRecent(hub, { date: gameDate, kind: 'sponsor', text: `Bought a rival brand's car despite his ${rivalOf} deal` });
+  }
   return hub;
 }
 
@@ -1230,6 +1323,13 @@ function sellAsset(state, assetId, gameDate = '') {
   if (refund > 0) {
     hub.cash += refund;
     addLedger(hub, { date: gameDate, amount: refund, kind: 'asset_sell', label: asset.name });
+  }
+  if (asset.giftedBy && asset.category === 'car' && asset.since && gameDate) {
+    const sp = (hub.sponsors || []).find((s) => s.id === asset.giftSponsorId || s.brand === asset.giftedBy);
+    if (sp && (!sp.until || sp.until > gameDate) && daysBetween(asset.since, gameDate) < 90) {
+      hub.meters.sponsors = clamp(hub.meters.sponsors - 2, 0, 100);
+      pushRecent(hub, { date: gameDate, kind: 'sponsor', text: `Handed back the ${asset.giftedBy} car only weeks after getting it` });
+    }
   }
   hub.assets.splice(idx, 1);
   pushRecent(hub, { date: gameDate, kind: 'asset', text: `${isStaff ? 'Dismissed' : 'Sold'} ${asset.custom ? asset.name : asset.id}` });
@@ -1733,6 +1833,9 @@ module.exports = {
   isBootCategorySponsor,
   isAutomotiveSponsor,
   grantSponsorCars,
+  grantSponsorPerks,
+  pushGiftedSponsorCar,
+  carClauseFor,
   calibrateLifeHub,
   lifeHubTick,
   buyAsset,

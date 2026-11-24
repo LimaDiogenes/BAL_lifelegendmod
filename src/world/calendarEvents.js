@@ -2,7 +2,7 @@
 // Calendrier unifié : anniversaires (joueur, cercle intime, coéquipiers avec report hors jour de match),
 // planification à l'avance d'activités & d'événements, événements système et décisions interactives.
 
-const { OFF_PITCH_ACTIONS, ensureLifeHub, addLedger } = require('./lifeHub');
+const { OFF_PITCH_ACTIONS, ensureLifeHub, addLedger, pushGiftedSponsorCar } = require('./lifeHub');
 const { normalizeDob } = require('./persona');
 const { buildSceneAndReactions } = require('./lifeScenes');
 const { activeHuddle, addMessage: addHuddleMessage } = require('./huddle');
@@ -633,6 +633,10 @@ function resolveCalendarDecision(state, decisionId, choiceId, gameDate = '', { l
   }
   state.lastDecisionOutcome = backfire ? { decisionId, backfire: true, text: backfire.text } : { decisionId, backfire: false };
   if (dec.kind === 'obligation') Object.assign(state.lastDecisionOutcome, applyObligationChoice(state, hub, dec, choice, today, { language, newId }));
+  if (dec.kind === 'car_gift' && choice.catId) {
+    const sp = (hub.sponsors || []).find((s) => s.id === dec.sponsorId) || { id: dec.sponsorId, brand: dec.brand };
+    pushGiftedSponsorCar(state, hub, sp, choice.catId, dec.reason || 'annual', today, newId, choice.label || '');
+  }
   if (choice.saveEffects) {
     const p = (hub.pendingSaveEffects ||= { affectionDelta: 0, formArrowDelta: 0, reasons: [] });
     if (choice.saveEffects.affectionDelta) p.affectionDelta = Math.max(-8, Math.min(8, (p.affectionDelta || 0) + choice.saveEffects.affectionDelta));

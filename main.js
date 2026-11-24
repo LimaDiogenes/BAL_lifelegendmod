@@ -8,6 +8,7 @@ const { Store } = require('./src/store');
 const { peekSave } = require('./src/save/blReader');
 const { scanSaveFiles, snapshotWatchedFiles, detectModifiedSave, resolveSaveForSync } = require('./src/save/autoSaveWatch');
 const { setSaveKeys } = require('./src/save/pesCrypt');
+const { carClauseFor } = require('./src/world/lifeHub');
 const { buildProfileExport, checkProfileFile, importableSettings, applyProfileImport } = require('./src/world/profileTransfer');
 const { answerAdvice } = require('./src/world/coachAdvice');
 const { answerSponsor } = require('./src/world/sponsors');
@@ -462,6 +463,7 @@ app.whenReady().then(() => {
   handle('bio:generate', (payload) => world.generateBackstory({ store, settings: store.getSettings(), ...(payload || {}) }));
   handle('lifeHub:calibrate', (payload) => world.calibrateCareerLifeHub({ store, payload }));
   handle('lifeHub:buyAsset', (payload) => world.buyLifeAsset({ store, payload }));
+  handle('lifeHub:carClause', (catalogId) => { const st = store.activeCareer(); return st ? carClauseFor(st, String(catalogId || '')) : null; });
   handle('lifeHub:sellAsset', (assetId) => world.sellLifeAsset({ store, assetId }));
   handle('lifeHub:catalog', () => world.getSponsorCatalog({ store }));
   handle('lifeHub:addSponsor', (payload) => world.addLifeSponsor({ store, payload, manual: true }));

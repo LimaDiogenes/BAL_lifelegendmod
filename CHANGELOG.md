@@ -19,6 +19,13 @@ LifeLegend 2.0 est livré avec blue41 PES2021 Mod Studio (il peut aussi être ut
   les trois cases en icônes à droite, « Retirer cette personne » à côté du pseudo, lignes plus serrées.
 - Calibration de Ma vie en mode sponsors réaliste : les sponsors déjà en place sont gardés (avant : la liste repartait
   vide). Le mode réaliste ne fait que gérer la suite (offres, enchères).
+- Sponsors automobiles : la voiture offerte se choisit dans le calendrier parmi 2 ou 3 vrais modèles de la marque
+  (gammes 2025-2026 des 20 marques du catalogue, src/world/carLineups.js), ou on garde la sienne. La rendre moins de
+  90 jours après l'avoir reçue coûte un peu de confiance. Clause à l'achat : la même voiture chez le sponsor à −20 %,
+  ou une autre marque (confiance en baisse) ; pas de clause pour une voiture de collection, une voiture pour un proche
+  ou un type que la marque ne fait pas.
+- Cadeaux de partenaires, une fois par saison : une montre (horlogers), des vols (compagnies aériennes) et un séjour
+  (hôtels) à utiliser en famille, pour récupérer ou pour du contenu.
 - Journées libres : leur propre onglet dans Ma vie (à côté de Finances), avec les PA restants en pastille ; une
   pastille sur Ma vie quand il reste des PA et qu'un match arrive dans deux jours ou moins.
 - Obligations des partenaires : en tête de la page Sponsors ; à leur date, elles deviennent une décision du calendrier

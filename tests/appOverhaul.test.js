@@ -546,8 +546,15 @@ test('Agent two-way sync via world.updateAgent, global sponsors catalog (250+), 
 
   // Signing an automotive sponsor automatically gifts annual company car + high-profile milestone cars at €0 cost/upkeep
   addSponsor(updated, { brand: 'Porsche', categories: ['automotive'], fee: 450000, bonus: 6000, isGlobalPartner: true, until: '2028-09-10' }, '2026-09-10', (() => { let n = 0; return () => `auto_${++n}`; })());
+  // 2.0 : chaque voiture est d'abord un choix de modèle dans le calendrier (gamme réelle de la marque)
+  const carDecs = updated.calendar.pendingDecisions.filter((d) => d.kind === 'car_gift' && d.brand === 'Porsche');
+  assert.ok(carDecs.length >= 2, 'high-profile automotive deal offers annual + milestone cars');
+  assert.ok(carDecs[0].choices.some((c) => c.label === '911 Turbo S' || c.label === '911 Carrera' || c.label === 'Taycan'), 'real Porsche models');
+  assert.ok(carDecs[0].choices.every((c) => c.catId !== 'car_minivan'), 'never a type the brand does not make');
+  for (const d of carDecs) resolveCalendarDecision(updated, d.id, d.choices[0].id, '2026-09-10', { newId: (() => { let k = 0; return () => `pick_${d.id}_${++k}`; })() });
   const gifted = hub.assets.filter((a) => a.giftedBy === 'Porsche');
-  assert.ok(gifted.length >= 2, 'high-profile automotive deal gifts annual + milestone cars');
+  assert.ok(gifted.length >= 2, 'picked cars arrive');
+  assert.ok(gifted.every((g) => g.model), 'with their model name');
   for (const g of gifted) {
     assert.strictEqual(g.price, 0);
     assert.strictEqual(g.monthlyCost, 0);
@@ -563,13 +570,13 @@ test('Agent two-way sync via world.updateAgent, global sponsors catalog (250+), 
   updated.snapshot.stats.season = { apps: 3, goals: 2, assists: 1, avgRating: 7.2 };
   const nextYear = grantSponsorCars(updated, hub, updated.snapshot, '2027-09-15', () => 'yr2_car');
   assert.strictEqual(nextYear.length, 1);
-  assert.strictEqual(nextYear[0].giftedBy, 'Porsche');
-  assert.strictEqual(nextYear[0].giftReason, 'annual');
+  assert.strictEqual(nextYear[0].brand, 'Porsche');
+  assert.strictEqual(nextYear[0].reason, 'annual');
 
   // Editing an existing sponsor to add automotive category triggers grantSponsorCars immediately
   const lifeSp = addSponsor(updated, { brand: 'TAG Heuer', categories: ['watches'], fee: 200000, bonus: 3000, until: '2028-09-10' }, '2027-09-15', () => 'tag_1');
   updateSponsor(updated, { id: lifeSp.id, brand: 'Mercedes-Benz', categories: ['automotive'] }, { gameDate: '2027-09-16', newId: () => 'merc_car_1' });
-  assert.ok(hub.assets.some((a) => a.giftedBy === 'Mercedes-Benz' && a.price === 0));
+  assert.ok(updated.calendar.pendingDecisions.some((d) => d.kind === 'car_gift' && d.brand === 'Mercedes-Benz'));
 });
 
 test('décisions 2.0 : un choix risqué peut se retourner (tirage stable) et revenir en suite ; les choix « sages » jamais', () => {

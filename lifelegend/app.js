@@ -1828,6 +1828,25 @@ function kConfirm({ title, body, ok = tr('Confirmer'), cancel = tr('Annuler') })
   });
 }
 
+// Boîte à plusieurs réponses (2.0), même style que kConfirm : renvoie l'id choisi, ou null (Échap, clic à côté).
+function kChoose({ title, body, options = [] }) {
+  return new Promise((resolve) => {
+    const box = document.createElement('div');
+    box.className = 'k-modal-back';
+    box.innerHTML = `<div class="k-modal" role="dialog" aria-modal="true" aria-labelledby="k-modal-title">
+      <h2 id="k-modal-title">${esc(title)}</h2>
+      ${String(body || '').split(/\n\n+/).map((p) => `<p>${esc(p)}</p>`).join('')}
+      <div class="k-modal-actions k-modal-actions--stack">${options.map((o) => `<button class="k-btn${o.primary ? '' : ' k-btn-ghost'}" data-pick="${esc(o.id)}">${esc(o.label)}</button>`).join('')}<button class="k-btn k-btn-ghost" data-pick="">${esc(tr('Annuler'))}</button></div></div>`;
+    document.body.appendChild(box);
+    const done = (v) => { box.remove(); document.removeEventListener('keydown', onKey, true); resolve(v || null); };
+    const onKey = (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); done(null); } };
+    document.addEventListener('keydown', onKey, true);
+    box.querySelectorAll('[data-pick]').forEach((b) => { b.onclick = () => done(b.dataset.pick); });
+    box.onclick = (ev) => { if (ev.target === box) done(null); };
+    box.querySelector('[data-pick=""]').focus();
+  });
+}
+
 // Bouton de synchro : libellé, et icône qui tourne pendant la synchro.
 function setSyncBusy(busy) {
   const btn = $('#sync-btn');
@@ -9203,6 +9222,10 @@ const ML_SYSEV_LABELS = {
 
 const ML_DECISION_CHOICE_LABELS = {
   ob_all_in: () => tr('Tout donner'),
+  car_decline: () => tr('Garder ma voiture actuelle'),
+  perk_family: () => tr('En faire profiter la famille'),
+  perk_recovery: () => tr('Un séjour de récupération'),
+  perk_content: () => tr('En faire du contenu pour la marque'),
   ob_standard: () => tr('Faire le job, sans plus'),
   ob_reschedule: () => tr('Demander un autre jour'),
   ob_skip: () => tr('Ne pas y aller'),
@@ -10094,6 +10117,12 @@ function mlDecisionHeader(dec) {
   if (dec.kind === 'match_eve') {
     return { title: tr('Veille de match : {match}', { match: dec.title || '' }), sub: dec.competition || fmtDate(dec.date) };
   }
+  if (dec.kind === 'car_gift') {
+    return { title: tr('{brand} t’offre une voiture', { brand: dec.brand || '' }), sub: `${tr('Choisis ton modèle')} · ${fmtDate(dec.date)}` };
+  }
+  if (dec.kind === 'sponsor_perk') {
+    return { title: dec.perkKey === 'flight' ? tr('{brand} : vols offerts', { brand: dec.brand || '' }) : tr('{brand} : séjour offert', { brand: dec.brand || '' }), sub: `${tr('Cadeau de partenaire')} · ${fmtDate(dec.date)}` };
+  }
   if (dec.kind === 'obligation') {
     return { title: `${dec.brand || ''} · ${(ML_OBLIGATION_LABELS[dec.obligationKind] || ML_OBLIGATION_LABELS.brand_appearance)()}`, sub: `${tr('Obligation partenaire')} · ${fmtDate(dec.date)}` };
   }
@@ -10111,7 +10140,7 @@ function mlDecisionHeader(dec) {
 function mlDecChoicesHtml(dec) {
   return (dec.choices || []).map((ch) => {
     const chLblFn = ML_DECISION_CHOICE_LABELS[ch.id];
-    const chLbl = chLblFn ? chLblFn() : ch.id;
+    const chLbl = ch.catId ? [ch.label, mlFormatAssetName(ch.catId)].filter(Boolean).join(' · ') : (chLblFn ? chLblFn() : ch.id);
     const tags = mlDecisionChoiceTags(ch);
     return `<button type="button" class="ml-dil-btn" data-caldec="${esc(dec.id)}" data-calchoice="${esc(ch.id)}"><b>${esc(chLbl)}</b>${tags.length ? `<small>${esc(tags.join(' · '))}</small>` : ''}</button>`;
   }).join('');
@@ -10502,7 +10531,7 @@ function renderMyLife(page) {
     <div class="ml-showcase">${showcaseAssets.map((a) => {
       const cid = a.catalogId || a.id;
       const catItem = !a.custom ? ML_ASSET_CATALOG_UI.find((c) => c.id === cid) : null;
-      const label = a.giftedBy ? `${a.giftedBy} · ${mlFormatAssetName(cid)}` : (a.custom ? a.name : (catItem ? catItem.label() : mlFormatAssetName(cid)));
+      const label = a.giftedBy ? `${a.giftedBy} · ${a.model || (cid === 'sponsor_watch' ? tr('Montre') : mlFormatAssetName(cid))}` : (a.custom ? a.name : (catItem ? catItem.label() : mlFormatAssetName(cid)));
       const img = mlResolveArtUrl(cid, a.customImage || (!a.custom && hub.catalogImages?.[cid]), a.category, a.name);
       return `<button type="button" class="ml-showcase-item" data-mlgo-shop="1">
         <span class="ml-showcase-thumb">${img ? `<img src="${esc(img)}" alt="${esc(label)}">` : mlAssetArtSvg(cid, a.category)}</span>
@@ -10659,7 +10688,7 @@ function renderMyLife(page) {
 
   const catalogCards = ownedGifted.map((a) => {
     const cid = a.catalogId || 'car_sports';
-    const catLabel = mlFormatAssetName(cid);
+    const catLabel = a.model || (cid === 'sponsor_watch' ? tr('Montre') : mlFormatAssetName(cid));
     const imgUrl = mlResolveArtUrl(cid, a.customImage || hub.catalogImages?.[cid], a.category, a.name);
     return `<div class="card ml-shop-card owned ml-shop-card--gifted">
       <div class="ml-card-media">
@@ -10669,9 +10698,9 @@ function renderMyLife(page) {
           ${a.customImage ? `<button type="button" class="ml-media-btn" data-mlimg-clear="asset" data-mlimg-id="${esc(a.id)}" title="${esc(tr('Retirer la photo'))}">${hi('xmark')}</button>` : ''}
         </div>
       </div>
-      <div class="ml-sp-head">${mlSponsorMedallionHtml({ brand: a.giftedBy, category: 'automotive' })}<span class="priv-badge on">${esc(tr('Offert par {brand}', { brand: a.giftedBy }))}</span></div>
+      <div class="ml-sp-head">${mlSponsorMedallionHtml({ brand: a.giftedBy, category: a.category === 'collection' ? 'watches' : 'automotive' })}<span class="priv-badge on">${esc(tr('Offert par {brand}', { brand: a.giftedBy }))}</span></div>
       <h4>${esc(a.giftedBy)} · ${esc(catLabel)}</h4>
-      <p class="fineprint">${esc(a.giftReason === 'annual' ? tr('Véhicule de fonction annuel inclus dans ton contrat sponsor.') : tr('Véhicule bonus débloqué par tes objectifs de saison.'))}</p>
+      <p class="fineprint">${esc(a.giftReason === 'season_watch' ? tr('Montre offerte chaque saison par ton partenaire.') : a.giftReason === 'annual' ? tr('Véhicule de fonction annuel inclus dans ton contrat sponsor.') : tr('Véhicule bonus débloqué par tes objectifs de saison.'))}</p>
       <div class="ml-shop-foot">
         <span class="fineprint">${esc(tr('0 € · 0 €/mois'))}</span>
         <button type="button" class="btn" data-mlsell="${esc(a.id)}">${tr('Restituer')}</button>
@@ -11302,7 +11331,27 @@ function renderMyLife(page) {
   }
   page.querySelectorAll('[data-mlbuy]').forEach((b) => {
     b.onclick = async () => {
-      try { await runAndOpenScene(() => live.buyLifeAsset({ catalogId: b.dataset.mlbuy }), tr('Achat confirmé.')); } catch (err) { toast(err.message, true); }
+      try {
+        const item = ML_ASSET_CATALOG_UI.find((x) => x.id === b.dataset.mlbuy);
+        let carDeal;
+        if (item?.category === 'car') {
+          const clause = await live.carClause(b.dataset.mlbuy);
+          if (clause) {
+            carDeal = await kChoose({
+              title: tr('{brand} fabrique aussi ce type de voiture', { brand: clause.brand }),
+              body: tr('Ton contrat avec {brand} dit que tu roules dans leurs voitures quand ils en font une de ce type ({model}). Une voiture pour un proche n’est pas concernée.', { brand: clause.brand, model: clause.model || mlFormatAssetName(b.dataset.mlbuy) }),
+              options: [
+                { id: 'sponsor', primary: true, label: tr('Acheter la {brand} {model} (−20 %)', { brand: clause.brand, model: clause.model || '' }).replace(/\s+/g, ' ') },
+                { id: 'family', label: tr('C’est pour un proche') },
+                { id: 'rival', label: tr('Une autre marque quand même') },
+              ],
+            });
+            if (!carDeal) return;
+          }
+        }
+        await runAndOpenScene(() => live.buyLifeAsset({ catalogId: b.dataset.mlbuy, ...(carDeal ? { carDeal } : {}) }), tr('Achat confirmé.'));
+        if (carDeal === 'rival') toast(tr('Ton partenaire automobile n’apprécie pas : sa confiance baisse.'), true);
+      } catch (err) { toast(err.message, true); }
     };
   });
   page.querySelectorAll('[data-mlsell]').forEach((b) => {
