@@ -25,6 +25,8 @@ LifeLegend 2.0 est livré avec blue41 PES2021 Mod Studio (il peut aussi être ut
 - Variété : les réactions de tes proches sur Kop passent de 1-2 à 6-7 phrases par personnalité, les posts des marques
   de 4 à 8 (3 à la signature), et l'app se souvient des phrases déjà vues dans la carrière pour ne pas les reprendre
   tant qu'il en reste d'autres.
+- Scènes des journées libres : trois versions par action (titre, récit, message du vestiaire, post des supporters),
+  dans les 6 langues, choisies sans répétition.
 - Pastilles (Ma vie, calendrier, cloche) : ce qui est déjà planifié ne compte que le jour venu ; plus d'« obligation à
   planifier » dans la cloche (une obligation devient une décision du calendrier à sa date).
 - Événements à toi : tu peux y inviter jusqu'à 10 proches de ton cercle ; une courte requête à l'IA écrit alors trois choix
