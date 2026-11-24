@@ -2012,7 +2012,8 @@ function paintShell() {
           hasDecision: true,
         })),
       ];
-      const badgeCount = popEntries.length;
+      // la pastille ne compte que ce qui attend une décision (2.0) ; le reste du jour s'affiche dans la liste, sans compter
+      const badgeCount = popEntries.filter((e) => e.hasDecision).length;
       const nextMatchLine = bounds.nextMatch
         ? tr('Prochain match : {match} ({d})', { match: `${bounds.nextMatch.home} – ${bounds.nextMatch.away}`, d: shortDate(bounds.nextMatch.date) })
         : tr('Calendrier à jour avec la sauvegarde');
