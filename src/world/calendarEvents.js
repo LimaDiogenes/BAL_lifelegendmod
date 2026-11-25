@@ -674,6 +674,9 @@ function resolveCalendarDecision(state, decisionId, choiceId, gameDate = '', { l
     } catch { /* la scène est un bonus */ }
     try { queueFollowUps(state, { title: dec.title, people, decisionId }, today); } catch { /* idem */ }
   }
+  if (dec.kind === 'club_ask') {
+    try { require('./clubLife').afterClubAsk(state, dec, choiceId, today, { language, newId }); } catch { /* bonus */ }
+  }
   if (dec.kind === 'car_gift' && choice.catId) {
     const sp = (hub.sponsors || []).find((s) => s.id === dec.sponsorId) || { id: dec.sponsorId, brand: dec.brand };
     pushGiftedSponsorCar(state, hub, sp, choice.catId, dec.reason || 'annual', today, newId, choice.label || '');

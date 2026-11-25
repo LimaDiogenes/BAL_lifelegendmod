@@ -18,6 +18,7 @@ const { ensureCalendar, buildVisibleSnapshot, maskCareerForDate, ingestSyncCalen
 const { normalizeAiChoices, fallbackEventChoices } = require('./personaEvents');
 const { tickMediaOffers, answerMediaOffer } = require('./mediaOffers');
 const { deliverFollowUps } = require('./eventAftermath');
+const { tickClubLife } = require('./clubLife');
 const { seedSystemEvents, collectDueDecisions, collectObligationDecisions, resolveCalendarDecision, flipBirthdayShift, birthdaysOnDate, birthdaysInMonth, squadBirthdayRoster, scheduleOffPitchActivity } = require('./calendarEvents');
 const { applyLifeEffects } = require('../save/lifeEffectsWrite');
 const { DEFAULT_PAPER_ID, normalizePaperOverride, resolveNationalPaper, paperDeskTemplate } = require('./nationalPaper');
@@ -2555,6 +2556,7 @@ async function syncInner({ store, settings, log, t }) {
     lifeHubTick(state, snapshot, { changes, newId, sponsorMode: settings?.sponsorMode || 'realistic' });
     collectObligationDecisions(state, state.calendar?.simDate || snapshot?.gameDate || '');
     tickMediaOffers(state, state.calendar?.simDate || snapshot?.gameDate || '', newId);
+    tickClubLife(state, state.calendar?.simDate || snapshot?.gameDate || '', { language: settings?.language || 'en', newId });
     deliverFollowUps(state, state.calendar?.simDate || snapshot?.gameDate || '', { language: settings?.language || 'en', newId });
     syncCommercialMailThreads(state, settings?.language || 'en');
     ensureBootDealMedia(state, store, career, settings);
@@ -4036,6 +4038,8 @@ function calendarAdvance({ store, mode = 'day', targetDate = null }) {
       sponsorMode,
     });
     try { deliverFollowUps(state, state.calendar?.simDate || state.snapshot?.gameDate || '', { language: stg.language || 'en', newId }); } catch { /* jamais bloquant */ }
+    try { tickMediaOffers(state, state.calendar?.simDate || state.snapshot?.gameDate || '', newId); } catch { /* idem */ }
+    try { tickClubLife(state, state.calendar?.simDate || state.snapshot?.gameDate || '', { language: stg.language || 'en', newId }); } catch { /* idem */ }
     syncCommercialMailThreads(state, stg.language || 'en');
   } catch { /* ignore */ }
 
@@ -4327,8 +4331,16 @@ const syncCommercialMailThreads = (state, language = 'en') => {
     sponsor: { fr: 'Une marque veut travailler avec toi. Mon avis est ci-dessous.', en: 'A brand wants to work with you. My take is below.', pt: 'Uma marca quer trabalhar com você. Minha opinião está abaixo.', es: 'Una marca quiere trabajar contigo. Mi opinión, abajo.', it: 'Un marchio vuole lavorare con te. Il mio parere è qui sotto.', de: 'Eine Marke will mit dir arbeiten. Meine Einschätzung steht unten.' },
   };
   const agentMail = (key, extra, subject, on) => state.mail.push({ id: newId(), ...extra, from: agentName, role: 'agent', org: state.agent?.agency || 'Agency', club: state.snapshot?.club?.name, subject, unread: true, closed: false, messages: [{ who: 'them', body: AGENT_BODY[key][language] || AGENT_BODY[key].en, gameDate: on || today }] });
+  const { CLUB_BIG_MAIL } = require('./texts/club');
   for (const mo of hub.mediaOffers || []) {
     if (mo.status !== 'open' || state.mail.some((m) => m.mediaOfferId === mo.id)) continue;
+    if (mo.source === 'club') {
+      // le service communication du club écrit lui-même (dossier « Club et staff »)
+      const club = state.snapshot?.club?.name || 'Club';
+      const t = CLUB_BIG_MAIL[mo.note % CLUB_BIG_MAIL.length];
+      state.mail.push({ id: newId(), mediaOfferId: mo.id, from: `${club} Media`, role: 'club', org: club, club, subject: mo.outlet, unread: true, closed: false, messages: [{ who: 'them', body: (t[language] || t.en).replace(/\{O\}/g, mo.outlet), gameDate: mo.on || today }] });
+      continue;
+    }
     agentMail('media', { mediaOfferId: mo.id }, mo.outlet, mo.on);
   }
   for (const so of hub.offers || []) {

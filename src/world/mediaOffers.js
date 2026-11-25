@@ -53,11 +53,12 @@ function tickMediaOffers(state, today, newId) {
   if (!hub?.calibrated || !isIso(today)) return [];
   hub.mediaOffers ||= [];
   for (const o of hub.mediaOffers) if (o.status === 'open' && o.expires && today > o.expires) o.status = 'lapsed';
-  const open = hub.mediaOffers.filter((o) => o.status === 'open').length;
+  const open = hub.mediaOffers.filter((o) => o.status === 'open' && o.source !== 'club').length;
   if (open >= 2 || (hub.nextMediaOfferOn && today < hub.nextMediaOfferOn)) return [];
   const rank = STAGES[hub.stage] ?? 0;
-  const kinds = Object.keys(MEDIA_KINDS).filter((k) => (STAGES[MEDIA_KINDS[k].minStage] ?? 0) <= rank);
-  const recent = hub.mediaOffers.slice(-3).map((o) => o.kind);
+  // la chaîne du club ne passe plus par l'agent : c'est le club qui la demande (tickClubMediaAsks)
+  const kinds = Object.keys(MEDIA_KINDS).filter((k) => k !== 'club_channel' && (STAGES[MEDIA_KINDS[k].minStage] ?? 0) <= rank);
+  const recent = hub.mediaOffers.filter((o) => o.source !== 'club').slice(-3).map((o) => o.kind);
   const fresh = kinds.filter((k) => !recent.includes(k));
   const pool = fresh.length ? fresh : kinds;
   const seed = `${state.careerId || ''}|${today}|media`;
@@ -81,13 +82,42 @@ function tickMediaOffers(state, today, newId) {
   return [offer];
 }
 
+// Les grandes demandes du club (2.0, round B) : 1 à 2 par mois, par mail du service communication, sans cachet.
+const CLUB_BIG_OUTLETS = ['{club} TV', '{club} Inside', '{club} Matchday Live', '{club} Academy Stories', '{club} Fan Q&A', '{club} Podcast'];
+
+/** A big ask from the club (Club TV interview, fan Q&A…) every 14 to 24 days, one open at a time. */
+function tickClubMediaAsks(state, today, newId) {
+  const hub = state?.lifeHub;
+  const club = state?.snapshot?.club?.name || '';
+  if (!hub?.calibrated || !isIso(today) || !club) return [];
+  hub.mediaOffers ||= [];
+  for (const o of hub.mediaOffers) if (o.status === 'open' && o.expires && today > o.expires) o.status = 'lapsed';
+  if (hub.mediaOffers.some((o) => o.source === 'club' && o.status === 'open')) return [];
+  if (hub.nextClubAskOn && today < hub.nextClubAskOn) return [];
+  if (!hub.nextClubAskOn) { hub.nextClubAskOn = addDays(today, 4 + (hash(`${state.careerId || ''}|${today}|cfirst`) % 7)); return []; }
+  const seed = `${state.careerId || ''}|${today}|clubbig`;
+  const list = CLUB_BIG_OUTLETS.map((o) => o.replace('{club}', club));
+  const used = new Set(hub.mediaOffers.filter((o) => o.source === 'club').slice(-3).map((o) => o.outlet));
+  const pool = list.filter((o) => !used.has(o));
+  const outlet = (pool.length ? pool : list)[hash(seed) % (pool.length || list.length)];
+  const offer = { id: newId(), kind: 'club_channel', source: 'club', outlet, date: freeDate(state, today, 4, 12), fee: 0, on: today, expires: addDays(today, 5), status: 'open', negotiated: false, note: hash(`${seed}|note`) % 8 };
+  hub.mediaOffers.push(offer);
+  if (hub.mediaOffers.length > 40) hub.mediaOffers = hub.mediaOffers.slice(-40);
+  hub.nextClubAskOn = addDays(today, 14 + (hash(`${seed}|next`) % 11));
+  return [offer];
+}
+
 /** accept: into the calendar; negotiate (once): the outlet may pay 30 % more, or hold firm; decline: no penalty. */
 function answerMediaOffer(state, offerId, choice, today, newId) {
   const hub = state?.lifeHub;
   const offer = (hub?.mediaOffers || []).find((o) => o.id === offerId);
   if (!offer) throw new Error('Élément introuvable.');
   if (offer.status !== 'open') throw new Error('Cette proposition n’est plus ouverte.');
-  if (choice === 'decline') { offer.status = 'declined'; return offer; }
+  if (choice === 'decline') {
+    offer.status = 'declined';
+    if (offer.source === 'club') require('./clubLife').noteClubPass(state, today); // le club s'en souvient (3 refus en 45 jours : −1 coach)
+    return offer;
+  }
   if (choice === 'negotiate') {
     if (offer.negotiated || !offer.fee) throw new Error('Cette proposition n’est plus ouverte.');
     offer.negotiated = true;
@@ -124,4 +154,4 @@ function mediaDecision(ev, state) {
   return { id: `dec_cust_${ev.id}`, kind: 'media_event', mediaKind: ev.mediaKind, date: ev.date, title: ev.title, fee: ev.fee || 0, choices };
 }
 
-module.exports = { MEDIA_KINDS, MEDIA_CHOICES, tickMediaOffers, answerMediaOffer, mediaDecision };
+module.exports = { MEDIA_KINDS, MEDIA_CHOICES, tickMediaOffers, tickClubMediaAsks, answerMediaOffer, mediaDecision };

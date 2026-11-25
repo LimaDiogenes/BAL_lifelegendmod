@@ -7266,7 +7266,7 @@ function agentOfferCard(t) {
     const foot = o.status === 'open'
       ? `<div class="sp-btns"><button class="sm-btn sm-btn-primary" data-media="accept" data-mid="${esc(o.id)}">${tr('Accepter')}</button>${o.fee && !o.negotiated ? `<button class="sm-btn sm-btn-ghost" data-media="negotiate" data-mid="${esc(o.id)}">${tr('Demander plus')}</button>` : ''}<button class="sm-btn sm-btn-ghost" data-media="decline" data-mid="${esc(o.id)}">${tr('Refuser')}</button></div>`
       : `<span class="sm-chip ${o.status === 'accepted' ? 'sm-chip--yes' : 'sm-chip--closed'}">${esc(o.status === 'accepted' ? tr('Au calendrier le {d}', { d: shortDate(o.date) }) : o.status === 'declined' ? tr('Refusée') : tr('Expirée'))}</span>`;
-    return `<div class="sm-msg"><article class="sp-offer"><div class="sp-main"><span class="sp-eyebrow">${esc(tr('Interview personnelle'))} · ${esc(kind)}</span>
+    return `<div class="sm-msg"><article class="sp-offer"><div class="sp-main"><span class="sp-eyebrow">${esc(o.source === 'club' ? tr('Demande du club') : tr('Interview personnelle'))} · ${esc(kind)}</span>
       <h3>${esc(o.outlet)}</h3>
       <p>${esc(tr('Le {d}', { d: fmtDate(o.date, { weekday: 'long', day: 'numeric', month: 'long' }) }))} · ${esc(o.fee ? tr('Cachet : {p}', { p: euros(o.fee) }) : tr('Sans cachet'))}</p>
       <p class="sp-fine">${esc(note)}${nego ? ` ${esc(nego)}` : ''}</p>${foot}</div></article></div>`;
@@ -9322,6 +9322,9 @@ const ML_DECISION_CHOICE_LABELS = {
   home_quiet: () => tr('Une visite discrète'),
   home_press: () => tr('Une interview à la presse locale'),
   home_old_friends: () => tr('Retrouver les copains d’enfance'),
+  club_full: () => tr('Le faire bien'),
+  club_quick: () => tr('Vite fait'),
+  club_pass: () => tr('Pas cette fois'),
   home_visit: () => tr('Les recevoir pour la journée'),
   home_call: () => tr('Un long appel vidéo avec la maison'),
   home_taste: () => tr('Cuisiner un plat de chez toi'),
@@ -10291,6 +10294,9 @@ function mlDecisionHeader(dec) {
   }
   if (dec.kind === 'persona_event') {
     return { title: mlPersonaEventTitle(dec.eventKey, dec.title), sub: fmtDate(dec.date) };
+  }
+  if (dec.kind === 'club_ask') {
+    return { title: dec.title || '', sub: `${tr('Demande du club')} · ${fmtDate(dec.date)}` };
   }
   if (dec.kind === 'scheduled' && dec.people?.length) {
     return { title: mlResolveScheduledActivityTitle(dec.title, dec.activityId), sub: `${tr('Avec {who}', { who: dec.people.join(', ') })} · ${fmtDate(dec.date)}` };

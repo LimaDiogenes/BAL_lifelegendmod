@@ -3078,4 +3078,7 @@ window.LL_I18N.es = {
   "Ville natale": "Ciudad natal",
   "Autre pays": "Otro país",
   "Où vit cette personne (optionnel) : les textes et les messages en tiennent compte": "Dónde vive esta persona (opcional): los textos y mensajes lo tienen en cuenta",
+  "Le faire bien": "Hacerlo bien",
+  "Demande du club": "Petición del club",
+  "Vite fait": "Rápido y sencillo",
 };

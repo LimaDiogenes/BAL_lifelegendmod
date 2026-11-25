@@ -28,7 +28,7 @@ function checkTree(value, where, problems) {
 
 test('scènes, Kop et messages : 6 langues partout, mêmes {X}', () => {
   const problems = [];
-  for (const [file, mod] of [['scenes', req('scenes.js')], ['messages', req('messages.js')]]) {
+  for (const [file, mod] of [['scenes', req('scenes.js')], ['messages', req('messages.js')], ['club', req('club.js')]]) {
     for (const [name, v] of Object.entries(mod)) checkTree(v, `${file}.${name}`, problems);
   }
   const kop = req('kop.js');

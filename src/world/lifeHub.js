@@ -1887,6 +1887,7 @@ function lifeHubFacts(state) {
 }
 
 module.exports = {
+  queueLifeDecision,
   EXCLUSIVE_CATEGORIES,
   MULTI_BRAND_CATEGORIES,
   SPONSOR_CATEGORIES,

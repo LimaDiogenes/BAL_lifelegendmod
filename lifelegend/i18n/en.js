@@ -3078,4 +3078,7 @@ window.LL_I18N.en = {
   "Ville natale": "Hometown",
   "Autre pays": "Another country",
   "Où vit cette personne (optionnel) : les textes et les messages en tiennent compte": "Where this person lives (optional): texts and messages take it into account",
+  "Le faire bien": "Do it properly",
+  "Demande du club": "Request from the club",
+  "Vite fait": "Quick and simple",
 };

@@ -8,6 +8,7 @@ All built-in texts that have variants live here. Each variant is one entry with 
 | `scenes.js` | "My life" scenes: purchases, dilemmas, days off, calendar events (people, persona, media) |
 | `kop.js` | Kop posts by close ones (per personality) and by brands |
 | `messages.js` | Private messages from close ones after an event; "we miss you" (near and far) |
+| `club.js` | The club's own posts (most days), its media team's small asks and their follow-up posts, big-ask mails |
 | `posts.js` | Posts by clubs, competitions, media, coach, etc. (one structure per language) |
 | `catalog.js` | Display names of the shop items |
 
