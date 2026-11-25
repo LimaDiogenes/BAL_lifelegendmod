@@ -13,7 +13,8 @@ const addDays = (iso, n) => { const d = new Date(`${iso}T12:00:00Z`); d.setUTCDa
 const daysApart = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5);
 const hash = (str) => { let h = 2166136261; for (const c of String(str)) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
 
-const circlePeople = (state) => Object.entries(state.persona?.circle || {}).flatMap(([group, list]) => (Array.isArray(list) ? list : []).map((p) => ({ ...p, group }))).filter((p) => p?.name);
+// les antagonistes et les organisations n'écrivent pas de messages privés (2.0)
+const circlePeople = (state) => Object.entries(state.persona?.circle || {}).filter(([group]) => group !== 'rivals' && group !== 'orgs').flatMap(([group, list]) => (Array.isArray(list) ? list : []).map((p) => ({ ...p, group }))).filter((p) => p?.name);
 const onKop = (p) => Boolean(p?.kopPersonality);
 
 // Un fil privé avec ce proche (créé au premier message), comme ceux des coéquipiers et des supporters.

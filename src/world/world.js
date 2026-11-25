@@ -19,6 +19,7 @@ const { normalizeAiChoices, fallbackEventChoices } = require('./personaEvents');
 const { tickMediaOffers, answerMediaOffer } = require('./mediaOffers');
 const { deliverFollowUps } = require('./eventAftermath');
 const { tickClubLife } = require('./clubLife');
+const { tickAntagonists, antagonistFlex } = require('./antagonists');
 const { interviewDecision, builtinInterviewQuestions, startInterview, prepareInterviewChoice } = require('./mediaInterview');
 const { seedSystemEvents, collectDueDecisions, collectObligationDecisions, resolveCalendarDecision, flipBirthdayShift, birthdaysOnDate, birthdaysInMonth, squadBirthdayRoster, scheduleOffPitchActivity } = require('./calendarEvents');
 const { applyLifeEffects } = require('../save/lifeEffectsWrite');
@@ -247,6 +248,7 @@ const buyLifeAsset = ({ store, payload }) => withCareer(store, (state) => {
     if (scene && ((added.price || 0) >= 50000 || added.category === 'charity' || added.custom)) {
       noteKeyMemory(state, scene.headline, state.snapshot?.gameDate || '');
     }
+    try { antagonistFlex(state, added, state.calendar?.simDate || state.snapshot?.gameDate || '', { language: langOfStore(store), newId }); } catch { /* bonus */ }
   }
 });
 
@@ -2557,7 +2559,8 @@ async function syncInner({ store, settings, log, t }) {
     lifeHubTick(state, snapshot, { changes, newId, sponsorMode: settings?.sponsorMode || 'realistic' });
     collectObligationDecisions(state, state.calendar?.simDate || snapshot?.gameDate || '');
     tickMediaOffers(state, state.calendar?.simDate || snapshot?.gameDate || '', newId);
-    tickClubLife(state, state.calendar?.simDate || snapshot?.gameDate || '', { language: settings?.language || 'en', newId });
+    tickClubLife(state, state.calendar?.simDate || snapshot?.gameDate || '', { language: settings?.language || 'en', newId, level: settings?.clubLife });
+    tickAntagonists(state, changes, state.calendar?.simDate || snapshot?.gameDate || '', { language: settings?.language || 'en', newId });
     deliverFollowUps(state, state.calendar?.simDate || snapshot?.gameDate || '', { language: settings?.language || 'en', newId });
     syncCommercialMailThreads(state, settings?.language || 'en');
     ensureBootDealMedia(state, store, career, settings);
@@ -4137,7 +4140,8 @@ function calendarAdvance({ store, mode = 'day', targetDate = null }) {
     });
     try { deliverFollowUps(state, state.calendar?.simDate || state.snapshot?.gameDate || '', { language: stg.language || 'en', newId }); } catch { /* jamais bloquant */ }
     try { tickMediaOffers(state, state.calendar?.simDate || state.snapshot?.gameDate || '', newId); } catch { /* idem */ }
-    try { tickClubLife(state, state.calendar?.simDate || state.snapshot?.gameDate || '', { language: stg.language || 'en', newId }); } catch { /* idem */ }
+    try { tickClubLife(state, state.calendar?.simDate || state.snapshot?.gameDate || '', { language: stg.language || 'en', newId, level: stg.clubLife }); } catch { /* idem */ }
+    try { tickAntagonists(state, { newResults: step.revealedFixtures }, state.calendar?.simDate || state.snapshot?.gameDate || '', { language: stg.language || 'en', newId }); } catch { /* idem */ }
     syncCommercialMailThreads(state, stg.language || 'en');
   } catch { /* ignore */ }
 

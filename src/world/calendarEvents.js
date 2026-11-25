@@ -141,7 +141,7 @@ function birthdaysForYear(state, year, { includeAutoSquad = true } = {}) {
 
   // 2. Inner circle birthdays
   const circle = state?.persona?.circle || {};
-  for (const group of ['family', 'friends', 'business', 'roots']) {
+  for (const group of ['family', 'friends', 'business', 'roots']) { // pas d'anniversaire pour les antagonistes ni les organisations
     for (const [idx, person] of (Array.isArray(circle[group]) ? circle[group] : []).entries()) {
       if (!person?.name || !person?.dob) continue;
       const parts = parseMonthDay(person.dob);

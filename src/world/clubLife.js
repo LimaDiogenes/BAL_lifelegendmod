@@ -19,6 +19,13 @@ const LANGS = ['fr', 'en', 'pt', 'es', 'it', 'de'];
 const fill = (l, t, vars) => String(t[l] || t.en || '').replace(/\{(\w+)\}/g, (_, k) => (vars[k] !== undefined ? String(vars[k]) : ''));
 
 const PASS_WINDOW = 45; // jours
+// Réglage « Vie du club » (2.0) : low / normal / high
+const LEVELS = {
+  low: { postSkip: 45, askEvery: [6, 4], bigEvery: [24, 11] },
+  normal: { postSkip: 70, askEvery: [3, 3], bigEvery: [14, 11] },
+  high: { postSkip: 90, askEvery: [2, 2], bigEvery: [10, 7] },
+};
+const levelOf = (l) => LEVELS[l] || LEVELS.normal;
 const PASSES_NOTICED = 2; // à partir du 3e refus en 45 jours, le coach le remarque
 
 function clubState(state) {
@@ -46,7 +53,7 @@ function pushClubPost(state, text, today, newId) {
 }
 
 /** One club post on most days (always on match day), never two the same day. */
-function tickClubPosts(state, today, { language = 'en', newId }) {
+function tickClubPosts(state, today, { language = 'en', newId, level = 'normal' }) {
   const cl = clubState(state);
   if (!isIso(today) || cl.lastPostOn === today) return null;
   cl.lastPostOn = today;
@@ -58,7 +65,7 @@ function tickClubPosts(state, today, { language = 'en', newId }) {
   if (days === 0) cat = 'matchday';
   else if (days >= 1 && days <= 3 && hash(seed) % 2 === 0) cat = 'countdown';
   else {
-    if (hash(`${seed}|skip`) % 100 >= 70) return null; // about 5 days a week
+    if (hash(`${seed}|skip`) % 100 >= levelOf(level).postSkip) return null; // about 5 days a week (normal)
     const pool = ['training', 'training', 'feature', 'fans', 'community'];
     cat = pool[hash(`${seed}|cat`) % pool.length];
   }
@@ -68,7 +75,7 @@ function tickClubPosts(state, today, { language = 'en', newId }) {
 }
 
 /** A small ask from the club's media team every 3 to 5 days (never on a match day, one open at a time). */
-function tickClubAsks(state, today, { language = 'en', newId }) {
+function tickClubAsks(state, today, { language = 'en', newId, level = 'normal' }) {
   const hub = state.lifeHub;
   if (!hub?.calibrated || !isIso(today) || !state.snapshot?.club?.name) return null;
   const cl = clubState(state);
@@ -93,7 +100,8 @@ function tickClubAsks(state, today, { language = 'en', newId }) {
     ],
   };
   queueLifeDecision(state, dec);
-  cl.nextAskOn = addDays(today, 3 + (hash(`${seed}|next`) % 3));
+  const [base, spread] = levelOf(level).askEvery;
+  cl.nextAskOn = addDays(today, base + (hash(`${seed}|next`) % spread));
   return dec;
 }
 
@@ -114,13 +122,13 @@ function noteClubPass(state, today) {
 }
 
 /** Everything the club does on a given day. */
-function tickClubLife(state, today, { language = 'en', newId }) {
+function tickClubLife(state, today, { language = 'en', newId, level = 'normal' }) {
   const { tickClubMediaAsks } = require('./mediaOffers');
   const out = { post: null, ask: null, big: [] };
-  try { out.post = tickClubPosts(state, today, { language, newId }); } catch { /* jamais bloquant */ }
-  try { out.ask = tickClubAsks(state, today, { language, newId }); } catch { /* idem */ }
-  try { out.big = tickClubMediaAsks(state, today, newId); } catch { /* idem */ }
+  try { out.post = tickClubPosts(state, today, { language, newId, level }); } catch { /* jamais bloquant */ }
+  try { out.ask = tickClubAsks(state, today, { language, newId, level }); } catch { /* idem */ }
+  try { out.big = tickClubMediaAsks(state, today, newId, levelOf(level).bigEvery); } catch { /* idem */ }
   return out;
 }
 
-module.exports = { tickClubLife, tickClubPosts, tickClubAsks, afterClubAsk, noteClubPass, PASSES_NOTICED };
+module.exports = { LEVELS, tickClubLife, tickClubPosts, tickClubAsks, afterClubAsk, noteClubPass, PASSES_NOTICED };

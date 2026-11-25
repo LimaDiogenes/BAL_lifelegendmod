@@ -28,6 +28,7 @@ const DEFAULT_SETTINGS = {
   fanVulgarity: true, // supporters vulgaires possibles après de très mauvais résultats (décochable)
   mediaDrama: 'realistic', // 'calm' | 'realistic' | 'tabloid' : décale la pression médiatique et le drame calculés (2.0)
   inventedRumours: true, // les jours calmes, rumeurs et ragots inventés (présentés comme tels)
+  clubLife: 'normal', // vie du club (2.0) : 'low', 'normal' ou 'high' (posts du club, petites et grandes demandes)
   pressMode: 'ask', // conférence d'après-match : 'ask' (me demander, par défaut) ou 'skip' (toujours décliner, aucune requête IA)
   theme: 'auto',
   keys: {},          // fournisseur -> clé chiffrée (base64)

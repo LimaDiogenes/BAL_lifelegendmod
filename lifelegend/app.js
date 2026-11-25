@@ -1081,7 +1081,9 @@ const PERSONA_CIRCLE_UI = [
   { key: 'family', label: () => tr('Famille'), hint: () => tr('Parents, fratrie, conjoint(e), enfants…'), starters: [() => tr('Mère'), () => tr('Père'), () => tr('Frère / Sœur'), () => tr('Conjoint(e)')] },
   { key: 'friends', label: () => tr('Amis'), hint: () => tr('Meilleurs amis, bande d’enfance, confidents…'), starters: [() => tr('Meilleur ami'), () => tr('Ami d’enfance'), () => tr('Confident du vestiaire')] },
   { key: 'business', label: () => tr('Contacts pro & staff'), hint: () => tr('Agent, préparateur physique, avocat, conseiller médias…'), starters: [() => tr('Agent'), () => tr('Préparateur personnel'), () => tr('Conseiller médias')] },
-  { key: 'roots', label: () => tr('Racines & mentors'), hint: () => tr('Coach formateur, premier club, idole, animal de compagnie…'), starters: [() => tr('Entraîneur formateur'), () => tr('Premier club'), () => tr('Idole / Mentor'), () => tr('Animal de compagnie')] },
+  { key: 'roots', label: () => tr('Racines & mentors'), hint: () => tr('Coach formateur, idole, animal de compagnie…'), starters: [() => tr('Entraîneur formateur'), () => tr('Idole / Mentor'), () => tr('Animal de compagnie')] },
+  { key: 'orgs', label: () => tr('Clubs & organisations'), hint: () => tr('Premier club, académie, école, association… Ils parlent d’une voix officielle.'), starters: [() => tr('Premier club')] },
+  { key: 'rivals', label: () => tr('Antagonistes'), hint: () => tr('Rival, détracteur, journaliste critique, ex… Ils te piquent sur Kop, sans jamais insulter.'), starters: [] },
 ];
 
 const AGENT_ROLE_UI_RE = /\b(agent|agente|berater|procuratore|empres[aá]rio|representante)\b/i;
@@ -1204,17 +1206,34 @@ const PERSONA_LIVES_OPTIONS = [
   ['abroad', () => tr('Autre pays')],
 ];
 
+// Les voix sur Kop selon le groupe (2.0) : officielle pour une organisation, hostiles pour un antagoniste.
+const PERSONA_ORG_KOP_OPTIONS = [
+  ['', () => tr('Hors Kop (privé)')],
+  ['official', () => tr('Sur Kop · Compte officiel')],
+];
+const PERSONA_RIVAL_KOP_OPTIONS = [
+  ['', () => tr('Hors Kop (privé)')],
+  ['rival_player', () => tr('Sur Kop · Joueur rival')],
+  ['hater', () => tr('Sur Kop · Détracteur')],
+  ['tough_critic', () => tr('Sur Kop · Critique sévère')],
+  ['doubter', () => tr('Sur Kop · Ancien coach sceptique')],
+  ['ex_partner', () => tr('Sur Kop · Ex')],
+  ['jealous_mate', () => tr('Sur Kop · Ancien coéquipier jaloux')],
+];
+
 function personaPersonRowHtml(person = {}, groupKey = '') {
   const isClose = person.close !== undefined ? Boolean(person.close) : (groupKey === 'family' || groupKey === 'friends');
   const isAgentRow = groupKey === 'business' && AGENT_ROLE_UI_RE.test(person.role || '') && Boolean(person.name);
   const kopVal = person.kopPersonality || '';
-  const kopOpts = PERSONA_KOP_OPTIONS.map(([id, fn]) => `<option value="${id}"${kopVal === id ? ' selected' : ''}>${esc(fn())}</option>`).join('');
+  const kopList = groupKey === 'orgs' ? PERSONA_ORG_KOP_OPTIONS : groupKey === 'rivals' ? PERSONA_RIVAL_KOP_OPTIONS : PERSONA_KOP_OPTIONS;
+  const notPerson = groupKey === 'orgs' || groupKey === 'rivals'; // ni anniversaire ni lieu de vie
+  const kopOpts = kopList.map(([id, fn]) => `<option value="${id}"${kopVal === id ? ' selected' : ''}>${esc(fn())}</option>`).join('');
   return `<div class="per-person-row">
     <div class="per-p-role-wrap"><input class="per-p-role" value="${esc(person.role || '')}" placeholder="${esc(tr('Rôle (ex. Tante, Kiné)'))}" maxlength="60">${isAgentRow ? `<span class="per-sync-pill" title="${esc(tr('Synchronisé avec l’agent dans Mails'))}" aria-label="${esc(tr('Synchronisé Mails'))}" role="img">${hi('envelope')}</span>` : ''}</div>
     <input class="per-p-name" value="${esc(person.name || '')}" placeholder="${esc(tr('Nom réel'))}" maxlength="120">
-    ${dobPickerHtml(person.dob || '', { inputClass: 'per-p-dob' })}
+    ${notPerson ? '<span class="per-dob-wrap"></span>' : dobPickerHtml(person.dob || '', { inputClass: 'per-p-dob' })}
     <select class="per-p-kop" title="${esc(tr('Profil & personnalité sur Kop (optionnel)'))}" aria-label="${esc(tr('Profil & personnalité sur Kop (optionnel)'))}">${kopOpts}</select>
-    <select class="per-p-lives" title="${esc(tr('Où vit cette personne (optionnel) : les textes et les messages en tiennent compte'))}" aria-label="${esc(tr('Où vit cette personne (optionnel) : les textes et les messages en tiennent compte'))}">${PERSONA_LIVES_OPTIONS.map(([id, fn]) => `<option value="${id}"${(person.lives || '') === id ? ' selected' : ''}>${esc(fn())}</option>`).join('')}</select>
+    ${notPerson ? '<span class="per-p-lives"></span>' : ''}${notPerson ? '' : `<select class="per-p-lives" title="${esc(tr('Où vit cette personne (optionnel) : les textes et les messages en tiennent compte'))}" aria-label="${esc(tr('Où vit cette personne (optionnel) : les textes et les messages en tiennent compte'))}">${PERSONA_LIVES_OPTIONS.map(([id, fn]) => `<option value="${id}"${(person.lives || '') === id ? ' selected' : ''}>${esc(fn())}</option>`).join('')}</select>`}
     <input class="per-p-decoy" value="${esc(person.decoy || '')}" placeholder="${esc(tr('Pseudo (auto)'))}" maxlength="120">
     <button type="button" class="per-p-del per-p-del-person" title="${esc(tr('Retirer cette personne'))}" aria-label="${esc(tr('Retirer cette personne'))}">−<span class="per-p-del-txt">${esc(tr('Retirer cette personne'))}</span></button>
     <div class="per-p-flags">
@@ -9440,6 +9459,9 @@ const ML_DECISION_CHOICE_LABELS = {
   home_old_friends: () => tr('Retrouver les copains d’enfance'),
   club_full: () => tr('Le faire bien'),
   media_qa: () => tr('Répondre aux questions'),
+  rival_reply: () => tr('Lui répondre'),
+  rival_ignore: () => tr('Ignorer, laisser parler le terrain'),
+  rival_joke: () => tr('En rire'),
   club_quick: () => tr('Vite fait'),
   club_pass: () => tr('Pas cette fois'),
   home_visit: () => tr('Les recevoir pour la journée'),
@@ -10411,6 +10433,9 @@ function mlDecisionHeader(dec) {
   }
   if (dec.kind === 'persona_event') {
     return { title: mlPersonaEventTitle(dec.eventKey, dec.title), sub: fmtDate(dec.date) };
+  }
+  if (dec.kind === 'rival_provocation') {
+    return { title: tr('{name} te provoque sur Kop', { name: dec.personName || dec.title || '' }), sub: `${dec.quote ? `« ${dec.quote} » · ` : ''}${fmtDate(dec.date)}` };
   }
   if (dec.kind === 'club_ask') {
     return { title: dec.title || '', sub: `${tr('Demande du club')} · ${fmtDate(dec.date)}` };
@@ -11800,7 +11825,7 @@ function renderMyLife(page) {
   // Planifier (2.0) : un seul formulaire, une activité des journées libres ou un événement à soi, avec des proches.
   const planSched = page.querySelector('.ml-scheduler');
   if (planSched) planSched.addEventListener('toggle', () => { view.mlSchedOpen = planSched.open; });
-  const planPeopleList = () => Object.values(state.persona?.circle || {}).flat().filter((p) => p?.name).slice(0, 24);
+  const planPeopleList = () => Object.entries(state.persona?.circle || {}).filter(([g]) => g !== 'rivals').flatMap(([, list]) => list || []).filter((p) => p?.name).slice(0, 24);
   view.mlPlanPeople ||= [];
   const paintPlanChips = () => {
     const box = $('#ml-plan-chips');
@@ -11959,7 +11984,7 @@ const RG_TABS = [
   ['about', 'À propos', ''],
 ];
 // L'onglet de chaque section qu'ouvrent les autres pages (« Réglages de l'IA », « Ajouter ma clé… »).
-const RG_SECTION_TAB = { 'rg-save': 'save', 'rg-transfer': 'save', 'rg-names': 'save', 'rg-reset': 'save', 'rg-ai': 'ai', 'rg-lang': 'look', 'rg-theme': 'look', 'rg-tone': 'world', 'rg-press': 'world', 'rg-sponsormode': 'world', 'rg-eventmode': 'world', 'rg-calmode': 'world', 'rg-replays': 'world', 'rg-about': 'about', 'rg-credits': 'about', 'rg-update': 'about' };
+const RG_SECTION_TAB = { 'rg-save': 'save', 'rg-transfer': 'save', 'rg-names': 'save', 'rg-reset': 'save', 'rg-ai': 'ai', 'rg-lang': 'look', 'rg-theme': 'look', 'rg-tone': 'world', 'rg-club': 'world', 'rg-press': 'world', 'rg-sponsormode': 'world', 'rg-eventmode': 'world', 'rg-calmode': 'world', 'rg-replays': 'world', 'rg-about': 'about', 'rg-credits': 'about', 'rg-update': 'about' };
 // Réglages compacts (2.0) : des cartes sur deux colonnes, les explications derrière un petit « i ».
 const rgInfo = (note) => (note ? `<details class="rg-info"><summary title="${tr('Plus d’infos')}" aria-label="${tr('Plus d’infos')}">i</summary><p>${note}</p></details>` : '');
 const rgRow = (id, label, control, note = '') => `<div class="rg-row"${id ? ` id="${id}"` : ''}><div class="rg-label"><h3>${label}</h3>${rgInfo(note)}</div><div class="rg-ctl">${control}</div></div>`;
@@ -12410,6 +12435,11 @@ async function renderSettings(page) {
       <option value="ask"${settings.pressMode !== 'skip' ? ' selected' : ''}>${tr('Me demander après chaque match')}</option>
       <option value="skip"${settings.pressMode === 'skip' ? ' selected' : ''}>${tr('Toujours décliner (aucune requête à l’IA)')}</option>
     </select>`, tr('Les questions ne sont écrites que si tu choisis d’y aller. Les silences répétés font réagir journalistes et supporters ; pour un joueur réservé, ils le notent sans en faire un scandale.')),
+    rgRow('rg-club', tr('Vie du club'), `<select id="clublife" aria-label="${tr('Vie du club')}">
+      <option value="low"${settings.clubLife === 'low' ? ' selected' : ''}>${tr('Calme')}</option>
+      <option value="normal"${!['low', 'high'].includes(settings.clubLife) ? ' selected' : ''}>${tr('Normale')}</option>
+      <option value="high"${settings.clubLife === 'high' ? ' selected' : ''}>${tr('Très active')}</option>
+    </select>`, tr('Combien le club poste sur Kop et te sollicite : petites demandes (vidéo, photo) et grandes (Club TV, questions des supporters).')),
     rgRow('rg-sponsormode', tr('Système de sponsors'), `<select id="sponsormode" aria-label="${tr('Système de sponsors')}">
       <option value="realistic"${sponsorMode === 'realistic' ? ' selected' : ''}>${tr('Réaliste (offres, enchères, exclusivités & rachats)')}</option>
       <option value="custom"${sponsorMode === 'custom' ? ' selected' : ''}>${tr('Personnalisé (édition libre & sélection dans le catalogue)')}</option>
@@ -12669,6 +12699,7 @@ async function saveSettings() {
     fanVulgarity: $('#fanvulgarity').checked,
     mediaDrama: $('#mediadrama')?.value || settings.mediaDrama || 'realistic',
     pressMode: $('#pressmode')?.value || settings.pressMode || 'ask',
+    clubLife: $('#clublife')?.value || settings.clubLife || 'normal',
     inventedRumours: $('#inventedrumours') ? $('#inventedrumours').checked : settings.inventedRumours !== false,
   };
   const key = $('#apikey').value.trim();

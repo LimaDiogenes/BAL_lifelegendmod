@@ -1777,7 +1777,7 @@ function completeObligation(state, obligationId, { skip = false } = {}, gameDate
 function pickCompanionName(state, snapshot, actionId) {
   const seed = `${snapshot?.gameDate || ''}|${actionId}`;
   if (actionId === 'inner_circle' && state?.persona?.circle) {
-    const people = Object.values(state.persona.circle).flat().filter((p) => p?.name);
+    const people = ['family', 'friends', 'business', 'roots'].flatMap((g) => state.persona.circle[g] || []).filter((p) => p?.name);
     if (people.length) return people[hashStr(seed) % people.length].name;
   }
   const squad = (snapshot?.squad || []).filter((p) => p?.name && !p.me);

@@ -3,7 +3,9 @@ const { normLives } = require('./lifeGeo');
 // Profil psychologique, goûts et cercle intime du joueur (Phase B).
 // Autonome : aucun import de privacyShield ou world pour éviter toute dépendance circulaire.
 
-const CIRCLE_GROUPS = ['family', 'friends', 'business', 'roots'];
+// rivals = antagonistes (hostiles) ; orgs = clubs et organisations (voix officielle, pas des personnes) (2.0)
+const CIRCLE_GROUPS = ['family', 'friends', 'business', 'roots', 'rivals', 'orgs'];
+const PERSONAL_GROUPS = ['family', 'friends', 'business', 'roots'];
 const MAX_GROUP_PEOPLE = 10;
 const TRAIT_KEYS = ['media', 'temperament', 'ambition', 'loyalty', 'lifestyle', 'ego'];
 const ROOT_KEYS = ['hometown', 'childhood', 'academy', 'heritage'];
@@ -175,7 +177,9 @@ const DEFAULT_CIRCLE_STARTERS = {
   family: ['Mère', 'Père', 'Frère / Sœur', 'Conjoint(e)'],
   friends: ['Meilleur ami', 'Ami d’enfance', 'Confident du vestiaire'],
   business: ['Agent', 'Préparateur personnel', 'Conseiller médias'],
-  roots: ['Entraîneur formateur', 'Premier club', 'Idole / Mentor', 'Animal de compagnie'],
+  roots: ['Entraîneur formateur', 'Idole / Mentor', 'Animal de compagnie'],
+  rivals: [],
+  orgs: ['Premier club'],
 };
 
 const cleanStr = (s, max = 120) => String(s || '').replace(/["\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -207,6 +211,13 @@ const CIRCLE_KOP_PERSONALITIES = {
   hype: 'Active on Kop: loud #1 supporter, hyping every goal, look, and big moment.',
   protective: 'Active on Kop: fiercely protective, defends the player against critics and media.',
   professional: 'Active on Kop: polished, composed, and strictly professional public voice.',
+  official: 'An organisation, not a person: its official Kop account posts in a proud, institutional voice (never private messages, never personal feelings).',
+  rival_player: 'ANTAGONIST: a rival player; competitive, needles him after good games, gloats after bad ones; never insults.',
+  hater: 'ANTAGONIST: a hater on Kop; dismisses every good game as luck and celebrates every bad one; never insults or threatens.',
+  tough_critic: 'ANTAGONIST: a tough journalist or pundit; sharp, sceptical columns about his level and choices; professional.',
+  doubter: 'ANTAGONIST: a former coach who never believed in him; backhanded, "I said so back then".',
+  ex_partner: 'ANTAGONIST: an ex-partner; passive-aggressive, cryptic posts, never reveals private details.',
+  jealous_mate: 'ANTAGONIST: a former teammate who did not make it; jealous, bitter jokes about luck and old times.',
   proud_parent: 'Active on Kop: an emotional, proud parent figure: long heartfelt messages, childhood memories, lots of hearts.',
   honest_critic: 'Active on Kop: tough love: praises him but always points out what he can still improve.',
   quiet_one: 'Active on Kop: rarely writes, and then very short: an emoji or three words.',
@@ -289,6 +300,17 @@ function normalizePersona(raw) {
     }
     circle[g] = out;
   }
+  // Un club ou une académie rangé avant 2.0 dans « Racines » : c'est une organisation, pas une personne (2.0)
+  const movedOrgs = circle.roots.filter((p) => CLUB_ROLE_RE.test(p.role || '') && !PET_ROLE_RE.test(p.role || ''));
+  if (movedOrgs.length) {
+    circle.roots = circle.roots.filter((p) => !movedOrgs.includes(p));
+    for (const p of movedOrgs) if (circle.orgs.length < MAX_GROUP_PEOPLE) circle.orgs.push({ ...p, kopPersonality: p.kopPersonality ? 'official' : '' });
+  }
+  // chaque groupe a ses voix : officielle pour les organisations, hostiles pour les antagonistes
+  const HOSTILE = ['rival_player', 'hater', 'tough_critic', 'doubter', 'ex_partner', 'jealous_mate'];
+  for (const p of circle.orgs) if (p.kopPersonality && p.kopPersonality !== 'official') p.kopPersonality = 'official';
+  for (const p of circle.rivals) if (p.kopPersonality && !HOSTILE.includes(p.kopPersonality)) p.kopPersonality = 'hater';
+  for (const g of PERSONAL_GROUPS) for (const p of circle[g]) if (p.kopPersonality === 'official' || HOSTILE.includes(p.kopPersonality)) p.kopPersonality = 'supportive';
 
   return {
     preset,
@@ -383,6 +405,7 @@ function personaFacts(persona, { includeDob = false } = {}) {
       if (!person.name) continue;
       innerCircle.push({
         group: g,
+        ...(g === 'rivals' ? { relationship: 'antagonist: hostile to the player, never a friend' } : g === 'orgs' ? { relationship: 'organisation (club, academy, school, charity…), not a person' } : {}),
         ...(person.role ? { role: person.role } : {}),
         name: person.name,
         // 2.0 : seuls les proches « connus des médias » peuvent être cités par la presse et les supporters
@@ -424,6 +447,7 @@ const CLUB_ROLE_RE = new RegExp(`${WB_START}(club|premier club|acad[eé]mie|acad
 
 function inferCircleEntryKind(group, role) {
   const r = String(role || '');
+  if (group === 'orgs') return 'youthClub';
   if (PET_ROLE_RE.test(r)) return 'pet';
   if (CLUB_ROLE_RE.test(r)) return 'youthClub';
   if (FEMALE_ROLE_RE.test(r)) return 'femaleName';
@@ -458,6 +482,7 @@ function personaPrivacyEntries(persona) {
 
 module.exports = {
   CIRCLE_GROUPS,
+  PERSONAL_GROUPS,
   MAX_GROUP_PEOPLE,
   TRAIT_KEYS,
   ROOT_KEYS,

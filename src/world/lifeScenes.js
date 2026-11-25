@@ -62,7 +62,7 @@ function pickKopInnerCircle(state, seed) {
   const circle = state?.persona?.circle;
   if (!circle || typeof circle !== 'object') return null;
   const list = [];
-  for (const group of ['family', 'friends', 'roots', 'business']) {
+  for (const group of ['family', 'friends', 'roots', 'business', 'orgs']) {
     for (const p of Array.isArray(circle[group]) ? circle[group] : []) {
       if (p?.name && p?.kopPersonality) {
         list.push({ name: p.name, role: p.role || group, kopPersonality: p.kopPersonality, group });

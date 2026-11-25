@@ -10,6 +10,7 @@ All built-in texts that have variants live here. Each variant is one entry with 
 | `messages.js` | Private messages from close ones after an event; "we miss you" (near and far) |
 | `club.js` | The club's own posts (most days), its media team's small asks and their follow-up posts, big-ask mails |
 | `interviews.js` | Built-in interview questions by theme (podcast, TV, magazine, club channel, documentary, charity) |
+| `antagonists.js` | Antagonists' Kop posts (rival, hater, critic, doubting ex-coach, ex, jealous ex-teammate): good/bad match, luxury purchase, provocation |
 | `posts.js` | Posts by clubs, competitions, media, coach, etc. (one structure per language) |
 | `catalog.js` | Display names of the shop items |
 

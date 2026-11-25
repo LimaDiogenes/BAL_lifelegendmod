@@ -86,7 +86,7 @@ function tickMediaOffers(state, today, newId) {
 const CLUB_BIG_OUTLETS = ['{club} TV', '{club} Inside', '{club} Matchday Live', '{club} Academy Stories', '{club} Fan Q&A', '{club} Podcast'];
 
 /** A big ask from the club (Club TV interview, fan Q&A…) every 14 to 24 days, one open at a time. */
-function tickClubMediaAsks(state, today, newId) {
+function tickClubMediaAsks(state, today, newId, every = [14, 11]) {
   const hub = state?.lifeHub;
   const club = state?.snapshot?.club?.name || '';
   if (!hub?.calibrated || !isIso(today) || !club) return [];
@@ -103,7 +103,7 @@ function tickClubMediaAsks(state, today, newId) {
   const offer = { id: newId(), kind: 'club_channel', source: 'club', outlet, date: freeDate(state, today, 4, 12), fee: 0, on: today, expires: addDays(today, 5), status: 'open', negotiated: false, note: hash(`${seed}|note`) % 8 };
   hub.mediaOffers.push(offer);
   if (hub.mediaOffers.length > 40) hub.mediaOffers = hub.mediaOffers.slice(-40);
-  hub.nextClubAskOn = addDays(today, 14 + (hash(`${seed}|next`) % 11));
+  hub.nextClubAskOn = addDays(today, every[0] + (hash(`${seed}|next`) % every[1]));
   return [offer];
 }
 
