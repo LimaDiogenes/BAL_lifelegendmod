@@ -256,8 +256,8 @@ function buildCircleKopReaction(person, handleTag, eventKind, language, seed, st
     ],
   };
   const more = CIRCLE_MORE(handleTag);
-  const key = templates[p] ? p : 'supportive';
-  const list = [...templates[key], ...(more[key] || [])];
+  const key = templates[p] || more[p] ? p : 'supportive';
+  const list = [...(templates[key] || []), ...(more[key] || [])];
   return trScene(l, pickFresh(state, `circle:${key}`, list, `${person.name}|${eventKind}|${seed}`));
 }
 

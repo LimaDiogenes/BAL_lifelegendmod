@@ -3093,4 +3093,10 @@ window.LL_I18N.en = {
   "Ton de ta réponse": "Tone of your answer",
   "Interview": "Interview",
   "Questions de l’émission": "The show’s questions",
+  "Sur Kop · Parent fier": "On Kop · Proud parent",
+  "Sur Kop · Critique honnête": "On Kop · Honest critic",
+  "Sur Kop · Discret": "On Kop · Quiet one",
+  "Sur Kop · Analyste": "On Kop · Analyst",
+  "Sur Kop · Nostalgique": "On Kop · Nostalgic",
+  "Sur Kop · Superstitieux": "On Kop · Superstitious",
 };

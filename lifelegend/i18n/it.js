@@ -3093,4 +3093,10 @@ window.LL_I18N.it = {
   "Ton de ta réponse": "Tono della tua risposta",
   "Interview": "Intervista",
   "Questions de l’émission": "Domande del programma",
+  "Sur Kop · Parent fier": "Su Kop · Genitore orgoglioso",
+  "Sur Kop · Critique honnête": "Su Kop · Critico sincero",
+  "Sur Kop · Discret": "Su Kop · Riservato",
+  "Sur Kop · Analyste": "Su Kop · Analista",
+  "Sur Kop · Nostalgique": "Su Kop · Nostalgico",
+  "Sur Kop · Superstitieux": "Su Kop · Superstizioso",
 };

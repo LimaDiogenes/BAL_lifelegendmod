@@ -207,6 +207,12 @@ const CIRCLE_KOP_PERSONALITIES = {
   hype: 'Active on Kop: loud #1 supporter, hyping every goal, look, and big moment.',
   protective: 'Active on Kop: fiercely protective, defends the player against critics and media.',
   professional: 'Active on Kop: polished, composed, and strictly professional public voice.',
+  proud_parent: 'Active on Kop: an emotional, proud parent figure: long heartfelt messages, childhood memories, lots of hearts.',
+  honest_critic: 'Active on Kop: tough love: praises him but always points out what he can still improve.',
+  quiet_one: 'Active on Kop: rarely writes, and then very short: an emoji or three words.',
+  analyst: 'Active on Kop: football nerd: comments on his positioning, runs, numbers and tactics.',
+  nostalgic: 'Active on Kop: brings up childhood memories and where it all started.',
+  superstitious: 'Active on Kop: lucky rituals, lucky clothes, afraid to jinx anything.',
 };
 
 function circlePersonHandle(person) {

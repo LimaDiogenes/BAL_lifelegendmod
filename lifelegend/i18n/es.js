@@ -3093,4 +3093,10 @@ window.LL_I18N.es = {
   "Ton de ta réponse": "Tono de tu respuesta",
   "Interview": "Entrevista",
   "Questions de l’émission": "Preguntas del programa",
+  "Sur Kop · Parent fier": "En Kop · Padre o madre orgulloso",
+  "Sur Kop · Critique honnête": "En Kop · Crítico sincero",
+  "Sur Kop · Discret": "En Kop · Discreto",
+  "Sur Kop · Analyste": "En Kop · Analista",
+  "Sur Kop · Nostalgique": "En Kop · Nostálgico",
+  "Sur Kop · Superstitieux": "En Kop · Supersticioso",
 };

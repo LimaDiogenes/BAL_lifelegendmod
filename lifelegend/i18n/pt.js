@@ -3093,4 +3093,10 @@ window.LL_I18N.pt = {
   "Ton de ta réponse": "Tom da sua resposta",
   "Interview": "Entrevista",
   "Questions de l’émission": "Perguntas do programa",
+  "Sur Kop · Parent fier": "No Kop · Pai/mãe orgulhoso(a)",
+  "Sur Kop · Critique honnête": "No Kop · Crítico sincero",
+  "Sur Kop · Discret": "No Kop · Discreto",
+  "Sur Kop · Analyste": "No Kop · Analista",
+  "Sur Kop · Nostalgique": "No Kop · Nostálgico",
+  "Sur Kop · Superstitieux": "No Kop · Supersticioso",
 };

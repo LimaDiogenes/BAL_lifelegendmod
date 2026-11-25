@@ -1187,6 +1187,12 @@ const PERSONA_KOP_OPTIONS = [
   ['hype', () => tr('Sur Kop · Fan n°1')],
   ['protective', () => tr('Sur Kop · Protecteur')],
   ['professional', () => tr('Sur Kop · Professionnel')],
+  ['proud_parent', () => tr('Sur Kop · Parent fier')],
+  ['honest_critic', () => tr('Sur Kop · Critique honnête')],
+  ['quiet_one', () => tr('Sur Kop · Discret')],
+  ['analyst', () => tr('Sur Kop · Analyste')],
+  ['nostalgic', () => tr('Sur Kop · Nostalgique')],
+  ['superstitious', () => tr('Sur Kop · Superstitieux')],
 ];
 
 // Où vit le proche (2.0, optionnel) : les textes et les messages en tiennent compte.
@@ -4174,7 +4180,7 @@ const isMeAuthor = (a) => Boolean(state?.profile && a.handle && (a.isMe || a.typ
 
 function avatar(author) {
   const initial = esc((author.name || author.handle || '?').trim()[0] || '?').toUpperCase();
-  if (isMeAuthor(author)) return `<div class="avatar t-me">${myFaceIn(initial)}</div>`;
+  if (isMeAuthor(author)) return `<div class="avatar t-me">${myFaceIn(playerSilhouetteHtml())}</div>`;
   // Les clubs, compétitions et partenaires officiels : leur écusson ou logo officiel, dans un carré arrondi.
   const emblem = emblemUrl(clubPage(author.handle)?.emblem)
     || (ORG_TYPES.has(author.type) ? (teamEmblem(author.name) || compEmblem(author.name)) : null)
@@ -5094,7 +5100,7 @@ function profileHeaderHtml() {
   return `<div class="tw-profile">
     <div class="tw-banner" data-banner="${esc(prof.bannerColor || PROFILE_COLORS[0])}">${banner ? `<img src="${esc(banner)}" alt="">` : ''}</div>
     <div class="tw-profile-top">
-      <div class="tw-profile-photo">${myFaceIn(initialOf(prof.displayName))}</div>
+      <div class="tw-profile-photo">${myFaceIn(playerSilhouetteHtml())}</div>
       <button class="tw-btn tw-btn-outline tw-edit-btn" id="tw-edit-profile">${tr('Éditer le profil')}</button>
     </div>
     <div class="tw-profile-id">
@@ -5497,7 +5503,7 @@ function openProfileEditor() {
       <div class="tw-modal-head"><button class="tw-iconbtn tw-modal-x" data-close aria-label="${tr('Fermer')}">${hi('xmark')}</button><h2>${tr('Éditer le profil')}</h2><button class="tw-btn tw-btn-sm" id="pe-save">${tr('Enregistrer')}</button></div>
       <div class="tw-modal-body">
         <div class="tw-banner" data-banner="${esc(ed.color)}">${banner ? `<img src="${esc(banner)}" alt="">` : ''}${mediaBtns('banner')}</div>
-        <div class="tw-pe-photo"><div class="tw-profile-photo">${photo ? `<img src="${esc(photo)}" alt="">` : faceIn(state.snapshot?.player?.name, initialOf(fields.displayName))}${mediaBtns('avatar')}</div></div>
+        <div class="tw-pe-photo"><div class="tw-profile-photo">${photo ? `<img src="${esc(photo)}" alt="">` : faceIn(state.snapshot?.player?.name, playerSilhouetteHtml())}${mediaBtns('avatar')}</div></div>
         <div class="tw-pe-colors"><span>${tr('Couleur de la bannière')}</span>${PROFILE_COLORS.map((c) => `<button class="tw-swatch${c === ed.color ? ' on' : ''}" data-color="${c}" data-banner="${c}" aria-label="${tr('Couleur {c}', { c })}"></button>`).join('')}</div>
         ${field('displayName', tr('Nom'), 50)}
         ${field('handle', tr('Pseudo (@)'), 20)}
