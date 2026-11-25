@@ -71,7 +71,7 @@ function makeSuperstarSnapshot(gameDate = '2028-09-10') {
       },
       offers: [],
       interests: [],
-      profile: { age: 23, marketValue: 95000000, teamRole: 'Superstar', affection: 86 },
+      profile: { age: 23, marketValue: 95000000, teamRole: 'Superstar', affection: 220 } /* game scale 0..255 (real saves: 220, 246) */,
     },
     club: { ref: '10', name: 'Liverpool FC', short: 'LIV', stadium: 'Anfield' },
     league: { id: 1, name: 'Premier League' },

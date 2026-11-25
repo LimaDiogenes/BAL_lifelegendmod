@@ -1,6 +1,7 @@
 'use strict';
 // Effets optionnels de « Ma vie » écrits dans la sauvegarde Become a Legend (jeu fermé uniquement) :
-// - fiche + 318 : affection / relation avec le coach (0..99)
+// - fiche + 318 : affection / relation avec le coach, un octet 0..255 (VÉRIFIÉ : 246 et 220 dans de vraies sauvegardes ;
+//   avant 2.0 l'app bornait à 99, ce qui faisait tomber 246 à 99 au premier effet)
 // - fiche + 327 (bits 0..2) : flèche de forme (0 = très mauvaise .. 4 = excellente), bits 3..7 préservés
 // - fiche + 328 : indisponibilité en jours (ne réduit jamais une blessure/sanction plus longue déjà en place)
 // Passe exclusivement par writeInSave (src/save/influenceWrite.js) avec copie de sécurité et relecture vérifiée.
@@ -40,7 +41,7 @@ function lifeEffectsInData(source, { playerId, affectionDelta = 0, formArrowDelt
   const arrowStep = clamp(formArrowDelta, -2, 2);
   const reqDays = clamp(unavailableDays, 0, 30);
 
-  const nextAff = clamp(before.affection + affStep, 0, 99);
+  const nextAff = clamp(before.affection + affStep, 0, 255);
   const nextArrow = clamp(before.formArrowLevel + arrowStep, 0, 4);
   const nextUnavail = reqDays > 0 ? Math.max(before.unavailableDays, reqDays) : before.unavailableDays;
 

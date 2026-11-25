@@ -422,8 +422,13 @@ describe('Effets Ma vie sur sauvegarde (opt-in)', () => {
     assert.equal(lower.after.unavailableDays, 8);
     assert.equal(lower.data[start + FORM_ARROW_REL] & 0xF8, upperBits);
 
+    // L'affection va jusqu'a 255 dans le jeu (vu : 246) : un petit effet ne la fait jamais tomber a 99
+    const high = lifeEffectsInData(makeSyntheticSaveBuffer({ playerId: 42, affection: 246 }), { playerId: 42, affectionDelta: 2 });
+    assert.equal(high.after.affection, 248);
+    const highDown = lifeEffectsInData(makeSyntheticSaveBuffer({ playerId: 42, affection: 246 }), { playerId: 42, affectionDelta: -3 });
+    assert.equal(highDown.after.affection, 243);
     // Aucun changement effectif quand deja aux bornes ou deltas nuls
-    const atMax = makeSyntheticSaveBuffer({ playerId: 42, affection: 99, formByte: 0x50 | 4, unavailableDays: 10 });
+    const atMax = makeSyntheticSaveBuffer({ playerId: 42, affection: 255, formByte: 0x50 | 4, unavailableDays: 10 });
     assert.throws(
       () => lifeEffectsInData(atMax, { playerId: 42, affectionDelta: 4, formArrowDelta: 1, unavailableDays: 3 }),
       /Aucun changement à écrire dans la sauvegarde/

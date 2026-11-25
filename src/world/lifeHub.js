@@ -249,7 +249,8 @@ function seedMeters(snapshot, state, info) {
   const starterRate = fixtures.length ? fixtures.filter((f) => f.me.starter).length / fixtures.length : 0.5;
   const moodLvl = state?.fanMood && (state.fanMood.target === 'player' || state.fanMood.target === 'both') ? (state.fanMood.level || 0) : 0;
 
-  const affection = Number.isFinite(prof.affection) ? clamp(prof.affection, 25, 95) : null;
+  // l'affection du jeu va de 0 à 255 (VÉRIFIÉ : 246, 220) : ramenée sur 100 pour la jauge du coach
+  const affection = Number.isFinite(prof.affection) ? clamp(Math.round((prof.affection * 100) / 255), 25, 95) : null;
   const stageBase = { rookie: 46, rising: 56, established: 66, superstar: 75 }[info.stage] || 50;
 
   let manager = affection !== null ? affection : Math.round(stageBase * 0.65 + starterRate * 25);
