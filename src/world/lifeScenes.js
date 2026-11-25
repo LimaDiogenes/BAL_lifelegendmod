@@ -1626,6 +1626,7 @@ function buildSceneAndReactions(state, snapshot, event = {}, { language = 'en', 
     deltas: event.deltas || {},
     reactions,
     image: event.image || null,
+    ...(event.artId ? { artId: event.artId } : {}), // une image de l'app pour cette scène (2.0)
   };
 
   hub.scenes.unshift(scene);
@@ -1633,7 +1634,19 @@ function buildSceneAndReactions(state, snapshot, event = {}, { language = 'en', 
   return scene;
 }
 
+/** A short scene without the usual renderers (club asks, provocations): headline, story, picture, reactions. */
+function pushSimpleScene(state, { date, refId = '', artId = '', category = 'life', headline, narrative, reactions = [], newId }) {
+  const hub = state?.lifeHub;
+  if (!hub || !headline) return null;
+  hub.scenes ||= [];
+  const scene = { id: newId(), date: date || '', kind: 'life', refId, category, title: '', headline, narrative: narrative || '', companion: '', deltas: {}, reactions, image: null, ...(artId ? { artId } : {}) };
+  hub.scenes.unshift(scene);
+  if (hub.scenes.length > 10) hub.scenes.length = 10;
+  return scene;
+}
+
 module.exports = {
+  pushSimpleScene,
   CATALOG_NAMES,
   CATALOG_ENGLISH_NAMES,
   catalogDisplayName,

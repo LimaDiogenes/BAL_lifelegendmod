@@ -668,12 +668,16 @@ function resolveCalendarDecision(state, decisionId, choiceId, gameDate = '', { l
     const people = ev?.people || [];
     const choiceKind = (ev?.aiChoices || []).find((c) => c.id === choiceId)?.kind || choiceId;
     try {
-      buildSceneAndReactions(state, state.snapshot, { kind: 'calendar', decKind: dec.kind, refId: decisionId, title: dec.title, eventKey: dec.eventKey, mediaKind: dec.mediaKind, category: dec.category || 'life', people, choiceKind, date: today }, { language, newId });
+      const artId = dec.kind === 'media_event' ? 'interview_studio' : dec.kind === 'persona_event' ? ({ persona_hobby: 'hobby_event', persona_hometown: 'hometown_return', persona_roots: 'hometown_visit' }[dec.eventKey] || '') : '';
+      buildSceneAndReactions(state, state.snapshot, { kind: 'calendar', artId, decKind: dec.kind, refId: decisionId, title: dec.title, eventKey: dec.eventKey, mediaKind: dec.mediaKind, category: dec.category || 'life', people, choiceKind, date: today }, { language, newId });
     } catch { /* la scène est un bonus */ }
     try { queueFollowUps(state, { title: dec.title, people, decisionId }, today); } catch { /* idem */ }
   }
   if (dec.kind === 'club_ask') {
     try { require('./clubLife').afterClubAsk(state, dec, choiceId, today, { language, newId }); } catch { /* bonus */ }
+  }
+  if (dec.kind === 'rival_provocation') {
+    try { require('./antagonists').afterProvocation(state, dec, choiceId, today, { language, newId }); } catch { /* bonus */ }
   }
   if (dec.kind === 'car_gift' && choice.catId) {
     const sp = (hub.sponsors || []).find((s) => s.id === dec.sponsorId) || { id: dec.sponsorId, brand: dec.brand };

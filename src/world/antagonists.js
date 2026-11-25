@@ -4,8 +4,8 @@
 // d'un achat de luxe, et de temps en temps le provoquent : une décision (répondre, ignorer, en rire). Sans IA ; jamais
 // d'insulte. Ils n'ont ni anniversaire, ni journée en famille, ni messages privés.
 
-const { ANTAGONIST_POSTS } = require('./texts/antagonists');
-const { pickFresh, catalogDisplayName } = require('./lifeScenes');
+const { ANTAGONIST_POSTS, RIVAL_OUTCOME } = require('./texts/antagonists');
+const { pickFresh, catalogDisplayName, pushSimpleScene } = require('./lifeScenes');
 const { queueLifeDecision } = require('./lifeHub');
 const { circlePersonHandle } = require('./persona');
 const { matchDates } = require('./lifeGeo');
@@ -120,4 +120,14 @@ function antagonistFlex(state, asset, today, { language = 'en', newId }) {
   return postAs(state, person, say(state, person, 'flex', language, seed, { H: handleOf(state), I: item }), today, newId);
 }
 
-module.exports = { tickAntagonists, antagonistFlex, rivalsOnKop, matchSituation };
+/** After his answer to a provocation: a short scene (with its picture). */
+function afterProvocation(state, dec, choiceId, today, { language = 'en', newId }) {
+  const list = RIVAL_OUTCOME[choiceId];
+  if (!list) return null;
+  const l = LANGS.includes(language) ? language : 'en';
+  const v = pickFresh(state, `rival:outcome:${choiceId}`, list, `${dec.id}|${choiceId}`);
+  const vars = { N: dec.personName || dec.title || '', H: handleOf(state) };
+  return pushSimpleScene(state, { date: today, refId: dec.id, artId: 'rival_provocation', category: 'media', headline: fill(l, v.h, vars), narrative: fill(l, v.n, vars), newId });
+}
+
+module.exports = { tickAntagonists, antagonistFlex, afterProvocation, rivalsOnKop, matchSituation };

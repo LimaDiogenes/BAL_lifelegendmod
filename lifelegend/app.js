@@ -10343,7 +10343,7 @@ function openLifeSceneModal(scene) {
   document.querySelectorAll('.ml-scene-back').forEach((el) => el.remove());
   const back = document.createElement('div');
   back.className = 'ml-scene-back';
-  const img = mlResolveArtUrl(scene.refId, scene.image, scene.category, scene.headline);
+  const img = (scene.artId && !scene.image && bundledMyLifeUrl(scene.artId)) || mlResolveArtUrl(scene.refId, scene.image, scene.category, scene.headline);
   const art = img ? `<img src="${esc(img)}" alt="">` : mlAssetArtSvg(scene.refId, scene.category);
   const deltas = [];
   for (const [k, v] of Object.entries(scene.deltas?.meters || {})) {

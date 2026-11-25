@@ -67,6 +67,8 @@ test('une provocation de temps en temps ouvre une décision ; ignorer plaît au 
   const before = st.lifeHub.meters.manager;
   resolveCalendarDecision(st, dec.id, 'rival_ignore', dec.date, { language: 'en', newId });
   assert.ok(st.lifeHub.meters.manager > before);
+  assert.strictEqual(st.lifeHub.scenes[0].artId, 'rival_provocation', 'une scène avec son image');
+  assert.ok(st.lifeHub.scenes[0].narrative.includes(dec.personName));
 });
 
 test('un achat de luxe peut faire réagir un antagoniste ; une petite dépense, jamais', () => {

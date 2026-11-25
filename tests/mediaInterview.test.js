@@ -67,6 +67,7 @@ test('ses tons font les effets ; la décision se règle avec une scène', async 
   assert.ok(!state.calendar.pendingDecisions.some((d) => d.id === dec.id));
   assert.ok(state.lifeHub.meters.fans > before.fans && state.lifeHub.meters.squad > before.squad);
   assert.ok(state.lifeHub.scenes.length >= 1, 'une scène');
+  assert.strictEqual(state.lifeHub.scenes[0].artId, 'interview_studio', 'avec l’image du studio');
 });
 
 test('deux réponses audacieuses ou plus peuvent se retourner ; les totaux sont plafonnés', () => {

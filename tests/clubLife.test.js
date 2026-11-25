@@ -51,6 +51,7 @@ test('petites demandes : 1 à 2 par semaine, jamais un jour de match ; le club p
       const before = clubPosts(st).length;
       resolveCalendarDecision(st, ask.id, 'club_full', d, { language: 'en', newId });
       assert.ok(clubPosts(st).length > before && clubPosts(st).at(-1).text.includes('@rui'), 'le club publie et le tague');
+      assert.strictEqual(st.lifeHub.scenes[0].artId, 'club_ask', 'une scène avec son image');
     }
   }
   assert.ok(asks.length >= 4 && asks.length <= 9, `${asks.length} demandes en 4 semaines`);

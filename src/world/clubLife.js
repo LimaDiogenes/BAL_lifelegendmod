@@ -7,7 +7,7 @@
 
 const { CLUB_POSTS, CLUB_ASKS, CLUB_ASK_POSTS } = require('./texts/club');
 const { clubAuthor } = require('./clubPosts');
-const { pickFresh } = require('./lifeScenes');
+const { pickFresh, pushSimpleScene } = require('./lifeScenes');
 const { queueLifeDecision } = require('./lifeHub');
 const { matchDates } = require('./lifeGeo');
 
@@ -112,7 +112,9 @@ function afterClubAsk(state, dec, choiceId, today, { language = 'en', newId }) {
   const l = LANGS.includes(language) ? language : 'en';
   const list = CLUB_ASK_POSTS[choiceId === 'club_full' ? 'full' : 'quick'];
   const handle = state.profile?.handle ? `@${state.profile.handle}` : (state.snapshot?.player?.name || '');
-  return pushClubPost(state, fill(l, pickFresh(state, `club:askpost:${choiceId}`, list, `${dec.id}|${today}`), { H: handle, C: state.snapshot?.club?.name || '' }), today, newId);
+  const post = pushClubPost(state, fill(l, pickFresh(state, `club:askpost:${choiceId}`, list, `${dec.id}|${today}`), { H: handle, C: state.snapshot?.club?.name || '' }), today, newId);
+  if (post) pushSimpleScene(state, { date: today, refId: dec.id, artId: 'club_ask', category: 'media', headline: dec.title, narrative: post.text, reactions: [{ channel: 'kop', from: `@${post.author.handle}`, authorName: post.author.name, text: post.text }], newId });
+  return post;
 }
 
 /** A declined big ask (Mail) counts as a pass too. */
