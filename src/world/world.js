@@ -19,6 +19,7 @@ const { normalizeAiChoices, fallbackEventChoices } = require('./personaEvents');
 const { tickMediaOffers, answerMediaOffer } = require('./mediaOffers');
 const { deliverFollowUps } = require('./eventAftermath');
 const { tickClubLife } = require('./clubLife');
+const { interviewDecision, builtinInterviewQuestions, startInterview, prepareInterviewChoice } = require('./mediaInterview');
 const { seedSystemEvents, collectDueDecisions, collectObligationDecisions, resolveCalendarDecision, flipBirthdayShift, birthdaysOnDate, birthdaysInMonth, squadBirthdayRoster, scheduleOffPitchActivity } = require('./calendarEvents');
 const { applyLifeEffects } = require('../save/lifeEffectsWrite');
 const { DEFAULT_PAPER_ID, normalizePaperOverride, resolveNationalPaper, paperDeskTemplate } = require('./nationalPaper');
@@ -3728,6 +3729,103 @@ async function submitPressInner({ store, settings, answers, log, t }) {
   return state;
 }
 
+// Interviews perso avec de vraies questions (2.0, round C). Questions de l'app (sans IA) ou de l'IA, au choix du joueur.
+async function startLifeInterview({ store, settings, decisionId, source, progress }) {
+  const state = store.activeCareer();
+  const dec = interviewDecision(state, decisionId);
+  if (!dec) throw new Error('Élément introuvable.');
+  const iv = state.interview;
+  if (iv && iv.decisionId === decisionId && iv.status === 'open' && iv.source === source && iv.questions?.length) return state;
+  const language = settings.language || 'en';
+  if (source !== 'ai') {
+    startInterview(state, decisionId, 'builtin', builtinInterviewQuestions(state, dec, language));
+    store.saveCareer(state);
+    return state;
+  }
+  const t = tracker(progress, 'Interview', [['Questions de l’émission', 600]]);
+  t.step(0);
+  let ok = false;
+  try {
+    const narrativeMem = loadNarrativeMemory(store, state.careerId);
+    const show = { kind: dec.mediaKind || 'podcast', outlet: dec.title || '', count: 5 };
+    const out = parseJson(await complete(settings, store.getKey(settings.provider), {
+      privacyMap: privacyMapFor(state, settings),
+      system: prompts.mediaInterviewQuestionsSystem(settings, show),
+      user: prompts.mediaInterviewQuestionsUser({ facts: pressFacts(state, narrativeMem), memory: memoryFor(state, narrativeMem) }),
+      maxTokens: 2500,
+      onProgress: t.ai,
+    }));
+    const questions = (Array.isArray(out?.questions) ? out.questions : []).map((q) => String(q?.question || q || '').trim()).filter(Boolean).slice(0, 6);
+    if (!questions.length) throw new Error('Les journalistes n’ont posé aucune question. Réessaie.');
+    startInterview(state, decisionId, 'ai', questions);
+    store.saveCareer(state);
+    ok = true;
+    return state;
+  } finally {
+    t.done(ok);
+  }
+}
+
+// answers : un ton par question (questions de l'app) ; ou { tones, texts } avec ses mots (questions de l'IA).
+async function submitLifeInterview({ store, settings, answers, progress }) {
+  const state = store.activeCareer();
+  const iv = state.interview;
+  if (!iv || iv.status !== 'open') throw new Error('Élément introuvable.');
+  const language = settings.language || 'en';
+  const today = state.calendar?.simDate || state.snapshot?.gameDate || iv.date || '';
+  let tones = Array.isArray(answers) ? answers.map(String) : (answers?.tones || []).map(String);
+  if (iv.source === 'ai') {
+    const texts = (answers?.texts || []).map((x) => String(x || '').trim());
+    const exchanges = iv.questions.map((q, i) => ({ question: q.question, answer: texts[i] || null }));
+    if (!exchanges.some((x) => x.answer)) throw new Error('Élément introuvable.');
+    const t = tracker(progress, 'Interview', [['Rédaction de l’article', 2000]]);
+    t.step(0);
+    let ok = false;
+    try {
+      const narrativeMem = loadNarrativeMemory(store, state.careerId);
+      const paper = state.nationalPaper || paperForState(state);
+      const desk = transversaleDesk(state, paper);
+      const writer = (desk.find((w) => w.role === 'Reporter') || desk[0] || {}).name || PAPER_NAME;
+      const show = { kind: iv.mediaKind, outlet: iv.outlet };
+      const out = parseJson(await complete(settings, store.getKey(settings.provider), {
+        privacyMap: privacyMapFor(state, settings),
+        system: prompts.mediaInterviewWriteupSystem(settings, paper, show),
+        user: prompts.mediaInterviewWriteupUser({ facts: pressFacts(state, narrativeMem), memory: memoryFor(state, narrativeMem), interview: { outlet: iv.outlet, kind: iv.mediaKind, writer, exchanges } }),
+        maxTokens: 4500,
+        onProgress: t.ai,
+      }));
+      const said = exchanges.map((x) => x.answer);
+      const article = { headline: out.article?.headline || iv.outlet, dek: out.article?.dek || '', author: out.article?.author || writer, body: String(out.article?.body || ''), kind: 'interview' };
+      // jamais de citation qui ne soit pas mot pour mot (comme la conférence de presse)
+      for (const q of alteredQuotes(article.body, said)) article.body = article.body.split(/\n{2,}/).map((para) => (para.match(/[^.!?…]+(?:[.!?…]+[»”"]?|$)\s*/g) || [para]).filter((s) => !s.includes(q)).join('').trim()).filter(Boolean).join('\n\n');
+      const edition = state.editions?.at(-1);
+      if (edition && article.body) edition.national.push(article);
+      const now = Date.now();
+      const people = mentionDirectory(state);
+      for (const p of (out.posts || []).slice(0, 4)) {
+        const author = realPersonAuthor(toAuthor(p), people);
+        if (!p?.text || oddScript(p.text) || isUser(state, author) || isCompetitionAuthor(state, author)) continue;
+        rememberAccount(state, author);
+        state.feed.push({ id: newId(), author, text: p.text, gameDate: today, createdAt: now, replies: [], likes: postLikes(author, state, 1), reposts: 0 });
+      }
+      for (const x of exchanges) if (x.answer) state.onRecord.push({ to: `${iv.outlet} (interview)`, question: x.question, text: x.answer, gameDate: today });
+      recordConduct(state, out.conduct, { source: 'press', text: said.filter(Boolean).join(' / '), gameDate: today });
+      const tone = ['open', 'safe', 'bold', 'team'].includes(out.tone) ? out.tone : 'safe';
+      // ses mots valent un peu plus qu'un ton choisi : le ton de l'IA compte pour chaque réponse donnée
+      tones = exchanges.map((x) => (x.answer ? tone : ''));
+      iv.article = article.headline;
+      ok = true;
+    } finally {
+      t.done(ok);
+    }
+  }
+  const { dec } = prepareInterviewChoice(state, tones);
+  iv.status = 'done';
+  resolveCalendarDecision(state, dec.id, 'media_qa', today, { language, newId });
+  store.saveCareer(state);
+  return state;
+}
+
 // Une offre de contrat arrive un jour sans match : pas d'édition, seulement le mail de l'agent (relu lui aussi).
 const AGENT_OCCASION_LOG = {
   offer: (o) => `Offre de contrat reçue (${o.map((x) => x.club).join(', ')})`,
@@ -4460,4 +4558,4 @@ Rules:
   };
 }
 
-module.exports = { answerLifeMediaOffer, diffBio, addHooks, getNarrativeMemory, dismissNarrativeArc, clearNarrativeQuestions, savePrivacy, savePersona, updateAgent, generateBackstory, saveSquadBirthdays, resetCareer, saveNationalPaper, saveClubAlias, saveLifeEvents, calibrateCareerLifeHub, buyLifeAsset, sellLifeAsset, getSponsorCatalog, addLifeSponsor, updateLifeSponsor, removeLifeSponsor, answerLifeSponsorOffer, answerLifeBiddingWar, answerLifeOneTimeDeal, completeLifeObligation, rescheduleLifeObligation, doLifeAction, answerLifeDilemma, setLifeMedia, ensureLifeHub, calendarAdvance, getCalendarAgenda, resolveLifeCalendarDecision, flipCalendarBirthdayShift, scheduleCalendarActivity, runDailyAiPulse, calendarSetMode, calendarAddEvent, calendarRemoveEvent, applyLifeSaveEffects, dismissLifeSaveEffects, noteKeyMemory, privacyMapFor, previewMasked, getAiAuditLog, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, emitInterviewSilenceReactions, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };
+module.exports = { startLifeInterview, submitLifeInterview, answerLifeMediaOffer, diffBio, addHooks, getNarrativeMemory, dismissNarrativeArc, clearNarrativeQuestions, savePrivacy, savePersona, updateAgent, generateBackstory, saveSquadBirthdays, resetCareer, saveNationalPaper, saveClubAlias, saveLifeEvents, calibrateCareerLifeHub, buyLifeAsset, sellLifeAsset, getSponsorCatalog, addLifeSponsor, updateLifeSponsor, removeLifeSponsor, answerLifeSponsorOffer, answerLifeBiddingWar, answerLifeOneTimeDeal, completeLifeObligation, rescheduleLifeObligation, doLifeAction, answerLifeDilemma, setLifeMedia, ensureLifeHub, calendarAdvance, getCalendarAgenda, resolveLifeCalendarDecision, flipCalendarBirthdayShift, scheduleCalendarActivity, runDailyAiPulse, calendarSetMode, calendarAddEvent, calendarRemoveEvent, applyLifeSaveEffects, dismissLifeSaveEffects, noteKeyMemory, privacyMapFor, previewMasked, getAiAuditLog, conductApply, pollOptions, pollPercents, bigEdition, pressPanel, emitInterviewSilenceReactions, transcribeDictation, chatFacts, kopInteractionFacts, pressFacts, mailReplyFacts, gameDirFor, loadScores, addEditionPosts, writeDiscussions, writeTransversale, transversaleDesk, transversaleFacts, pressMoments, transversalePlan, articleProblems, loadState, refreshEmblems, followAccount, updateProfile, PROFILE_COLORS, sync, post, likePost, repostPost, replyToPost, replyMail, sendDm, sendHuddle, readHuddle, newCareerInfo, factsFor, refreshMedia, openPress, submitPress, skipPress, alteredQuotes, mentionDirectory, setAgentStance, setTransferRequest, redirectOffer, transversaleBrief, influenceView, influenceSearch, influenceRequest, influenceApply };

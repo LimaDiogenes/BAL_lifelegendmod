@@ -4746,6 +4746,9 @@ html, body { height: 100%; overflow: hidden; background: var(--sh-back); }
 .per-person-row .per-dob-wrap { grid-area: dob; }
 .per-p-kop { grid-area: kop; }
 .per-p-lives { grid-area: lives; }
+/* Interview : les tons de réponse (round C) */
+.gz-iv-tones { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 4px; }
+.gz-iv-tones .gz-modal-btn { flex: 1 1 160px; white-space: normal; }
 .per-person-row select.per-p-lives { width: 100%; min-width: 0; padding: 7px 6px; border: 1px solid var(--line-2); border-radius: var(--r-s); background: var(--surface-2); color: var(--ink); font-size: 12px; font-weight: 500; }
 .per-p-decoy { grid-area: decoy; }
 .per-p-flags { grid-area: flags; display: flex; gap: 4px; }

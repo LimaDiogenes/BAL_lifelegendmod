@@ -3365,6 +3365,116 @@ function startPressQuestions() {
     .finally(() => { pressLoading = false; paintPressModal(); });
 }
 
+// Interviews perso avec de vraies questions (2.0, round C) : « Répondre aux questions » dans la décision du jour.
+// D'abord le choix de la source (questions de l'app sans IA, ou de l'IA), puis une question à la fois.
+let ivBox = null;
+const IV_TONES = [
+  ['open', () => tr('Ouvrir ton cœur')],
+  ['safe', () => tr('Rester prudent')],
+  ['bold', () => tr('Une phrase choc')],
+  ['team', () => tr('Mettre le groupe en avant')],
+];
+function closeInterviewModal() {
+  if (!ivBox) return;
+  ivBox.remove();
+  ivBox = null;
+  ['#page', '.ll-rail', '.ll-top'].forEach((q) => { const el = document.querySelector(q); if (el) el.inert = false; });
+}
+function openInterviewModal(decisionId) {
+  closeInterviewModal();
+  const iv = state?.interview;
+  if (view.ivDec !== decisionId || !(iv && iv.decisionId === decisionId && iv.status === 'open')) {
+    view.ivStep = 0;
+    drafts.iv = { tones: {}, texts: {} };
+  }
+  view.ivDec = decisionId;
+  view.ivBusy = false;
+  ivBox = document.createElement('div');
+  ivBox.className = 'gz-modal-back';
+  document.body.appendChild(ivBox);
+  ['#page', '.ll-rail', '.ll-top'].forEach((q) => { const el = document.querySelector(q); if (el) el.inert = true; });
+  paintInterviewModal();
+}
+function paintInterviewModal() {
+  if (!ivBox) return;
+  const dec = (state?.calendar?.pendingDecisions || []).find((d) => d.id === view.ivDec);
+  if (!dec) { closeInterviewModal(); return; }
+  const iv = state.interview && state.interview.decisionId === dec.id && state.interview.status === 'open' ? state.interview : null;
+  drafts.iv ||= { tones: {}, texts: {} };
+  const kind = (ML_MEDIA_KIND_LABELS[dec.mediaKind] || ML_MEDIA_KIND_LABELS.podcast)();
+  const head = `<button class="gz-modal-x" data-iv-close aria-label="${tr('Revenir plus tard')}" title="${tr('Revenir plus tard')}">${hi('xmark')}</button>
+    <span class="gz-modal-label">${esc(kind)} · ${esc(dec.title || '')}</span>`;
+  let body;
+  if (view.ivBusy) {
+    body = `${head}<h2 id="gz-modal-title">${tr('Préparation des questions.')}</h2>`;
+  } else if (!iv) {
+    body = `${head}<h2 id="gz-modal-title">${tr('D’où viennent les questions ?')}</h2>
+      <p class="gz-modal-note">${tr('Questions de l’app : sans IA, tu réponds en choisissant un ton. Questions de l’IA : propres à ta carrière, tu réponds avec tes mots et le journal en tire un article.')}</p>
+      <div class="gz-modal-foot"><button class="gz-modal-btn" data-iv-src="builtin">${tr('Questions de l’app (sans IA)')}</button><button class="gz-modal-btn gz-modal-btn--ghost" data-iv-src="ai">${tr('Questions de l’IA')}</button></div>`;
+  } else {
+    const total = iv.questions.length;
+    const at = Math.min(view.ivStep || 0, Math.max(0, total - 1));
+    const q = iv.questions[at];
+    const answer = iv.source === 'ai'
+      ? `<textarea class="gz-answer" data-iv-text="${at}" placeholder="${tr('Ta réponse…')}">${esc(drafts.iv.texts[at] || '')}</textarea>`
+      : `<div class="gz-iv-tones" role="group" aria-label="${tr('Ton de ta réponse')}">${IV_TONES.map(([id, fn]) => `<button type="button" class="gz-modal-btn${drafts.iv.tones[at] === id ? '' : ' gz-modal-btn--ghost'}" data-iv-tone="${id}" aria-pressed="${drafts.iv.tones[at] === id}">${esc(fn())}</button>`).join('')}</div>`;
+    body = `${head}<div class="gz-modal-progress"><span>${tr('Question {n} sur {total}', { n: at + 1, total })}</span><div class="gz-modal-bar">${iv.questions.map((_, k) => `<i class="${k <= at ? 'on' : ''}"></i>`).join('')}</div></div>
+      <h2 id="gz-modal-title">${esc(q.question)}</h2>
+      ${answer}
+      <div class="gz-modal-foot">
+        ${at > 0 ? `<button class="gz-modal-btn gz-modal-btn--ghost" data-iv-step="-1">← ${tr('Question précédente')}</button>` : ''}
+        ${at < total - 1 ? `<button class="gz-modal-btn" data-iv-step="1">${tr('Question suivante')} →</button>` : `<button class="gz-modal-btn" id="iv-submit">${tr('Terminer l’interview')}</button>`}
+      </div>`;
+  }
+  ivBox.innerHTML = `<div class="gz gz-modal" role="dialog" aria-modal="true" aria-labelledby="gz-modal-title">${body}</div>`;
+  const root = ivBox.firstElementChild;
+  gzTheme(root, state.snapshot);
+  root.querySelectorAll('[data-iv-close]').forEach((b) => { b.onclick = closeInterviewModal; });
+  root.querySelectorAll('[data-iv-src]').forEach((b) => {
+    b.onclick = async () => {
+      view.ivBusy = true;
+      paintInterviewModal();
+      try { state = await live.startInterview(dec.id, b.dataset.ivSrc); view.ivStep = 0; } catch (err) { toast(err.message, true); }
+      view.ivBusy = false;
+      paintInterviewModal();
+    };
+  });
+  root.querySelectorAll('[data-iv-tone]').forEach((b) => {
+    b.onclick = () => { drafts.iv.tones[Math.min(view.ivStep || 0, (iv?.questions.length || 1) - 1)] = b.dataset.ivTone; paintInterviewModal(); };
+  });
+  const ta = root.querySelector('[data-iv-text]');
+  if (ta) {
+    ta.oninput = () => { drafts.iv.texts[Number(ta.dataset.ivText)] = ta.value; };
+    ta.focus();
+  }
+  root.querySelectorAll('[data-iv-step]').forEach((b) => { b.onclick = () => { view.ivStep = (view.ivStep || 0) + Number(b.dataset.ivStep); paintInterviewModal(); }; });
+  const submit = root.querySelector('#iv-submit');
+  if (submit && iv) {
+    submit.onclick = async () => {
+      const answers = iv.source === 'ai'
+        ? { texts: iv.questions.map((_, i) => (drafts.iv.texts[i] || '').trim()) }
+        : iv.questions.map((_, i) => drafts.iv.tones[i] || '');
+      submit.disabled = true;
+      submit.textContent = iv.source === 'ai' ? tr('Les journalistes rédigent…') : tr('Terminer l’interview');
+      const prevTopId = state?.lifeHub?.scenes?.[0]?.id || null;
+      try {
+        state = await live.submitInterview(answers);
+        drafts.iv = { tones: {}, texts: {} };
+        view.ivStep = 0;
+        closeInterviewModal();
+        render();
+        if (iv.source === 'ai') toast(tr('Ton interview est dans {paper}.', { paper: natPaper().name }));
+        const top = state?.lifeHub?.scenes?.[0];
+        if (top && top.id !== prevTopId) openLifeSceneModal(top);
+      } catch (err) {
+        submit.disabled = false;
+        submit.textContent = tr('Terminer l’interview');
+        toast(err.message, true);
+      }
+    };
+  }
+}
+
 // Elle s'ouvre d'elle-même après un match synchronisé et lance tout de suite la préparation des questions.
 function autoPressModal() {
   const p = pressNow();
@@ -9323,6 +9433,7 @@ const ML_DECISION_CHOICE_LABELS = {
   home_press: () => tr('Une interview à la presse locale'),
   home_old_friends: () => tr('Retrouver les copains d’enfance'),
   club_full: () => tr('Le faire bien'),
+  media_qa: () => tr('Répondre aux questions'),
   club_quick: () => tr('Vite fait'),
   club_pass: () => tr('Pas cette fois'),
   home_visit: () => tr('Les recevoir pour la journée'),
@@ -11660,6 +11771,7 @@ function renderMyLife(page) {
   });
   page.querySelectorAll('[data-caldec]').forEach((b) => {
     b.onclick = async () => {
+      if (b.dataset.calchoice === 'media_qa') { openInterviewModal(b.dataset.caldec); return; } // l'écran de questions (round C)
       try {
         await runAndOpenScene(() => live.resolveCalendarDecision(b.dataset.caldec, b.dataset.calchoice), tr('Décision enregistrée.'));
         const out = state?.lastDecisionOutcome?.decisionId === b.dataset.caldec ? state.lastDecisionOutcome : null;

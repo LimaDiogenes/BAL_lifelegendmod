@@ -47,7 +47,8 @@ test('accepter : au calendrier ; le jour venu, trois choix payés ; négocier un
   assert.ok(ev && ev.date === o.date);
   const [dec] = collectObligationDecisions(st, o.date);
   assert.strictEqual(dec.kind, 'media_event');
-  assert.strictEqual(dec.choices.length, 3);
+  assert.strictEqual(dec.choices.filter((c) => c.id !== 'media_qa').length, 3); // + « Répondre aux questions » (round C)
+  assert.ok(dec.choices.some((c) => c.id === 'media_qa'));
   assert.ok(dec.choices.some((c) => c.id === 'media_safe'));
   resolveCalendarDecision(st, dec.id, 'media_safe', o.date, { newId });
   assert.strictEqual(st.lifeHub.cash, o.fee);

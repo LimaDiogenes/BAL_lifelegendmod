@@ -216,10 +216,8 @@ function flipBirthdayShift(state, bdayKey) {
 }
 
 const SYSTEM_EVENT_TEMPLATES = [
-  { key: 'club_media_day', category: 'media', minOffset: 3, maxOffset: 10, stageMin: 'rookie' },
   { key: 'squad_team_dinner', category: 'family', minOffset: 5, maxOffset: 14, stageMin: 'rookie' },
   { key: 'youth_charity_clinic', category: 'charity', minOffset: 6, maxOffset: 16, stageMin: 'rookie' },
-  { key: 'podcast_interview', category: 'media', minOffset: 4, maxOffset: 13, stageMin: 'rising' },
   { key: 'vip_charity_gala', category: 'charity', minOffset: 8, maxOffset: 19, stageMin: 'established' },
 ];
 

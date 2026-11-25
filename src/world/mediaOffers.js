@@ -151,6 +151,8 @@ function mediaDecision(ev, state) {
       memory,
     };
   });
+  // + « Répondre aux questions » (round C) : ses effets viennent des réponses (mediaInterview.js)
+  choices.push({ id: 'media_qa', cost: 0, bonusCash: ev.fee || 0, effects: {}, qa: true, memory: `Gave ${ev.title} a full ${kindEn}` });
   return { id: `dec_cust_${ev.id}`, kind: 'media_event', mediaKind: ev.mediaKind, date: ev.date, title: ev.title, fee: ev.fee || 0, choices };
 }
 

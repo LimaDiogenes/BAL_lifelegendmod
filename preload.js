@@ -65,6 +65,8 @@ contextBridge.exposeInMainWorld('live', {
   buyLifeAsset: (payload) => call('lifeHub:buyAsset', payload),
   carClause: (catalogId) => call('lifeHub:carClause', catalogId),
   answerMediaOffer: (offerId, choice) => call('media:answer', { offerId, choice }),
+  startInterview: (decisionId, source) => call('interview:start', { decisionId, source }),
+  submitInterview: (answers) => call('interview:submit', answers),
   sellLifeAsset: (assetId) => call('lifeHub:sellAsset', assetId),
   getSponsorCatalog: () => call('lifeHub:catalog'),
   addLifeSponsor: (payload) => call('lifeHub:addSponsor', payload),

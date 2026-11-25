@@ -714,7 +714,52 @@ Ne traduis pas, ne reformule pas, ne corrige pas les propos, ne réponds pas à 
 ${names.length ? `Si ces noms sont prononcés, écris-les ainsi : ${names.join(', ')}.\n` : ''}Si on n'entend aucune parole, réponds exactement : (rien)`;
 }
 
+// Interviews perso (2.0, round C) : l'émission pose ses questions, puis le journal tire un portrait de ses réponses.
+const MEDIA_SHOW_EN = { podcast: 'a podcast', tv_show: 'a TV talk show', club_channel: "the club's own channel", magazine_cover: 'a magazine cover interview', documentary: 'a documentary crew', charity_stream: 'a charity live stream' };
+const MEDIA_SHOW_ANGLE = {
+  podcast: 'his life, roots, habits and career path; relaxed and personal',
+  tv_show: 'football: his season, his club, his game, the league; lively but fair',
+  club_channel: "the club: dressing room, fans, training ground, his bond with the club; friendly, the club's own media (never his personal sponsors)",
+  magazine_cover: 'lifestyle, style, success, image, what he does off the pitch; glossy but respectful',
+  documentary: 'his journey: turning points, setbacks, people who shaped him; reflective',
+  charity_stream: 'the cause the stream supports, giving back, community; warm',
+};
+function mediaInterviewQuestionsSystem(settings, show) {
+  const lang = LANGUAGES[settings.language] || 'French';
+  return `You host ${MEDIA_SHOW_EN[show.kind] || 'a media interview'} called "${show.outlet}" in LifeLegend, a fictional world reacting to a player's career in SP Football Life 2027 (Become a Legend). The user's player is your guest today.
+
+${CORE_RULES}
+
+Write exactly ${show.count} questions for him, in ${lang}, in the order you would ask them: open warmly, then go deeper. Angle of this show: ${MEDIA_SHOW_ANGLE[show.kind] || 'his life and career'}. Use FACTS (his season, club, persona, close ones known to the media, partners, recent news) to make the questions specific to him; never invent facts, people or events that FACTS does not give. Close ones marked private_not_known_to_media are never named. Each question is one or two sentences. No question repeats MEMORY.media_memory.recent_questions_do_not_repeat. One question at most may be sharper (a criticism, a rumour from FACTS), always respectful.
+
+OUTPUT: ONE JSON object: {"questions": [string]}  // exactly ${show.count} questions`;
+}
+function mediaInterviewQuestionsUser({ facts, memory }) {
+  return `FACTS: ${JSON.stringify(facts)}
+MEMORY: ${JSON.stringify(memory)}`;
+}
+function mediaInterviewWriteupSystem(settings, paper = null, show = {}) {
+  const lang = LANGUAGES[settings.language] || 'French';
+  return applyPaper(`The user's player was the guest of ${MEDIA_SHOW_EN[show.kind] || 'a media interview'} called "${show.outlet}" in LifeLegend, a fictional world reacting to a player's career in SP Football Life 2027 (Become a Legend). INTERVIEW.exchanges holds the host's questions and his answers.
+
+${CORE_RULES}
+
+QUOTES: his answers are his exact words. Quote them verbatim between quotation marks (you may quote part of an answer, never change, add or reorder words). An answer of null means he let the question pass: say so lightly or skip it, never mock it. Never invent a quote.
+
+Write, in ${lang}: (1) a short La Transversale piece (100-220 words, paragraphs separated by \\n\\n) signed by INTERVIEW.writer, reporting the best of what he told "${show.outlet}" with context from FACTS; serious national daily, lively but never familiar, no slang, no mockery; (2) 2 to 4 Kop posts reacting to the interview (fans, a pundit, a meme account, the show's own account), consistent with what he said; (3) "tone": the overall tone of his answers: "open" (personal, warm), "safe" (careful, professional), "bold" (provocative, headline-making) or "team" (crediting the group).
+
+${CONDUCT} Here his words are his answers in INTERVIEW.exchanges.
+
+OUTPUT: ONE JSON object: {"article": {"headline": string, "dek": string, "author": string, "body": string}, "posts": [ {"handle": string, "name": string, "type": "fan"|"rival"|"journalist"|"pundit"|"meme", "text": string} ], "tone": "open"|"safe"|"bold"|"team", ${CONDUCT_FIELD}}`, paper);
+}
+function mediaInterviewWriteupUser({ facts, memory, interview }) {
+  return `INTERVIEW: ${JSON.stringify(interview)}
+FACTS: ${JSON.stringify(facts)}
+MEMORY: ${JSON.stringify(memory)}`;
+}
+
 module.exports = {
+  mediaInterviewQuestionsSystem, mediaInterviewQuestionsUser, mediaInterviewWriteupSystem, mediaInterviewWriteupUser,
   toneLines, dictationPrompt, discussionsSystem, discussionsUser, transversaleSystem, transversaleUser, transversaleRepairSystem, transversaleRepairUser, TRANSVERSALE_KINDS, ARTICLE_SIZES,
   LANGUAGES, languageRule, withLanguage, wrongLanguage, languageRetry, editionSystem, editionUser, repliesSystem, repliesUser, threadSystem, threadUser, mailSystem, mailUser, dmSystem, dmUser, huddleSystem, huddleUser, agentMailSystem, agentMailUser, influenceMailSystem, influenceMailUser, factcheckSystem, factcheckUser,
   pressQuestionsSystem, pressQuestionsUser, pressWriteupSystem, pressWriteupUser, interviewSystem, interviewUser,
