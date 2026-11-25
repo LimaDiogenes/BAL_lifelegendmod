@@ -4739,19 +4739,21 @@ html, body { height: 100%; overflow: hidden; background: var(--sh-back); }
 .per-field-head { min-height: 22px; }
 
 /* Cercle : une ligne par personne ; les trois cases (proche, médias, bouclier) en icônes à droite, « Retirer » à côté du pseudo. */
-.per-person-row { grid-template-columns: minmax(82px, 1fr) minmax(94px, 1fr) minmax(150px, 174px) minmax(124px, 150px) minmax(84px, .9fr) auto 32px; grid-template-areas: "role name dob kop decoy flags del"; }
+.per-person-row { grid-template-columns: minmax(82px, 1fr) minmax(94px, 1fr) minmax(150px, 174px) minmax(124px, 150px) minmax(104px, 130px) minmax(84px, .9fr) auto 32px; grid-template-areas: "role name dob kop lives decoy flags del"; }
 .per-person-row.per-col-head { grid-template-areas: none; }
 .per-p-role-wrap { grid-area: role; }
 .per-p-name { grid-area: name; }
 .per-person-row .per-dob-wrap { grid-area: dob; }
 .per-p-kop { grid-area: kop; }
+.per-p-lives { grid-area: lives; }
+.per-person-row select.per-p-lives { width: 100%; min-width: 0; padding: 7px 6px; border: 1px solid var(--line-2); border-radius: var(--r-s); background: var(--surface-2); color: var(--ink); font-size: 12px; font-weight: 500; }
 .per-p-decoy { grid-area: decoy; }
 .per-p-flags { grid-area: flags; display: flex; gap: 4px; }
 .per-p-del-person { grid-area: del; }
 .per-person-row label.per-p-shield { padding: 4px 6px; }
 .per-p-del-txt { display: none; }
 @container (max-width: 680px) {
-  .per-person-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; grid-template-areas: "role name flags" "dob kop flags" "decoy del flags"; gap: 4px 6px; padding: 6px 8px; }
+  .per-person-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; grid-template-areas: "role name flags" "dob kop flags" "lives decoy flags" "del del flags"; gap: 4px 6px; padding: 6px 8px; }
   .per-p-flags { flex-direction: column; }
   .per-p-del-person { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
   .per-p-del-txt { display: inline; font-size: 12px; font-weight: 500; }

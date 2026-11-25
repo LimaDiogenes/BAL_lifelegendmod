@@ -1,4 +1,5 @@
 'use strict';
+const { normLives } = require('./lifeGeo');
 // Profil psychologique, goûts et cercle intime du joueur (Phase B).
 // Autonome : aucun import de privacyShield ou world pour éviter toute dépendance circulaire.
 
@@ -241,6 +242,8 @@ function normalizeCirclePerson(item, idx = 0, group = '') {
     // connu des médias (2.0) : la presse et les supporters peuvent en parler ; sinon seulement son cercle proche
     media: item.media !== undefined ? Boolean(item.media) : group !== 'family',
     kopPersonality,
+    // où il vit (2.0, optionnel) : avec lui, même ville, ville natale, autre pays ; vide = textes neutres
+    ...(normLives(item.lives) ? { lives: normLives(item.lives) } : {}),
   };
 }
 
@@ -382,6 +385,7 @@ function personaFacts(persona, { includeDob = false } = {}) {
           ? { kop_profile: CIRCLE_KOP_PERSONALITIES[person.kopPersonality] }
           : {}),
         ...(includeDob && person.dob ? { dob: person.dob } : {}),
+        ...(person.lives ? { lives: { with: 'lives with him', city: 'lives in the same city', hometown: 'lives in his hometown, far away', abroad: 'lives in another country' }[person.lives] } : {}),
       });
     }
   }

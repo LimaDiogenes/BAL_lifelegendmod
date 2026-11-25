@@ -8,6 +8,7 @@ const isIso = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
 const addDays = (iso, n) => { const d = new Date(`${iso}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const hash = (str) => { let h = 2166136261; for (const c of String(str)) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
 const STAGES = { rookie: 0, rising: 1, established: 2, superstar: 3 };
+const { matchDates } = require('./lifeGeo');
 
 const MEDIA_KINDS = {
   podcast: { minStage: 'rookie', fee: [3000, 8000, 20000, 45000], outlets: ['The Final Third', 'Box to Box Talk', 'Half-Time Thoughts', 'The Dressing Room Pod', 'Off the Ball', 'Studs Up', 'Number Nine', 'Extra Time Sessions', 'The Long Ball', 'Touchline Tales'] },
@@ -39,7 +40,7 @@ function pickOutlet(state, kind, club, seed) {
 
 function freeDate(state, from, minOff, maxOff) {
   const blocked = new Set();
-  for (const snap of [state.snapshot, state.saveSnapshot]) for (const f of snap?.fixtures || []) if (f?.date) blocked.add(f.date);
+  for (const d of matchDates(state)) blocked.add(d); // club and national team (2.0)
   for (const e of state.calendar?.customEvents || []) blocked.add(e.date);
   for (const e of state.calendar?.systemEvents || []) blocked.add(e.date);
   for (let i = minOff; i <= maxOff; i += 1) { const d = addDays(from, i); if (!blocked.has(d)) return d; }

@@ -4,6 +4,7 @@
 
 const { activeHuddle, addMessage } = require('./huddle');
 const { circlePersonHandle } = require('./persona');
+const { isFar, canTravelHome } = require('./lifeGeo');
 
 const CATALOG_NAMES = {
   fr: {
@@ -338,7 +339,7 @@ function pickInnerCircle(state, seed) {
   const list = [];
   for (const group of ['family', 'friends', 'roots', 'business']) {
     for (const p of Array.isArray(circle[group]) ? circle[group] : []) {
-      if (p?.name) list.push({ name: p.name, role: p.role || group, kopPersonality: p.kopPersonality || '', group });
+      if (p?.name) list.push({ name: p.name, role: p.role || group, kopPersonality: p.kopPersonality || '', group, lives: p.lives || '' });
     }
   }
   if (!list.length) return null;
@@ -601,6 +602,17 @@ function buildCircleKopReaction(person, handleTag, eventKind, language, seed, st
   return trScene(l, pickFresh(state, `circle:${key}`, list, `${person.name}|${eventKind}|${seed}`));
 }
 
+const TOWN_TRIP = { fr: 'à {T}', en: 'back in {T}', pt: 'em {T}', es: 'en {T}', it: 'a {T}', de: 'in {T}' };
+const TOWN_VISIT = { fr: '(de passage depuis {T})', en: '(over from {T} for the day)', pt: '(que veio de {T} para o dia)', es: '(que vino desde {T} para el día)', it: '(in visita da {T})', de: '(extra aus {T} angereist)' };
+const ABROAD_VISIT = { fr: '(de passage pour quelques jours)', en: '(flown in for a few days)', pt: '(de passagem por alguns dias)', es: '(de visita unos días)', it: '(in visita per qualche giorno)', de: '(für ein paar Tage zu Besuch)' };
+// Le lieu dans « {P} passe la journée avec {F}{W} » : rien quand on ne sait pas où vit le proche ou qu'il vit à côté.
+function innerTownText(l, inner, hometown, tripOk) {
+  if (!inner) return '';
+  if (inner.lives === 'abroad') return ` ${trScene(l, ABROAD_VISIT)}`;
+  if (inner.lives === 'hometown' && hometown) return ` ${trScene(l, tripOk ? TOWN_TRIP : TOWN_VISIT, { T: hometown })}`;
+  return '';
+}
+
 function resolveContext(state, snapshot, event, language) {
   const l = normLang(language);
   const player = snapshot?.player?.name || state?.profile?.displayName || (l === 'fr' ? 'Le joueur' : 'The player');
@@ -617,6 +629,9 @@ function resolveContext(state, snapshot, event, language) {
   const teammate = explicitComp || captain || (pool.length ? pool[hashStr(seed) % pool.length] : '');
   const inner = pickInnerCircle(state, seed);
   const hometown = state?.persona?.roots?.hometown || '';
+  // un proche qui vit loin vient le voir ; un retour à la maison seulement avec 4 jours sans match ou plus (2.0)
+  const tripOk = canTravelHome(state, event?.date || snapshot?.gameDate || state?.lifeHub?.lastTickDate || '');
+  const innerTown = innerTownText(l, inner, hometown, tripOk);
   const sponsors = (state?.lifeHub?.sponsors || []).filter((s) => s?.brand);
   const pickedSp = sponsors.length ? sponsors[hashStr(seed) % sponsors.length] : null;
   const topSponsor = pickedSp?.brand || '';
@@ -624,7 +639,7 @@ function resolveContext(state, snapshot, event, language) {
   const owned = state?.lifeHub?.assets || [];
   const hasChef = owned.some((a) => a.catalogId === 'personal_chef');
   const hasPhysio = owned.some((a) => a.catalogId === 'personal_physio');
-  return { l, player, club, stadium, captain, teammate, inner, hometown, topSponsor, topSponsorCategory, hasChef, hasPhysio, seed };
+  return { l, player, club, stadium, captain, teammate, inner, hometown, innerTown, tripOk, topSponsor, topSponsorCategory, hasChef, hasPhysio, seed };
 }
 
 const FAN_PERSONAS = {
@@ -1068,12 +1083,12 @@ function renderActionScene(ctx, actId, customTitle, focus, handleTag) {
   const base = renderActionSceneBase(ctx, actId, customTitle, focus, handleTag);
   if (actId === 'sponsor_shoot') return base; // déjà varié (scènes de partenaires)
   const key = ACTION_VARIANTS[actId] ? actId : 'custom';
-  const { l, player, club, teammate, inner, hometown } = ctx;
+  const { l, player, club, teammate, inner } = ctx;
   const vars = {
     P: player, C: club, H: handleTag,
     M: teammate || (l === 'fr' ? 'le groupe' : 'the squad'),
     F: inner ? inner.name : (l === 'fr' ? 'tes proches' : 'family and close friends'),
-    W: hometown ? (l === 'fr' ? ` autour de ${hometown}` : l === 'pt' ? ` em ${hometown}` : l === 'es' ? ` en ${hometown}` : l === 'it' ? ` verso ${hometown}` : l === 'de' ? ` aus ${hometown}` : ` back in ${hometown}`) : '',
+    W: ctx.innerTown || '',
     T: customTitle || base.headline || '',
   };
   const fill = (table) => trScene(l, table, vars).replace(/\{([A-Z])\}/g, (_, k) => vars[k] ?? '');
@@ -1092,7 +1107,7 @@ function renderActionSceneBase(ctx, actId, customTitle, focus, handleTag) {
   const mate = teammate || (l === 'fr' ? 'le groupe' : 'the squad');
   const sponsorTxt = topSponsor || (l === 'fr' ? 'ton partenaire' : 'your partner');
   const personTxt = inner ? `${inner.name}` : (l === 'fr' ? 'tes proches' : 'family and close friends');
-  const townTxt = hometown ? (l === 'fr' ? ` autour de ${hometown}` : l === 'pt' ? ` em ${hometown}` : l === 'es' ? ` en ${hometown}` : l === 'it' ? ` verso ${hometown}` : l === 'de' ? ` aus ${hometown}` : ` back in ${hometown}`) : '';
+  const townTxt = ctx.innerTown || '';
 
   if (actId === 'recovery') {
     const headline = trScene(l, { fr: 'Journée récupération & soins', en: 'Recovery & cryo reset', pt: 'Recuperação & crioterapia', es: 'Recuperación y crioterapia', it: 'Recupero e crioterapia', de: 'Regeneration & Kältekammer' });
@@ -1963,6 +1978,7 @@ const CAL_HUDDLE = [
 const CAL_PERSONA_HEAD = {
   persona_hobby: { fr: "Journée passion : {X}", en: "Passion day: {X}", pt: "Dia de paixão: {X}", es: "Día de pasión: {X}", it: "Giornata di passione: {X}", de: "Tag der Leidenschaft: {X}" },
   persona_hometown: { fr: "Retour à {X}", en: "Back to {X}", pt: "De volta a {X}", es: "De vuelta en {X}", it: "Ritorno a {X}", de: "Zurück in {X}" },
+  persona_roots: { fr: "Un peu de {X}", en: "A bit of {X}", pt: "Um pouco de {X}", es: "Un poco de {X}", it: "Un po’ di {X}", de: "Ein Stück {X}" },
   persona_idol: { fr: "Une rencontre : {X}", en: "A meeting: {X}", pt: "Um encontro: {X}", es: "Un encuentro: {X}", it: "Un incontro: {X}", de: "Eine Begegnung: {X}" },
   persona_dream: { fr: "Ton rêve : {X}", en: "Your dream: {X}", pt: "Seu sonho: {X}", es: "Tu sueño: {X}", it: "Il tuo sogno: {X}", de: "Dein Traum: {X}" },
   persona_turning: { fr: "Souvenir : {X}", en: "Looking back: {X}", pt: "Lembrança: {X}", es: "Recuerdo: {X}", it: "Ricordo: {X}", de: "Erinnerung: {X}" },
@@ -1976,6 +1992,8 @@ const CAL_MEDIA_KIND = {
   documentary: { fr: "Documentaire", en: "Documentary", pt: "Documentário", es: "Documental", it: "Documentario", de: "Dokumentation" },
   charity_stream: { fr: "Live caritatif", en: "Charity live stream", pt: "Live beneficente", es: "Directo benéfico", it: "Live di beneficenza", de: "Benefiz-Livestream" },
 };
+const CAL_FAR_ONE = { fr: "{N} a fait le déplacement exprès.", en: "{N} travelled in specially for it.", pt: "{N} viajou só para isso.", es: "{N} vino expresamente para esto.", it: "{N} ha fatto il viaggio apposta.", de: "{N} ist extra dafür angereist." };
+const CAL_FAR_MANY = { fr: "{N} ont fait le déplacement exprès.", en: "{N} travelled in specially for it.", pt: "{N} viajaram só para isso.", es: "{N} vinieron expresamente para esto.", it: "{N} hanno fatto il viaggio apposta.", de: "{N} sind extra dafür angereist." };
 const CAL_AND = {"fr": "et", "en": "and", "pt": "e", "es": "y", "it": "e", "de": "und"};
 
 function joinNames(names, l) {
@@ -1998,8 +2016,12 @@ function renderCalendarEventScene(ctx, event, handleTag) {
     group = 'persona';
     headline = CAL_PERSONA_HEAD[event.eventKey] ? fill(CAL_PERSONA_HEAD[event.eventKey]) : headline;
   }
-  const narrative = fill(pickFresh(ctx.state, `cal:${group}`, CAL_NARRATIVES[group], `${ctx.seed}|${event.refId}`));
-  const publicKind = ['public', 'generous', 'media_open', 'media_promo', 'media_bold', 'media_give', 'media_team', 'hobby_film', 'hobby_charity', 'home_kids', 'home_press', 'idol_photo', 'idol_thanks', 'dream_share', 'turn_post', 'fcr_tribute'].includes(event.choiceKind);
+  let narrative = fill(pickFresh(ctx.state, `cal:${group}`, CAL_NARRATIVES[group], `${ctx.seed}|${event.refId}`));
+  // ceux qui vivent loin sont venus exprès (2.0)
+  const circleAll = Object.values(ctx.state?.persona?.circle || {}).flat().filter((p) => p?.name);
+  const farNames = names.filter((n) => isFar(circleAll.find((c) => c.name === n)));
+  if (group === 'people' && farNames.length) narrative = `${narrative} ${trScene(l, farNames.length > 1 ? CAL_FAR_MANY : CAL_FAR_ONE, { N: joinNames(farNames, l) })}`;
+  const publicKind = ['public', 'generous', 'media_open', 'media_promo', 'media_bold', 'media_give', 'media_team', 'hobby_film', 'hobby_charity', 'home_kids', 'home_press', 'home_kids_remote', 'home_radio', 'idol_photo', 'idol_thanks', 'dream_share', 'turn_post', 'fcr_tribute'].includes(event.choiceKind);
   const kopSet = group === 'media' ? CAL_KOP.media : publicKind ? CAL_KOP.public : null;
   const kop = kopSet ? fill(pickFresh(ctx.state, `calkop:${group}`, kopSet, `${ctx.seed}|${event.refId}|k`)) : null;
   const withTeam = (event.people || []).some((p) => p.role === 'teammates');

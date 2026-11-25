@@ -9,6 +9,7 @@ const { activeHuddle, addMessage: addHuddleMessage } = require('./huddle');
 const { seedPersonaEvents, personaDecision, eventChoicesToDecision } = require('./personaEvents');
 const { mediaDecision } = require('./mediaOffers');
 const { queueFollowUps } = require('./eventAftermath');
+const { matchDates: lifeMatchDates, nextFreeDay } = require('./lifeGeo');
 
 const isIsoDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || '').trim());
 
@@ -31,18 +32,7 @@ const SCHEDULED_ACTIVITY_TEMPLATES = [
 ];
 
 function collectAllMatchDates(state) {
-  const set = new Set();
-  for (const snap of [state?.snapshot, state?.saveSnapshot]) {
-    for (const f of [...(snap?.fixtures || []), ...(snap?.nationalTeam?.fixtures || [])]) {
-      if (f?.date && isIsoDate(f.date)) set.add(f.date);
-    }
-    if (snap?.next?.date && isIsoDate(snap.next.date)) set.add(snap.next.date);
-    if (snap?.nationalTeam?.next?.date && isIsoDate(snap.nationalTeam.next.date)) set.add(snap.nationalTeam.next.date);
-  }
-  for (const m of state?.calendar?.pendingMatches || []) {
-    if (m?.date && isIsoDate(m.date)) set.add(m.date);
-  }
-  return set;
+  return lifeMatchDates(state);
 }
 
 function parseMonthDay(dob) {
@@ -422,9 +412,11 @@ function collectDueDecisions(state, snapshot, targetDate, { eventMode = 'realist
     existing.add(id);
   }
 
-  // 2. System events due today
+  // 2. System events due today (never on a match day: the app moves them to the next free day; his own events may)
+  const busyDays = lifeMatchDates(state);
   for (const sys of cal.systemEvents || []) {
     if (sys.date !== targetDate) continue;
+    if (sys.eventKey !== 'match_eve' && busyDays.has(sys.date)) { sys.date = nextFreeDay(state, sys.date, busyDays); continue; }
     const id = `dec_sys_${sys.id}`;
     if (resolved.has(id) || existing.has(id)) continue;
     let dec;
@@ -549,8 +541,11 @@ function collectObligationDecisions(state, targetDate) {
   const resolved = new Set(cal.resolvedDecisionIds);
   const existing = new Set(cal.pendingDecisions.map((d) => d.id));
   const added = [];
+  const busyDays = lifeMatchDates(state);
   for (const ob of hub.obligations || []) {
     if (ob.status !== 'pending' || !isIsoDate(ob.dueDate) || ob.dueDate > targetDate) continue;
+    // une obligation de partenaire n'arrive jamais un jour de match (2.0)
+    if (busyDays.has(ob.dueDate)) { ob.dueDate = nextFreeDay(state, ob.dueDate, busyDays); if (ob.dueDate > targetDate) continue; }
     const dec = obligationDecision(ob);
     if (resolved.has(dec.id) || existing.has(dec.id)) continue;
     cal.pendingDecisions.push(dec);
@@ -561,6 +556,8 @@ function collectObligationDecisions(state, targetDate) {
   const oldest = addDaysIso(targetDate, -7);
   for (const ev of cal.customEvents || []) {
     if (!isIsoDate(ev.date) || ev.date > targetDate || ev.date < oldest) continue;
+    // une interview proposée par l'agent non plus ; ses propres événements, oui (dîner après le match…)
+    if (ev.mediaOfferId && busyDays.has(ev.date)) { ev.date = nextFreeDay(state, ev.date, busyDays); if (ev.date > targetDate) continue; }
     const id = `dec_cust_${ev.id}`;
     if (resolved.has(id) || existing.has(id)) continue;
     const dec = customEventDecision(ev, state);
@@ -661,7 +658,7 @@ function resolveCalendarDecision(state, decisionId, choiceId, gameDate = '', { l
       cal.systemEvents ||= [];
       const d = new Date(`${(today || '2026-08-01').slice(0, 10)}T12:00:00Z`);
       d.setUTCDate(d.getUTCDate() + 2 + Math.floor(riskRoll(`${decisionId}|days`) * 3));
-      cal.systemEvents.push({ id: newId(), eventKey: choice.risk.followUp, date: d.toISOString().slice(0, 10), category: 'media', title: dec.title || dec.personName || '', systemGenerated: true, origin: decisionId });
+      cal.systemEvents.push({ id: newId(), eventKey: choice.risk.followUp, date: nextFreeDay(state, d.toISOString().slice(0, 10)), category: 'media', title: dec.title || dec.personName || '', systemGenerated: true, origin: decisionId });
     }
   }
   state.lastDecisionOutcome = backfire ? { decisionId, backfire: true, text: backfire.text } : { decisionId, backfire: false };

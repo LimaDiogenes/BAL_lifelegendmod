@@ -6,6 +6,7 @@
 const { PERSONA_PRESETS } = require('./persona');
 const { CATALOG_ENGLISH_NAMES } = require('./lifeScenes');
 const { lineupFor, brandMakes, modelFor } = require('./carLineups');
+const { nextFreeDay } = require('./lifeGeo');
 const {
   EXCLUSIVE_CATEGORIES,
   MULTI_BRAND_CATEGORIES,
@@ -622,7 +623,7 @@ function syncBootSponsor(state, hub) {
   hub.sponsors.unshift(entry);
 }
 
-function scheduleNextObligation(hub, today, newId) {
+function scheduleNextObligation(hub, today, newId, state = null) {
   if (!hub.sponsors.length || hub.obligations.filter((o) => o.status === 'pending').length >= 2) return;
   const active = hub.sponsors.filter((s) => !s.until || s.until > today);
   if (!active.length) return;
@@ -662,7 +663,7 @@ function scheduleNextObligation(hub, today, newId) {
     brand: pick.brand,
     category: primaryCat,
     kind: chosenKind,
-    dueDate: addDaysIso(today, 21),
+    dueDate: nextFreeDay(state, addDaysIso(today, 21)),
     rewardCash: roundStep(Math.max(2500, (pick.fee || 40000) * 0.04), 500),
     status: 'pending',
   });
@@ -891,7 +892,7 @@ function calibrateLifeHub(state, snapshot, payload = {}, newId = () => `id_${Dat
   hub.ledger = [];
   addLedger(hub, { date: today, amount: chosenCash, kind: 'opening', label: `calibration:${startMode}` });
   if (hub.sponsors.length) {
-    scheduleNextObligation(hub, today, newId);
+    scheduleNextObligation(hub, today, newId, state);
     grantSponsorCars(state, hub, snapshot, today, newId);
     grantSponsorPerks(state, hub, snapshot, today, newId);
   }
@@ -1261,7 +1262,7 @@ function lifeHubTick(state, snapshot, { changes = {}, newId = () => `id_${Date.n
     maybeOfferOneTimeDeal(state, snapshot, hub, today, newId);
   }
   if (hub.sponsors.length > 0 && (results.length > 0 || days >= 10)) {
-    scheduleNextObligation(hub, today, newId);
+    scheduleNextObligation(hub, today, newId, state);
   }
   if (hub.sponsors.length > 0) {
     grantSponsorCars(state, hub, snapshot, today, newId);
@@ -1463,7 +1464,7 @@ function addSponsor(state, payload = {}, gameDate = '', newId = () => `id_${Date
   hub.sponsors.push(entry);
   syncBootSponsor(state, hub);
   hub.meters.sponsors = clamp(hub.meters.sponsors + 4, 0, 100);
-  scheduleNextObligation(hub, gameDate, newId);
+  scheduleNextObligation(hub, gameDate, newId, state);
   pushRecent(hub, { date: gameDate, kind: 'sponsor', text: `Signed sponsor deal with ${entry.brand}${entry.isGlobalPartner ? ' (Global Partner)' : ''}` });
   const giftToday = gameDate || hub.lastTickDate || state?.snapshot?.gameDate || '';
   if (giftToday) grantSponsorCars(state, hub, state.snapshot, giftToday, newId);

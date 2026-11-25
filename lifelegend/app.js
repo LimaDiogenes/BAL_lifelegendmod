@@ -1189,6 +1189,15 @@ const PERSONA_KOP_OPTIONS = [
   ['professional', () => tr('Sur Kop · Professionnel')],
 ];
 
+// Où vit le proche (2.0, optionnel) : les textes et les messages en tiennent compte.
+const PERSONA_LIVES_OPTIONS = [
+  ['', () => tr('Lieu non précisé')],
+  ['with', () => tr('Vit avec toi')],
+  ['city', () => tr('Même ville')],
+  ['hometown', () => tr('Ville natale')],
+  ['abroad', () => tr('Autre pays')],
+];
+
 function personaPersonRowHtml(person = {}, groupKey = '') {
   const isClose = person.close !== undefined ? Boolean(person.close) : (groupKey === 'family' || groupKey === 'friends');
   const isAgentRow = groupKey === 'business' && AGENT_ROLE_UI_RE.test(person.role || '') && Boolean(person.name);
@@ -1199,6 +1208,7 @@ function personaPersonRowHtml(person = {}, groupKey = '') {
     <input class="per-p-name" value="${esc(person.name || '')}" placeholder="${esc(tr('Nom réel'))}" maxlength="120">
     ${dobPickerHtml(person.dob || '', { inputClass: 'per-p-dob' })}
     <select class="per-p-kop" title="${esc(tr('Profil & personnalité sur Kop (optionnel)'))}" aria-label="${esc(tr('Profil & personnalité sur Kop (optionnel)'))}">${kopOpts}</select>
+    <select class="per-p-lives" title="${esc(tr('Où vit cette personne (optionnel) : les textes et les messages en tiennent compte'))}" aria-label="${esc(tr('Où vit cette personne (optionnel) : les textes et les messages en tiennent compte'))}">${PERSONA_LIVES_OPTIONS.map(([id, fn]) => `<option value="${id}"${(person.lives || '') === id ? ' selected' : ''}>${esc(fn())}</option>`).join('')}</select>
     <input class="per-p-decoy" value="${esc(person.decoy || '')}" placeholder="${esc(tr('Pseudo (auto)'))}" maxlength="120">
     <button type="button" class="per-p-del per-p-del-person" title="${esc(tr('Retirer cette personne'))}" aria-label="${esc(tr('Retirer cette personne'))}">−<span class="per-p-del-txt">${esc(tr('Retirer cette personne'))}</span></button>
     <div class="per-p-flags">
@@ -1256,7 +1266,7 @@ function personaFormHtml(prefix, rawPersona, rawPriv = null) {
         <span class="priv-badge${filled ? ' on' : ''}" id="${prefix}-per-cnt-${g.key}">${rows.length} / ${PERSONA_GROUP_MAX}</span>
       </summary>
       <div class="per-group-body">
-        <div class="per-person-row per-col-head"><span>${tr('Rôle')}</span><span>${tr('Nom réel')}</span><span>${tr('Naissance')}</span><span>${tr('Kop')}</span><span>${tr('Pseudo (auto)')}</span><span></span><span></span></div>
+        <div class="per-person-row per-col-head"><span>${tr('Rôle')}</span><span>${tr('Nom réel')}</span><span>${tr('Naissance')}</span><span>${tr('Kop')}</span><span>${tr('Habite')}</span><span>${tr('Pseudo (auto)')}</span><span></span><span></span></div>
         <div class="per-group-list" id="${prefix}-per-list-${g.key}">${rows.map((p) => personaPersonRowHtml(p, g.key)).join('')}</div>
         <button type="button" class="btn per-p-add" data-group="${g.key}"${rows.length >= PERSONA_GROUP_MAX ? ' disabled' : ''}>+ ${esc(tr('Ajouter'))}</button>
       </div>
@@ -1326,11 +1336,12 @@ function readPersonaForm(prefix) {
         const name = row.querySelector('.per-p-name')?.value.trim() || '';
         const dob = row.querySelector('.per-p-dob')?.value.trim() || '';
         const kopPersonality = row.querySelector('.per-p-kop')?.value.trim() || '';
+        const lives = row.querySelector('.per-p-lives')?.value.trim() || '';
         const decoy = row.querySelector('.per-p-decoy')?.value.trim() || '';
         const close = row.querySelector('.per-p-close-in')?.checked !== false;
         const protect = row.querySelector('.per-p-protect')?.checked !== false;
         const media = row.querySelector('.per-p-media-in') ? row.querySelector('.per-p-media-in').checked : g.key !== 'family';
-        if (role || name || decoy || dob) out.push({ id: `${g.key}_${idx + 1}`, role, name, dob, kopPersonality, decoy, close, protect, media });
+        if (role || name || decoy || dob) out.push({ id: `${g.key}_${idx + 1}`, role, name, dob, kopPersonality, ...(lives ? { lives } : {}), decoy, close, protect, media });
       });
     }
     circle[g.key] = out;
@@ -9311,6 +9322,11 @@ const ML_DECISION_CHOICE_LABELS = {
   home_quiet: () => tr('Une visite discrète'),
   home_press: () => tr('Une interview à la presse locale'),
   home_old_friends: () => tr('Retrouver les copains d’enfance'),
+  home_visit: () => tr('Les recevoir pour la journée'),
+  home_call: () => tr('Un long appel vidéo avec la maison'),
+  home_taste: () => tr('Cuisiner un plat de chez toi'),
+  home_kids_remote: () => tr('Envoyer des maillots signés à ton club formateur'),
+  home_radio: () => tr('Une interview à la radio locale, par téléphone'),
   idol_meet: () => tr('Aller à sa rencontre'),
   idol_advice: () => tr('Lui demander conseil'),
   idol_photo: () => tr('Une photo souvenir'),
@@ -9927,6 +9943,7 @@ function mlPersonaEventTitle(eventKey, x) {
   const key = {
     persona_hobby: 'Journée passion : {x}',
     persona_hometown: 'Retour à {x}',
+    persona_roots: 'Un peu de {x}',
     persona_idol: 'Une rencontre : {x}',
     persona_dream: 'Ton rêve : {x}',
     persona_turning: 'Souvenir : {x}',

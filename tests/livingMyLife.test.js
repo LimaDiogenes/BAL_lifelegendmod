@@ -73,7 +73,7 @@ function makeRichCareerState() {
     persona: {
       preset: 'showman',
       roots: { hometown: 'Niteroi' },
-      circle: { family: [{ role: 'Sister', name: 'Camila Mendes', protect: true }] },
+      circle: { family: [{ role: 'Sister', name: 'Camila Mendes', protect: true, lives: 'hometown' }] }, // 2.0: lives far, so the scene names her town
     },
     feed: [],
     accounts: {},
