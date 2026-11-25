@@ -5,7 +5,7 @@
 // viennent de la sauvegarde, sans IA ; l'édition y ajoute quelques messages dans sa requête habituelle ; une requête à
 // part ne part que lorsqu'il écrit. Ce qui se dit ici reste privé : rien n'en part vers la presse ni vers Kop.
 
-const { postTexts } = require('./postTexts');
+const { postTexts } = require('./texts/posts');
 
 const STAFF_ROLES = ['assistant', 'fitness', 'physio', 'manager'];
 const ROLE_FOR_AI = { coach: 'head coach', assistant: 'assistant coach', fitness: 'fitness coach', physio: 'physio', manager: 'team manager (schedules, travel, kit)' };

@@ -642,7 +642,7 @@ const shiftTone = (tone, mode) => {
   return { ...tone, market: clamp(tone.market), drama: clamp(tone.drama) };
 };
 const withTone = (settings, state) => ({ ...settings, tone: shiftTone(toneOf(state), settings.mediaDrama) });
-const { postTexts } = require('./postTexts');
+const { postTexts } = require('./texts/posts');
 const { TOUR_KIND, competitionStories, tourAngle, longViewAngle, debateAngle, coverageOf, coverageProblems } = require('./competitionDesk');
 const { tidyArticle, fixArticle, ruleFlags, flagsProblem, paperProblems } = require('./paperRules');
 const { isNationalTeam, realTeam, matchesOf, compAccount, competitionPosts, previewPosts, competitionAccountsFacts, isCompetitionHandle, fakeLogos, competitionAccountsRev } = require('./competitions');

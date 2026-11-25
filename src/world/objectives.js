@@ -5,7 +5,7 @@
 // Sans IA : les mails du coach sont écrits par le code dans sa langue. Le bilan arrive à la fin du championnat (ou après
 // les matchs du retour). Des objectifs tenus apaisent la relation avec le club (un palier disciplinaire de moins).
 
-const { postTexts } = require('./postTexts');
+const { postTexts } = require('./texts/posts');
 
 const ATTACK = ['AC', 'SA', 'AG', 'AD'];
 const CREATIVE = ['MOC'];

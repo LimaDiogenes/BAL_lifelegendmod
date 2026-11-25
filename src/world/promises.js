@@ -4,7 +4,7 @@
 
 const crypto = require('crypto');
 const { sameMatch } = require('./snapshot');
-const { postTexts } = require('./postTexts');
+const { postTexts } = require('./texts/posts');
 
 const MATCH_KINDS = ['goal', 'assist', 'goal_or_assist', 'win', 'unbeaten', 'clean_sheet'];
 const SEASON_KINDS = ['season_goals', 'season_assists', 'title'];

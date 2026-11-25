@@ -7,7 +7,7 @@
 // d'indisponibilité, src/save/conductWrite.js), jeu fermé, sur un bouton de Mails.
 // Le temps apaise : sans nouvel écart, les points s'effacent au bout de deux semaines de jeu et chaque mois enlève un palier.
 
-const { postTexts } = require('./postTexts');
+const { postTexts } = require('./texts/posts');
 
 const TARGETS = ['coach', 'teammates', 'club'];
 const SOURCES = ['press', 'kop', 'huddle'];

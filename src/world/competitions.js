@@ -6,7 +6,7 @@
 const DATA = require('../data/competitionAccounts.json');
 const { competitionMatches, leagueTable } = require('../save/blReader');
 const { realClubHandle } = require('./clubAccounts');
-const { postTexts, deName } = require('./postTexts');
+const { postTexts, deName } = require('./texts/posts');
 const { roundEleven, seasonAwards } = require('./awards');
 
 const slugHandle = (name) => String(name || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]/g, '').slice(0, 20);

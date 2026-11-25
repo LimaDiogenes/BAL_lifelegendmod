@@ -1,5 +1,5 @@
 'use strict';
-// Textes faits sans IA (src/world/postTexts.js) dans les six langues, sur une carrière inventée :
+// Textes faits sans IA (src/world/texts/posts.js) dans les six langues, sur une carrière inventée :
 // posts officiels du club, promesses, brief du matin, réponses types des joueurs.
 
 const test = require('node:test');
@@ -7,7 +7,7 @@ const assert = require('node:assert');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const { postTexts, deWho } = require(path.join(ROOT, 'src/world/postTexts'));
+const { postTexts, deWho } = require(path.join(ROOT, 'src/world/texts/posts'));
 const { clubPosts } = require(path.join(ROOT, 'src/world/clubPosts'));
 const { bindPromise, resolvePromises } = require(path.join(ROOT, 'src/world/promises'));
 const { transversaleBrief } = require(path.join(ROOT, 'src/world/world'));

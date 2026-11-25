@@ -4,7 +4,7 @@
 // du code, sans IA : un message tous les 14 jours au plus. Ce qui se dit ici reste privé : rien n'en part vers l'édition.
 
 const { mentionDirectory } = require('./mentions');
-const { postTexts } = require('./postTexts');
+const { postTexts } = require('./texts/posts');
 
 const FAN_TYPES = new Set(['fan', 'rival']);
 const INBOUND_EVERY_DAYS = 14;

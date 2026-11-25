@@ -4,7 +4,7 @@
 // à chaque synchro, la sauvegarde dit s'il a vraiment changé son entraînement (la barre du domaine a monté).
 // Un conseil à la fois, un tous les 30 jours au plus ; sans changement au bout de 3 semaines, il n'est pas suivi.
 
-const { postTexts } = require('./postTexts');
+const { postTexts } = require('./texts/posts');
 
 const ATTACK = ['AC', 'SA', 'AG', 'AD', 'MOC'];
 const MIDFIELD = ['MC', 'MDC', 'MG', 'MD', 'MOC'];

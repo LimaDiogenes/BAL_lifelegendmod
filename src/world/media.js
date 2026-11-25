@@ -9,7 +9,7 @@ const crypto = require('crypto');
 const { listReplays } = require('../save/replays');
 const { prettyName } = require('../save/blReader');
 const { sameMatch } = require('./snapshot');
-const { postTexts } = require('./postTexts');
+const { postTexts } = require('./texts/posts');
 
 const VIDEO_EXT = /\.(mp4|webm|m4v|mov)$/i;
 const GAME_CLIP = /pes|efootball|football ?life|\bfl_?\d/i; // dans le dossier par défaut, seulement les captures du jeu

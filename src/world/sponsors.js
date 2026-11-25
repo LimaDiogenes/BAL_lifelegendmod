@@ -4,7 +4,7 @@
 // la fois ; les primes se comptent d'après ses matchs. Tout reste dans LifeLegend : le jeu ne sait rien de ces contrats, et
 // LifeLegend ne change ni ne vérifie les crampons qu'il porte.
 
-const { LOCALES } = require('./postTexts');
+const { LOCALES } = require('./texts/posts');
 const { sponsorTexts } = require('./sponsorTexts');
 
 const OFFER_DAYS = 30, COOLDOWN_DAYS = 60, BRAND_PAUSE_DAYS = 365;

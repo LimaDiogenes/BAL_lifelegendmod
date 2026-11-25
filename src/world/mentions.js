@@ -4,7 +4,7 @@
 
 const crypto = require('crypto');
 const { realClubHandle } = require('./clubAccounts');
-const { postTexts } = require('./postTexts');
+const { postTexts } = require('./texts/posts');
 
 const slugHandle = (name) => String(name || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]/g, '').slice(0, 20);
 // Vrai compte du club quand il est connu, sinon un pseudo fabriqué.

@@ -6,7 +6,7 @@
 
 const { officialAuthor, realClubHandle } = require('./clubAccounts');
 const { clubHandle } = require('./mentions');
-const { postTexts } = require('./postTexts');
+const { postTexts } = require('./texts/posts');
 
 const clubAuthor = (club) => ({ ...officialAuthor({ handle: clubHandle(club), name: club.name, type: 'club' }), type: 'club', verified: true });
 const nationalAuthor = (name) => ({ ...officialAuthor({ handle: clubHandle({ name }), name, type: 'national' }), type: 'national', verified: true });

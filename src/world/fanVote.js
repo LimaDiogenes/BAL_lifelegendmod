@@ -4,7 +4,7 @@
 // moitié des matchs du mois à 45 minutes ou plus) passent au vote, un sondage du compte officiel du club, déjà dépouillé.
 // Les voix suivent les performances, un peu sa popularité à lui, et un hasard stable. Aucune IA.
 
-const { postTexts, deName } = require('./postTexts');
+const { postTexts, deName } = require('./texts/posts');
 
 const hash = (v) => { let h = 2166136261; for (const c of String(v)) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0; return h; };
 const monthBefore = (iso) => { const [y, m] = String(iso || '').slice(0, 7).split('-').map(Number); return y && m ? (m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`) : null; };
