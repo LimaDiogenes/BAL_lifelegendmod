@@ -3923,7 +3923,7 @@ function fbSide(s, posts, cat, month) {
   const row = (attr, value, label, n, on) => `<li><a ${attr}="${esc(value)}"${on ? ' aria-current="true"' : ''}><span>${esc(label)}</span><em>${n}</em></a></li>`;
   return `<aside class="fb-side">
     <section class="fb-panel fb-me">
-      <div class="fb-me-top"><span class="fb-avatar">${myFaceIn(fbInitials(s.player.name))}</span>
+      <div class="fb-me-top"><span class="fb-avatar">${myFaceIn(playerSilhouetteHtml())}</span>
         <button class="fb-me-cog" data-fbsettings title="${tr('Réglages')}" aria-label="${tr('Réglages')}">${sfi('cog')}</button></div>
       <div class="fb-me-name"><b>${esc(s.player.name)}</b>${st?.avgRating ? ratingChip(st.avgRating) : ''}</div>
       ${st ? `<p>${trn(st.apps, '{n} match', '{n} matchs', { n: fmtNum(st.apps) })} · ${trn(st.goals, '{n} but', '{n} buts', { n: fmtNum(st.goals) })} · ${trn(st.assists, '{n} passe déc.', '{n} passes déc.', { n: fmtNum(st.assists) })}</p>` : ''}
@@ -5260,7 +5260,7 @@ function accountHeaderHtml(a) {
   return `<div class="tw-profile">
     <div class="tw-banner${emblem ? ' tw-banner-emblem' : ''}" data-banner="${esc(color)}">${emblem ? `<img src="${esc(emblem)}" alt="">` : ''}</div>
     <div class="tw-profile-top">
-      <div class="tw-profile-photo${emblem ? ' emblem' : ` t-${esc(a.type || 'fan')}`}">${emblem ? `<img src="${esc(emblem)}" alt="">` : authorFace(a, initialOf(a.name))}</div>
+      <div class="tw-profile-photo${emblem ? ' emblem' : ` t-${esc(a.type || 'fan')}`}">${emblem ? `<img src="${esc(emblem)}" alt="">` : (isMeAuthor(a) ? myFaceIn(playerSilhouetteHtml()) : authorFace(a, initialOf(a.name)))}</div>
       <div class="tw-profile-btns">${canDm(a) ? `<button class="tw-btn tw-btn-outline tw-dm-to" data-twdm="${esc(a.handle)}" title="${esc(tr('Envoyer un message à {name}', { name: a.name }))}" aria-label="${esc(tr('Envoyer un message à {name}', { name: a.name }))}">${hi('envelope')}</button>` : ''}${followBtnHtml(a.handle)}</div>
     </div>
     <div class="tw-profile-id">
@@ -6562,7 +6562,7 @@ function dossierPage({ standalone = false } = {}) {
   const posIndex = POS_CODES.indexOf(prof.position);
   const role = [posIndex >= 0 ? tr(INF_POS[posIndex]) : '', prof.age ? trn(prof.age, '{n} an', '{n} ans') : ''].filter(Boolean).join(' · ');
   const agentThread = [...state.mail].reverse().find((t) => t.role === 'agent');
-  const head = `<header class="dc-head"><span class="dc-portrait">${myFaceIn(fbInitials(s.player.name))}</span>
+  const head = `<header class="dc-head"><span class="dc-portrait">${myFaceIn(playerSilhouetteHtml())}</span>
     <div class="dc-who">${role ? `<p>${esc(role)}</p>` : ''}<h1>${esc(s.player.name)}</h1>
       <div class="dc-money">${v.salary ? `<span class="m1">${hi('euro')}<b>${esc(euros(v.salary))}</b><small>${tr('Salaire')}</small></span>` : ''}${v.marketValue ? `<span class="m2">${hi('euro')}<b>${esc(millions(v.marketValue))}</b><small>${tr('Valeur marchande')}</small></span>` : ''}
         <span class="m3">${hi('clock')}${months !== null ? `<b>${months}</b><small>${trn(months, 'mois restant', 'mois restants')}</small>` : '<b>—</b>'}${tag ? `<em class="dc-tag ${tag[0]}">${tag[1]}</em>` : ''}</span></div></div>
@@ -6707,7 +6707,7 @@ function dossierPage({ standalone = false } = {}) {
     : seasons.map((x) => dcRow({ key: `season:${x.season}`, media: crestHtml(x.club), name: x.club, sub: x.season, go: 'dc-path' }));
   const side = `<aside class="dc-side"><p class="dc-eyebrow">${tr('Ta carrière')}</p><div class="dc-club">${crestHtml(club)}<b>${esc(club)}</b></div>
       <label class="dc-search">${hi('search')}<input type="search" id="dc-q" placeholder="${tr('Chercher')}" aria-label="${tr('Chercher')}" autocomplete="off"></label>
-      ${dcGroup(tr('Ton contrat'), [dcRow({ key: 'me', media: myFaceIn(fbInitials(s.player.name)), name: s.player.name, sub: months !== null ? trn(months, '{n} mois restant', '{n} mois restants') : '', go: 'dc-over' }), dcRow({ key: 'ext', media: hi('contract'), name: tr('Prolongation'), end: v.extension !== null && v.extension !== undefined ? pct(v.extension) : '', go: 'dc-contract' })])}
+      ${dcGroup(tr('Ton contrat'), [dcRow({ key: 'me', media: myFaceIn(playerSilhouetteHtml()), name: s.player.name, sub: months !== null ? trn(months, '{n} mois restant', '{n} mois restants') : '', go: 'dc-over' }), dcRow({ key: 'ext', media: hi('contract'), name: tr('Prolongation'), end: v.extension !== null && v.extension !== undefined ? pct(v.extension) : '', go: 'dc-contract' })])}
       ${dcGroup(tr('Ton parcours'), sidePath)}
       ${dcGroup(tr('Offres reçues'), [...(a.plannedMove ? [clubRow('deal', { club: a.plannedMove.club }, { sub: tr('Transfert conclu') })] : []), ...offers.map((o) => clubRow('offer', o, { sub: o.kind === 'extension' ? tr('Prolongation') : tr('Offre de transfert') }))])}
       ${dcGroup(tr('Clubs qui suivent ton dossier'), v.clubs.map((c) => clubRow('follow', c)))}
@@ -12241,7 +12241,7 @@ function renderPlayerProfile(page) {
   page.innerHTML = `<div class="rg pp-page">
     <header class="card pp-head">
       <div class="pp-head-id">
-        <span class="dc-portrait">${myFaceIn(fbInitials(s.player?.name || 'LL'))}</span>
+        <span class="dc-portrait">${myFaceIn(playerSilhouetteHtml())}</span>
         <div>
           <span class="k-eyebrow">${tr('Profil du joueur')}</span>
           <h1>${esc(s.player?.name || '')}</h1>
