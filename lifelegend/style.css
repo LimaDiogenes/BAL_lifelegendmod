@@ -4745,7 +4745,7 @@ html, body { height: 100%; overflow: hidden; background: var(--sh-back); }
 .per-p-name { grid-area: name; }
 .per-person-row .per-dob-wrap { grid-area: dob; }
 .per-p-kop { grid-area: kop; }
-.per-p-lives { grid-area: lives; }
+.per-p-lives, .per-p-lives-off { grid-area: lives; }
 /* Sa photo de profil par défaut : la silhouette du journal (pas encore de photo, pas de visage dans le jeu) */
 .tw-profile-photo .face-silhouette, .avatar .face-silhouette { width: 100%; height: 100%; object-fit: cover; object-position: center 12%; }
 /* Interview : les tons de réponse (round C) */

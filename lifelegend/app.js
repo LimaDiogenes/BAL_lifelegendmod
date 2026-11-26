@@ -1233,7 +1233,7 @@ function personaPersonRowHtml(person = {}, groupKey = '') {
     <input class="per-p-name" value="${esc(person.name || '')}" placeholder="${esc(tr('Nom réel'))}" maxlength="120">
     ${notPerson ? '<span class="per-dob-wrap"></span>' : dobPickerHtml(person.dob || '', { inputClass: 'per-p-dob' })}
     <select class="per-p-kop" title="${esc(tr('Profil & personnalité sur Kop (optionnel)'))}" aria-label="${esc(tr('Profil & personnalité sur Kop (optionnel)'))}">${kopOpts}</select>
-    ${notPerson ? '<span class="per-p-lives"></span>' : ''}${notPerson ? '' : `<select class="per-p-lives" title="${esc(tr('Où vit cette personne (optionnel) : les textes et les messages en tiennent compte'))}" aria-label="${esc(tr('Où vit cette personne (optionnel) : les textes et les messages en tiennent compte'))}">${PERSONA_LIVES_OPTIONS.map(([id, fn]) => `<option value="${id}"${(person.lives || '') === id ? ' selected' : ''}>${esc(fn())}</option>`).join('')}</select>`}
+    ${notPerson ? '<span class="per-p-lives-off"></span>' : ''}${notPerson ? '' : `<select class="per-p-lives" title="${esc(tr('Où vit cette personne (optionnel) : les textes et les messages en tiennent compte'))}" aria-label="${esc(tr('Où vit cette personne (optionnel) : les textes et les messages en tiennent compte'))}">${PERSONA_LIVES_OPTIONS.map(([id, fn]) => `<option value="${id}"${(person.lives || '') === id ? ' selected' : ''}>${esc(fn())}</option>`).join('')}</select>`}
     <input class="per-p-decoy" value="${esc(person.decoy || '')}" placeholder="${esc(tr('Pseudo (auto)'))}" maxlength="120">
     <button type="button" class="per-p-del per-p-del-person" title="${esc(tr('Retirer cette personne'))}" aria-label="${esc(tr('Retirer cette personne'))}">−<span class="per-p-del-txt">${esc(tr('Retirer cette personne'))}</span></button>
     <div class="per-p-flags">
@@ -1359,9 +1359,9 @@ function readPersonaForm(prefix) {
         if (out.length >= PERSONA_GROUP_MAX) return;
         const role = row.querySelector('.per-p-role')?.value.trim() || '';
         const name = row.querySelector('.per-p-name')?.value.trim() || '';
-        const dob = row.querySelector('.per-p-dob')?.value.trim() || '';
+        const dob = row.querySelector('input.per-p-dob')?.value?.trim() || '';
         const kopPersonality = row.querySelector('.per-p-kop')?.value.trim() || '';
-        const lives = row.querySelector('.per-p-lives')?.value.trim() || '';
+        const lives = row.querySelector('select.per-p-lives')?.value?.trim() || '';
         const decoy = row.querySelector('.per-p-decoy')?.value.trim() || '';
         const close = row.querySelector('.per-p-close-in')?.checked !== false;
         const protect = row.querySelector('.per-p-protect')?.checked !== false;
